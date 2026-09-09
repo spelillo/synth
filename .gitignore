@@ -1,0 +1,30 @@
+# API Keys and sensitive files
+proxy-server.py
+config.js
+
+# Data files
+*.csv
+formularyID*.txt
+
+# Logs
+*.log
+proxy.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo

@@ -1,0 +1,1148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Synth</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/sql.js@1.8.0/dist/sql-wasm.js"></script>
+  <script>
+    // Note: API key is handled by proxy-server.py
+    // No API key stored in the browser for security
+    let db;
+    let aiEnabled = false;
+    let csvLoaded = false;
+    }
+
+    async function initDB() {
+      const SQL = await initSqlJs({
+        locateFile: file => `https://cdn.jsdelivr.net/npm/sql.js@1.8.0/dist/${file}`
+      });
+      document.getElementById('status').textContent = 'Ready';
+      document.getElementById('status').classList.add('ready');
+      return SQL;
+    }
+
+    let SQL;
+    window.addEventListener('DOMContentLoaded', async () => {
+      SQL = await initDB();
+    });
+
+    window.uploadCSV = async function(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const statusEl = document.getElementById('file-info');
+      statusEl.textContent = `Loading ${file.name}...`;
+
+      try {
+        const text = await file.text();
+        const lines = text.split('\n').filter(line => line.trim());
+
+        if (lines.length === 0) {
+          throw new Error('Empty CSV file');
+        }
+
+        const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+        const rows = lines.slice(1).map(line => {
+          const values = [];
+          let current = '';
+          let inQuotes = false;
+
+          for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            if (char === '"') {
+              inQuotes = !inQuotes;
+            } else if (char === ',' && !inQuotes) {
+              values.push(current.trim().replace(/^"|"$/g, ''));
+              current = '';
+            } else {
+              current += char;
+            }
+          }
+          values.push(current.trim().replace(/^"|"$/g, ''));
+          return values;
+        }).filter(row => row.some(val => val));
+
+        db = new SQL.Database();
+
+        const columnDefs = headers.map(h => `"${h}" TEXT`).join(', ');
+        db.run(`CREATE TABLE data (${columnDefs})`);
+
+        const stmt = db.prepare(`INSERT INTO data VALUES (${headers.map(() => '?').join(', ')})`);
+        rows.forEach(row => {
+          if (row.length === headers.length) {
+            stmt.run(row);
+          } else if (row.length < headers.length) {
+            const paddedRow = [...row, ...Array(headers.length - row.length).fill('')];
+            stmt.run(paddedRow);
+          } else {
+            stmt.run(row.slice(0, headers.length));
+          }
+        });
+        stmt.free();
+
+        const count = rows.length;
+        const sizeKB = (file.size / 1024).toFixed(1);
+        const sizeLabel = sizeKB > 1024 ? `${(sizeKB / 1024).toFixed(1)}MB` : `${sizeKB}KB`;
+
+        statusEl.textContent = `${file.name} (${sizeLabel}, ${count.toLocaleString()} rows)`;
+        statusEl.classList.add('loaded');
+
+        document.getElementById('query-input').value = 'SELECT * FROM data LIMIT 100';
+        document.getElementById('query-input').focus();
+
+        csvLoaded = true;
+        updateAIState();
+
+      } catch (err) {
+        statusEl.textContent = `Error: ${err.message}`;
+        statusEl.classList.add('error');
+        console.error(err);
+      }
+    };
+
+    let tableSchema = '';
+
+    function updateAIState() {
+      const toggle = document.getElementById('ai-toggle');
+      const toggleLabel = document.querySelector('.toggle-label');
+      const chatInput = document.getElementById('chat-input');
+      const chatSend = document.getElementById('chat-send');
+      const chatMessages = document.getElementById('chat-messages');
+
+      if (aiEnabled && csvLoaded) {
+        toggleLabel.textContent = 'ON';
+
+        try {
+          const result = db.exec('PRAGMA table_info(data)');
+          const columns = result[0].values.map(col => ({
+            name: col[1],
+            type: col[2]
+          }));
+
+          const rowCountResult = db.exec('SELECT COUNT(*) FROM data');
+          const rowCount = rowCountResult[0].values[0][0];
+
+          tableSchema = `Table: data\nColumns:\n${columns.map(c => `- ${c.name} (${c.type})`).join('\n')}\nTotal rows: ${rowCount}`;
+
+          chatMessages.innerHTML = `<div class="chat-message assistant">I can help you write SQL queries for your data. I know your table has these columns:\n\n${columns.map(c => c.name).join(', ')}\n\nAsk me anything like "show me rows where X > 100" or "group by category and count".</div>`;
+
+          chatInput.disabled = false;
+          chatSend.disabled = false;
+          chatInput.focus();
+
+        } catch (err) {
+          console.error('Schema error:', err);
+        }
+      } else {
+        toggleLabel.textContent = 'OFF';
+        chatInput.disabled = true;
+        chatSend.disabled = true;
+
+        if (!csvLoaded) {
+          chatMessages.innerHTML = '<div class="empty ai-disabled-msg">Upload a CSV first, then toggle AI ON to ask questions.</div>';
+        } else {
+          chatMessages.innerHTML = '<div class="empty ai-disabled-msg">AI assistant is disabled. Toggle it ON to ask SQL questions.</div>';
+        }
+      }
+    }
+
+    function updateLineNumbers() {
+      const textarea = document.getElementById('query-input');
+      const lineNumbers = document.getElementById('line-numbers');
+      const lines = textarea.value.split('\n').length;
+      lineNumbers.innerHTML = Array.from({length: lines}, (_, i) => i + 1).join('<br>');
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      const textarea = document.getElementById('query-input');
+
+      textarea.addEventListener('input', updateLineNumbers);
+      textarea.addEventListener('scroll', () => {
+        document.getElementById('line-numbers').scrollTop = textarea.scrollTop;
+      });
+
+      document.getElementById('ai-toggle').addEventListener('change', (e) => {
+        aiEnabled = e.target.checked;
+        updateAIState();
+      });
+
+      document.getElementById('chat-input').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          sendMessage();
+        }
+      });
+
+      updateLineNumbers();
+    });
+
+    async function sendMessage() {
+      if (!aiEnabled) {
+        alert('Please enable the AI assistant toggle first');
+        return;
+      }
+
+      const input = document.getElementById('chat-input');
+      const message = input.value.trim();
+      if (!message) return;
+
+      const messagesDiv = document.getElementById('chat-messages');
+
+      messagesDiv.innerHTML += `<div class="chat-message user">${message}</div>`;
+      input.value = '';
+
+      messagesDiv.innerHTML += `<div class="chat-message assistant">Thinking...</div>`;
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+      try {
+        const response = await fetch('http://localhost:8001/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages: [
+              {
+                role: 'system',
+                content: `You are a SQL query assistant. The user has loaded a CSV file into a SQLite database. Here is the schema:\n\n${tableSchema}\n\nYour job is to:\n1. ONLY respond with SQL queries that work on this exact table\n2. Always use the table name "data"\n3. Format SQL queries in markdown code blocks with \`\`\`sql\n4. Keep explanations brief\n5. Never suggest anything other than SQL queries\n6. If asked about non-SQL topics, redirect to SQL help\n7. CRITICAL: Use proper SQL syntax - ensure spaces between all keywords\n8. Use single quotes for string literals (e.g., 'value' not "value")\n9. For not-equals use <> or != (both work in SQLite)\n10. Column names are case-sensitive - match them exactly from the schema\n11. All SQL must be valid SQLite syntax\n\nBe concise, practical, and syntactically perfect.`
+              },
+              {
+                role: 'user',
+                content: message
+              }
+            ],
+            temperature: 0.3
+          })
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`API returned ${response.status}: ${errorText}`);
+        }
+
+        const data = await response.json();
+
+        if (data.error) {
+          throw new Error(data.error.message);
+        }
+
+        const assistantMessage = data.choices[0].message.content;
+
+        const lastMessage = messagesDiv.lastElementChild;
+        lastMessage.innerHTML = formatMessage(assistantMessage);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+      } catch (err) {
+        const lastMessage = messagesDiv.lastElementChild;
+        if (err.message.includes('Failed to fetch')) {
+          lastMessage.innerHTML = `Error: Cannot connect to proxy server. Make sure proxy-server.py is running on port 8001.`;
+        } else {
+          lastMessage.innerHTML = `Error: ${err.message}`;
+        }
+        lastMessage.style.background = '#dc2626';
+      }
+    }
+
+    function formatMessage(text) {
+      const msgId = 'msg-' + Math.random().toString(36).substr(2, 9);
+
+      // Extract SQL blocks first and store them separately
+      const sqlBlocks = [];
+      text = text.replace(/```sql\n([\s\S]*?)```/g, (match, code) => {
+        const id = 'code-' + Math.random().toString(36).substr(2, 9);
+        const cleanCode = code.trim();
+        sqlBlocks.push({ id, code: cleanCode });
+        return `__SQL_BLOCK_${id}__`;
+      });
+
+      // Replace regular code blocks
+      text = text.replace(/```\n([\s\S]*?)```/g, (match, code) => {
+        const id = 'code-' + Math.random().toString(36).substr(2, 9);
+        return `<pre id="${id}"><code>${code.trim()}</code></pre>`;
+      });
+
+      // Replace newlines with <br> in non-code text
+      text = text.replace(/\n/g, '<br>');
+
+      // Now replace SQL block placeholders with formatted HTML
+      sqlBlocks.forEach(({ id, code }) => {
+        const escapedCode = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/\n/g, '\\n');
+        const displayCode = code.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        text = text.replace(
+          `__SQL_BLOCK_${id}__`,
+          `<pre id="${id}"><code data-sql="${escapedCode}">${displayCode}</code><button class="use-query-btn" onclick="insertQuery('${id}')">Use Query</button></pre>`
+        );
+      });
+
+      return `<div id="${msgId}" class="message-content">${text}</div><button class="copy-message-btn" onclick="copyMessage('${msgId}')" title="Copy message">📋</button>`;
+    }
+
+    window.copyMessage = function(msgId) {
+      const msgDiv = document.getElementById(msgId);
+      let text = msgDiv.innerText || msgDiv.textContent;
+
+      text = text.replace(/Use Query/g, '').trim();
+      navigator.clipboard.writeText(text);
+
+      const btn = event.target;
+      btn.textContent = '✓';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = '📋';
+        btn.classList.remove('copied');
+      }, 2000);
+    };
+
+    window.insertQuery = function(id) {
+      const pre = document.getElementById(id);
+      const codeEl = pre.querySelector('code[data-sql]');
+
+      if (codeEl) {
+        const escapedCode = codeEl.getAttribute('data-sql');
+        const code = escapedCode
+          .replace(/\\n/g, '\n')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&quot;/g, '"')
+          .replace(/&#39;/g, "'");
+        document.getElementById('query-input').value = code;
+      } else {
+        const code = pre.querySelector('code').textContent.trim();
+        document.getElementById('query-input').value = code;
+      }
+
+      updateLineNumbers();
+      document.getElementById('query-input').focus();
+    };
+
+    window.runQuery = async function() {
+      const query = document.getElementById('query-input').value.trim();
+      if (!query) return;
+
+      const resultsEl = document.getElementById('results');
+      const errorEl = document.getElementById('error');
+
+      errorEl.textContent = '';
+      errorEl.style.display = 'none';
+      resultsEl.innerHTML = '<div class="loading">Running query...</div>';
+
+      try {
+        const result = db.exec(query);
+
+        if (result.length === 0) {
+          resultsEl.innerHTML = '<div class="empty">No results</div>';
+          return;
+        }
+
+        renderTable('results', result);
+
+      } catch (err) {
+        resultsEl.innerHTML = '';
+        let errorMsg = err.message;
+
+        // Add helpful suggestions for common errors
+        if (errorMsg.includes('syntax error')) {
+          errorMsg += '\n\n💡 Tip: Check for missing spaces between keywords (e.g., "SELECT column FROM" not "SELECT columnFROM")';
+        } else if (errorMsg.includes('no such column')) {
+          errorMsg += '\n\n💡 Tip: Column names are case-sensitive. Available columns: formularyID, affectedDrugOption, formularyVersion, rxCUI, rxNormBrandName, rxNormSCDC, rxNormDoseForm, tierLevel, selectedDrug';
+        } else if (errorMsg.includes('no such table')) {
+          errorMsg += '\n\n💡 Tip: The table name is "data" (lowercase)';
+        }
+
+        errorEl.textContent = errorMsg;
+        errorEl.style.display = 'block';
+        errorEl.style.whiteSpace = 'pre-wrap';
+      }
+    };
+
+    let tableData = { columns: [], rows: [] };
+    let sortState = {};
+    let filterState = {};
+
+    function renderTable(targetId, result) {
+      const target = document.getElementById(targetId);
+
+      if (result.length === 0 || !result[0].values.length) {
+        target.innerHTML = '<div class="empty">No results</div>';
+        return;
+      }
+
+      tableData.columns = result[0].columns;
+      tableData.rows = result[0].values;
+      sortState = {};
+      filterState = {};
+
+      updateTable(targetId);
+    }
+
+    function updateTable(targetId) {
+      const target = document.getElementById(targetId);
+      let filteredRows = [...tableData.rows];
+
+      // Apply filters
+      Object.keys(filterState).forEach(colIndex => {
+        const filterValue = filterState[colIndex].toLowerCase();
+        if (filterValue) {
+          filteredRows = filteredRows.filter(row => {
+            const cellValue = String(row[colIndex] || '').toLowerCase();
+            return cellValue.includes(filterValue);
+          });
+        }
+      });
+
+      // Apply sorting
+      if (sortState.column !== undefined) {
+        const colIndex = sortState.column;
+        const direction = sortState.direction;
+
+        filteredRows.sort((a, b) => {
+          let aVal = a[colIndex];
+          let bVal = b[colIndex];
+
+          // Handle nulls
+          if (aVal === null || aVal === undefined) return 1;
+          if (bVal === null || bVal === undefined) return -1;
+
+          // Try numeric comparison first
+          const aNum = parseFloat(aVal);
+          const bNum = parseFloat(bVal);
+
+          if (!isNaN(aNum) && !isNaN(bNum)) {
+            return direction === 'asc' ? aNum - bNum : bNum - aNum;
+          }
+
+          // Fall back to string comparison
+          const aStr = String(aVal).toLowerCase();
+          const bStr = String(bVal).toLowerCase();
+
+          if (direction === 'asc') {
+            return aStr < bStr ? -1 : aStr > bStr ? 1 : 0;
+          } else {
+            return aStr > bStr ? -1 : aStr < bStr ? 1 : 0;
+          }
+        });
+      }
+
+      let html = '<table><thead><tr>';
+      tableData.columns.forEach((col, index) => {
+        const sortIcon = sortState.column === index
+          ? (sortState.direction === 'asc' ? '▲' : '▼')
+          : '⇅';
+        const sortClass = sortState.column === index ? 'active' : '';
+
+        html += `<th>
+          <div class="th-content">
+            <div class="th-label" onclick="sortColumn(${index})">
+              ${col}
+              <span class="sort-icon ${sortClass}">${sortIcon}</span>
+            </div>
+          </div>
+          <input type="text" class="column-filter" placeholder="Filter..."
+                 onkeyup="filterColumn(${index}, this.value)"
+                 value="${filterState[index] || ''}">
+        </th>`;
+      });
+      html += '</tr></thead><tbody>';
+
+      filteredRows.forEach(row => {
+        html += '<tr>';
+        row.forEach(val => {
+          html += `<td>${val !== null && val !== undefined ? val : '<span class="null">NULL</span>'}</td>`;
+        });
+        html += '</tr>';
+      });
+
+      html += '</tbody></table>';
+      html += `<div class="row-count">${filteredRows.length.toLocaleString()} of ${tableData.rows.length.toLocaleString()} rows</div>`;
+
+      target.innerHTML = html;
+    }
+
+    window.sortColumn = function(colIndex) {
+      if (sortState.column === colIndex) {
+        sortState.direction = sortState.direction === 'asc' ? 'desc' : 'asc';
+      } else {
+        sortState.column = colIndex;
+        sortState.direction = 'asc';
+      }
+      updateTable('results');
+    };
+
+    window.filterColumn = function(colIndex, value) {
+      filterState[colIndex] = value;
+      updateTable('results');
+    };
+
+    document.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        runQuery();
+      }
+    });
+  </script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: #fffefb;
+      color: #201515;
+      line-height: 1.5;
+    }
+
+    .header {
+      background: #fffefb;
+      color: #201515;
+      padding: 12px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #c5c0b1;
+    }
+
+    .header h1 {
+      font-size: 32px;
+      font-weight: 500;
+      letter-spacing: 1px;
+    }
+
+    #status {
+      font-size: 16px;
+      color: #939084;
+      font-weight: 400;
+    }
+
+    #status.ready {
+      color: #ff4f00;
+      font-weight: 600;
+    }
+
+    .upload-area {
+      background: #f8f4f0;
+      padding: 24px;
+      border-bottom: 1px solid #c5c0b1;
+    }
+
+    .upload-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex: 1;
+    }
+
+    .api-key-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-left: 2rem;
+    }
+
+    #api-key {
+      width: 280px;
+      padding: 0.625rem 1rem;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.875rem;
+    }
+
+    #api-key:focus {
+      outline: none;
+      border-color: #06b6d4;
+      box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.1);
+    }
+
+    .api-key-hint {
+      font-size: 0.8125rem;
+      color: #6b7280;
+    }
+
+    .upload-btn {
+      background: #ff4f00;
+      color: #fffefb;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 18px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s;
+    }
+
+    .upload-btn:hover {
+      background: #e64600;
+    }
+
+    #file-upload {
+      display: none;
+    }
+
+    #file-info {
+      font-size: 16px;
+      color: #939084;
+    }
+
+    #file-info.loaded {
+      color: #201515;
+      font-weight: 600;
+    }
+
+    #file-info.error {
+      color: #ff4f00;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      height: calc(100vh - 120px);
+    }
+
+    .left-pane {
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid #c5c0b1;
+    }
+
+    .editor-section {
+      padding: 24px;
+      border-bottom: 1px solid #c5c0b1;
+    }
+
+    .editor-label {
+      font-weight: 600;
+      font-size: 16px;
+      margin-bottom: 12px;
+      color: #201515;
+    }
+
+    .editor-wrapper {
+      display: flex;
+      border: 1px solid #201515;
+      border-radius: 6px;
+      background: #fffefb;
+      overflow: hidden;
+    }
+
+    .editor-wrapper:focus-within {
+      border-color: #ff4f00;
+      box-shadow: 0 0 0 2px rgba(255, 79, 0, 0.1);
+    }
+
+    .line-numbers {
+      background: #f8f4f0;
+      padding: 12px 8px;
+      text-align: right;
+      color: #939084;
+      font-family: 'JetBrains Mono', 'SF Mono', 'Monaco', 'Consolas', monospace;
+      font-size: 16px;
+      line-height: 1.6;
+      user-select: none;
+      border-right: 1px solid #c5c0b1;
+      min-width: 40px;
+      overflow-y: hidden;
+    }
+
+    #query-input {
+      height: 120px;
+      font-family: 'JetBrains Mono', 'SF Mono', 'Monaco', 'Consolas', monospace;
+      font-size: 16px;
+      padding: 12px 16px;
+      border: none;
+      resize: vertical;
+      background: #fffefb;
+      color: #201515;
+      line-height: 1.6;
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    #query-input:focus {
+      outline: none;
+    }
+
+    .editor-actions {
+      margin-top: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .run-btn {
+      background: #201515;
+      color: #fffefb;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 18px;
+      cursor: pointer;
+      font-family: inherit;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.15s;
+    }
+
+    .run-btn:hover {
+      background: #2f2a26;
+    }
+
+    .run-btn:active {
+      transform: translateY(1px);
+    }
+
+    .keyboard-hint {
+      font-size: 14px;
+      color: #939084;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .results-section {
+      flex: 1;
+      padding: 24px;
+      overflow: auto;
+      background: #fffefb;
+    }
+
+    .preview-pane {
+      display: flex;
+      flex-direction: column;
+      padding: 24px;
+      overflow: hidden;
+      background: #f8f4f0;
+      position: sticky;
+      top: 0;
+      height: calc(100vh - 120px);
+    }
+
+    #chat-container {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    #chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      margin-bottom: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .chat-message {
+      padding: 0.875rem;
+      border-radius: 6px;
+      max-width: 90%;
+      position: relative;
+    }
+
+    .chat-message.user {
+      background: #f8f4f0;
+      align-self: flex-end;
+      color: #201515;
+      border: 1px solid #c5c0b1;
+      border-radius: 12px;
+    }
+
+    .chat-message.assistant {
+      background: #201515;
+      color: #fffefb;
+      align-self: flex-start;
+      padding-right: 40px;
+      border-radius: 12px;
+    }
+
+    .copy-message-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: rgba(255, 254, 251, 0.1);
+      border: none;
+      color: #fffefb;
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0.7;
+      transition: opacity 0.15s, background 0.15s;
+      font-size: 14px;
+    }
+
+    .copy-message-btn:hover {
+      opacity: 1;
+      background: rgba(255, 254, 251, 0.2);
+    }
+
+    .copy-message-btn.copied {
+      background: #ff4f00;
+      opacity: 1;
+    }
+
+    .chat-message pre {
+      background: #f8f4f0;
+      padding: 12px;
+      border-radius: 6px;
+      overflow-x: auto;
+      margin: 8px 0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      position: relative;
+      color: #201515;
+    }
+
+    .chat-message.assistant pre {
+      background: rgba(255, 254, 251, 0.1);
+      color: #fffefb;
+    }
+
+    .use-query-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: #ff4f00;
+      color: #fffefb;
+      border: none;
+      padding: 4px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: 700;
+    }
+
+    .use-query-btn:hover {
+      background: #e64600;
+    }
+
+    .chat-input-wrapper {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    #chat-input {
+      flex: 1;
+      padding: 12px 16px;
+      border: 1px solid #201515;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 16px;
+      background: #fffefb;
+      color: #201515;
+    }
+
+    #chat-input:focus {
+      outline: none;
+      border-color: #ff4f00;
+      box-shadow: 0 0 0 2px rgba(255, 79, 0, 0.1);
+    }
+
+    #chat-input:disabled {
+      background: #f8f4f0;
+      cursor: not-allowed;
+      color: #939084;
+    }
+
+    #chat-send {
+      background: #ff4f00;
+      color: #fffefb;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 18px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s;
+    }
+
+    #chat-send:hover:not(:disabled) {
+      background: #e64600;
+    }
+
+    #chat-send:disabled {
+      background: #c5c0b1;
+      cursor: not-allowed;
+    }
+
+    .ai-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .section-label {
+      font-weight: 600;
+      font-size: 16px;
+      color: #201515;
+    }
+
+    .toggle-switch {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      cursor: pointer;
+    }
+
+    .toggle-switch input {
+      display: none;
+    }
+
+    .toggle-slider {
+      width: 44px;
+      height: 24px;
+      background: #c5c0b1;
+      border-radius: 9999px;
+      position: relative;
+      transition: background 0.2s;
+    }
+
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #fffefb;
+      top: 3px;
+      left: 3px;
+      transition: transform 0.2s;
+      box-shadow: 0 1px 3px rgba(32, 21, 21, 0.2);
+    }
+
+    .toggle-switch input:checked + .toggle-slider {
+      background: #ff4f00;
+    }
+
+    .toggle-switch input:checked + .toggle-slider::before {
+      transform: translateX(20px);
+    }
+
+    .toggle-label {
+      font-size: 14px;
+      font-weight: 600;
+      color: #939084;
+      min-width: 32px;
+    }
+
+    .toggle-switch input:checked ~ .toggle-label {
+      color: #ff4f00;
+    }
+
+    #error {
+      background: #f8f4f0;
+      color: #201515;
+      padding: 16px;
+      border-radius: 12px;
+      border: 1px solid #ff4f00;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      margin-bottom: 16px;
+      display: none;
+    }
+
+    #results, #preview {
+      overflow: auto;
+    }
+
+    .loading, .empty {
+      color: #939084;
+      text-align: center;
+      padding: 32px 16px;
+      font-size: 16px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    th {
+      background: #f8f4f0;
+      padding: 8px 16px;
+      text-align: left;
+      font-weight: 600;
+      border-bottom: 2px solid #c5c0b1;
+      position: sticky;
+      top: 0;
+      color: #201515;
+      z-index: 10;
+    }
+
+    .th-content {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .th-label {
+      flex: 1;
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .sort-icon {
+      font-size: 10px;
+      color: #939084;
+    }
+
+    .sort-icon.active {
+      color: #ff4f00;
+    }
+
+    .column-filter {
+      width: 100%;
+      padding: 4px 8px;
+      border: 1px solid #c5c0b1;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: inherit;
+      background: #fffefb;
+      color: #201515;
+    }
+
+    .column-filter:focus {
+      outline: none;
+      border-color: #ff4f00;
+    }
+
+    td {
+      padding: 12px 16px;
+      border-bottom: 1px solid #c5c0b1;
+    }
+
+    tbody tr:hover {
+      background: #f8f4f0;
+    }
+
+    .null {
+      color: #939084;
+      font-style: italic;
+    }
+
+    .row-count {
+      margin-top: 16px;
+      font-size: 14px;
+      color: #605d52;
+      text-align: right;
+      font-weight: 600;
+    }
+
+    @media (max-width: 1024px) {
+      .workspace {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 400px;
+        height: auto;
+        min-height: calc(100vh - 120px);
+      }
+
+      .left-pane {
+        border-right: none;
+        border-bottom: 1px solid #e5e7eb;
+      }
+
+      .api-key-wrapper {
+        margin-left: 0;
+        margin-top: 0.75rem;
+      }
+
+      .upload-area .upload-wrapper {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+
+    .error-msg {
+      color: #201515;
+      padding: 16px;
+    }
+
+    .ai-disabled-msg {
+      color: #939084;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Synth</h1>
+    <div id="status">Initializing...</div>
+  </div>
+
+  <div class="upload-area">
+    <div class="upload-wrapper">
+      <input type="file" id="file-upload" accept=".csv" onchange="uploadCSV(event)">
+      <label for="file-upload" class="upload-btn">Upload CSV</label>
+      <div id="file-info">No file selected</div>
+    </div>
+  </div>
+
+  <div class="workspace">
+    <div class="left-pane">
+      <div class="editor-section">
+        <div class="editor-label">SQL Query</div>
+        <div class="editor-wrapper">
+          <div class="line-numbers" id="line-numbers">1</div>
+          <textarea id="query-input" placeholder="SELECT * FROM data&#10;WHERE column = 'value'&#10;ORDER BY column DESC&#10;LIMIT 100"></textarea>
+        </div>
+        <div class="editor-actions">
+          <button class="run-btn" onclick="runQuery()">
+            <span>Run Query</span>
+            <span>▶</span>
+          </button>
+          <div class="keyboard-hint">⌘ Enter or Ctrl Enter</div>
+        </div>
+      </div>
+
+      <div class="results-section">
+        <div class="section-label">Query Results</div>
+        <div id="error"></div>
+        <div id="results">
+          <div class="empty">Run a query to see results</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="preview-pane">
+      <div class="ai-header">
+        <div class="section-label">AI SQL Assistant</div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="ai-toggle">
+          <span class="toggle-slider"></span>
+          <span class="toggle-label">OFF</span>
+        </label>
+      </div>
+      <div id="chat-container">
+        <div id="chat-messages">
+          <div class="empty ai-disabled-msg">AI assistant is disabled. Toggle it ON to ask SQL questions.</div>
+        </div>
+        <div class="chat-input-wrapper">
+          <input type="text" id="chat-input" placeholder="Ask about your data... e.g., 'show me all rows where amount > 1000'" disabled />
+          <button id="chat-send" onclick="sendMessage()" disabled>Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
