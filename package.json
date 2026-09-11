@@ -1,0 +1,13 @@
+{
+  "name": "synth",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local CSV query tool with AI-powered SQL assistance",
+  "scripts": {
+    "dev": "vercel dev"
+  },
+  "dependencies": {
+    "stripe": "^22.6.2",
+    "@supabase/supabase-js": "^2"
+  }
+}

@@ -8,12 +8,81 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/sql.js@1.8.0/dist/sql-wasm.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Loaded directly from Stripe, never bundled/self-hosted (PCI requirement). -->
+  <script src="https://js.stripe.com/dahlia/stripe.js"></script>
   <script>
-    // Note: API key is handled by proxy-server.py
-    // No API key stored in the browser for security
+    // Note: the Groq API key is handled server-side (proxy-server.py locally,
+    // /api/chat.js when deployed). No API key is ever stored in the browser.
+    //
+    // Where chat requests go. '/api/chat' (same origin) works both with
+    // `vercel dev` locally and once deployed on Vercel. If you're using
+    // the older local-only workflow instead (`python3 proxy-server.py`
+    // + `python3 -m http.server 8000`), change this to
+    // 'http://localhost:8001/chat'.
+    const CHAT_ENDPOINT = '/api/chat';
+
     let db;
     let aiEnabled = false;
     let csvLoaded = false;
+
+    // ---- Cloud sync (optional) ----
+    // Sign-in is entirely optional: Synth works fully offline/anonymously
+    // with these left unconfigured. Fill in to enable "Sign in" + cloud
+    // save/load of CSVs and chat sessions. Get these from your Supabase
+    // project: Settings -> API -> Project URL / anon public key.
+    const SUPABASE_URL = 'https://gukxpikthryasymfuhgl.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd1a3hwaWt0aHJ5YXN5bWZ1aGdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwMDAyNTQsImV4cCI6MjEwNDU3NjI1NH0.NFhryLa7MLSvjRGnT75EfxH_4M9tACdbVWOlmaLSXbw';
+
+    let sb = null;
+    if (SUPABASE_URL !== 'YOUR_SUPABASE_URL' && window.supabase) {
+      sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    }
+
+    // ---- Premium checkout (Stripe) ----
+    // Publishable keys are meant to be public, so — same as the Supabase
+    // anon key above — this is hardcoded here rather than pulled from a
+    // build-time env var: this is a static page with no bundler, so
+    // there's no "browser-accessible env var" mechanism to plug into.
+    // Get the real value from https://dashboard.stripe.com/test/apikeys.
+    const STRIPE_PUBLISHABLE_KEY = 'pk_test_51UE9ruRqXDpXXBnZCSxSuLRXb4eEBfDoNnOTP2nqFR2nFps4R4bkzwdAEq17VReeuUcx3vaHyjzg9n1cAe8Ocbto00tZ4ezyyk';
+
+    let stripeClient = null;
+    if (STRIPE_PUBLISHABLE_KEY !== 'pk_test_...' && window.Stripe) {
+      stripeClient = window.Stripe(STRIPE_PUBLISHABLE_KEY, { betas: ['custom_checkout_payment_form_1'] });
+    }
+
+    let currentUser = null;
+    let currentCSVFile = null;
+    let currentWorkspaceId = null;
+    let currentWorkspaceName = null;
+    let chatHistory = [];
+
+    // ---- Multi-table workspace state ----
+    // `tables` holds every table currently loaded into the shared `db`
+    // instance. `activeTableName` is the single source of truth for both
+    // "which table is the query editor/Table View pointed at" and "which
+    // table the AI defaults to for an ambiguous question" — the table-chip
+    // bar and the AI focus dropdown are just two views onto it.
+    let tables = [];              // [{ name, fileName, rowCount, columns }]
+    let activeTableName = null;
+
+    function slugifyTableName(filename) {
+      let base = filename.replace(/\.[^/.]+$/, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+      if (!base) base = 'table';
+      if (/^[0-9]/.test(base)) base = 't_' + base;
+      return base;
+    }
+
+    function uniqueTableName(base) {
+      const existing = new Set(tables.map(t => t.name));
+      if (!existing.has(base)) return base;
+      let n = 2;
+      while (existing.has(`${base}_${n}`)) n++;
+      return `${base}_${n}`;
     }
 
     async function initDB() {
@@ -28,83 +97,1887 @@
     let SQL;
     window.addEventListener('DOMContentLoaded', async () => {
       SQL = await initDB();
+      await initLandingMode();
+      initAuth();
+      checkPremiumCheckoutReturn();
     });
 
-    window.uploadCSV = async function(event) {
-      const file = event.target.files[0];
-      if (!file) return;
+    async function initAuth() {
+      if (!sb) return;
+      const { data: { session } } = await sb.auth.getSession();
+      handleAuthChange(session);
+      await confirmLandingGateFromRedirect(session);
+      sb.auth.onAuthStateChange((_event, newSession) => handleAuthChange(newSession));
+    }
 
-      const statusEl = document.getElementById('file-info');
-      statusEl.textContent = `Loading ${file.name}...`;
+    // If this page load is the magic-link redirect (it carries ?gate=<id>),
+    // this is the device the user actually clicked the link on — possibly a
+    // completely different device than the one showing the pending landing
+    // page. Mark that gate confirmed so the *other* device's Realtime
+    // subscription (see watchLandingGate) picks it up and unlocks itself.
+    async function confirmLandingGateFromRedirect(session) {
+      const params = new URLSearchParams(window.location.search);
+      const gateId = params.get('gate');
+      if (!gateId) return;
 
+      if (session) {
+        try {
+          await sb
+            .from('landing_gates')
+            .update({ confirmed: true, confirmed_at: new Date().toISOString() })
+            .eq('id', gateId);
+        } catch (err) {
+          console.error('Failed to confirm landing gate:', err);
+        }
+      }
+
+      params.delete('gate');
+      const clean = window.location.pathname + (params.toString() ? '?' + params.toString() : '') + window.location.hash;
+      window.history.replaceState({}, '', clean);
+    }
+
+    // Stripe redirects back to /?checkout=success after a completed
+    // embedded-form payment (see return_url in api/create-checkout-session.js).
+    function checkPremiumCheckoutReturn() {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('checkout') !== 'success') return;
+
+      document.getElementById('premium-success-banner').hidden = false;
+
+      params.delete('checkout');
+      const clean = window.location.pathname + (params.toString() ? '?' + params.toString() : '') + window.location.hash;
+      window.history.replaceState({}, '', clean);
+    }
+
+    window.dismissPremiumSuccessBanner = function() {
+      document.getElementById('premium-success-banner').hidden = true;
+    };
+
+    function handleAuthChange(session) {
+      currentUser = session?.user || null;
+      const signedOutEl = document.getElementById('auth-signed-out');
+      const signedInEl = document.getElementById('auth-signed-in');
+      const signInBtn = document.getElementById('sign-in-btn');
+
+      if (currentUser) {
+        signInBtn.textContent = currentUser.email;
+        signedOutEl.hidden = true;
+        signedInEl.hidden = false;
+        document.getElementById('my-projects-btn').hidden = false;
+        document.getElementById('auth-user-email').textContent = currentUser.email;
+        confirmLandingSignIn(currentUser.email);
+        refreshPremiumStatus();
+      } else {
+        signInBtn.textContent = 'Sign in';
+        signedOutEl.hidden = false;
+        signedInEl.hidden = true;
+        document.getElementById('my-projects-btn').hidden = true;
+        isPremium = false;
+        updatePremiumUI();
+      }
+      updateCloudButtons();
+    }
+
+    // ---- Premium status (profiles.is_premium) ----
+
+    let isPremium = false;
+
+    async function refreshPremiumStatus() {
+      if (!sb || !currentUser) return;
+      const { data, error } = await sb
+        .from('profiles')
+        .select('is_premium')
+        .eq('id', currentUser.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Failed to load premium status:', error.message);
+        return;
+      }
+      isPremium = !!data?.is_premium;
+      updatePremiumUI();
+    }
+
+    function updatePremiumUI() {
+      const goPremiumBtn = document.getElementById('go-premium-btn');
+      goPremiumBtn.textContent = isPremium ? 'Premium ✓' : 'Go Premium';
+      goPremiumBtn.classList.toggle('is-premium-active', isPremium);
+      document.getElementById('dashboard-nav-btn').hidden = !isPremium;
+      renderSettingsPremiumRow();
+    }
+
+    // ---- Account settings (Settings modal, opened via the email button) ----
+
+    window.openSettingsPanel = function() {
+      if (!currentUser) return;
+      document.getElementById('settings-email').textContent = currentUser.email;
+      renderSettingsPremiumRow();
+      document.getElementById('settings-modal').hidden = false;
+    };
+
+    window.closeSettingsPanel = function() {
+      document.getElementById('settings-modal').hidden = true;
+    };
+
+    function renderSettingsPremiumRow() {
+      const row = document.getElementById('settings-premium-row');
+      if (!row) return;
+      row.innerHTML = isPremium
+        ? `<span class="workspace-badge">Premium</span> <button class="auth-btn" style="margin-left:10px" onclick="openCancelPremiumModal()">Cancel Premium</button>`
+        : `<span class="help-text" style="margin:0">Free — <button class="auth-btn auth-btn-premium" style="display:inline-block;padding:4px 12px;font-size:13px" onclick="closeSettingsPanel(); openPremiumPanel();">Go Premium</button></span>`;
+    }
+
+    window.openCancelPremiumModal = function() {
+      document.getElementById('cancel-premium-modal').hidden = false;
+    };
+
+    window.closeCancelPremiumModal = function() {
+      document.getElementById('cancel-premium-modal').hidden = true;
+    };
+
+    window.confirmCancelPremium = async function() {
+      if (!sb || !currentUser) return;
+      const { error } = await sb
+        .from('profiles')
+        .update({ is_premium: false, updated_at: new Date().toISOString() })
+        .eq('id', currentUser.id);
+
+      document.getElementById('cancel-premium-modal').hidden = true;
+
+      if (error) {
+        alert('Failed to cancel premium: ' + error.message);
+        return;
+      }
+      isPremium = false;
+      updatePremiumUI();
+    };
+
+    function updateCloudButtons() {
+      const saveCsvBtn = document.getElementById('save-csv-btn');
+      saveCsvBtn.hidden = !(currentUser && tables.length > 0);
+      if (!saveCsvBtn.hidden) {
+        saveCsvBtn.disabled = false;
+        saveCsvBtn.title = '';
+      }
+      document.getElementById('save-session-btn').hidden = !(currentUser && chatHistory.length > 0);
+    }
+
+    window.toggleAuthPanel = function() {
+      if (!sb) {
+        alert('Cloud sync is not configured yet. Set SUPABASE_URL / SUPABASE_ANON_KEY in synth.html.');
+        return;
+      }
+      const panel = document.getElementById('auth-panel');
+      panel.hidden = !panel.hidden;
+    };
+
+    window.sendMagicLink = async function() {
+      const email = document.getElementById('auth-email').value.trim();
+      if (!email) return;
+      const msgEl = document.getElementById('auth-message');
+      msgEl.textContent = 'Sending link...';
+      const { error } = await sb.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: window.location.href }
+      });
+      msgEl.textContent = error ? `Error: ${error.message}` : 'Check your email for a sign-in link.';
+    };
+
+    // ---- Landing gate: entering an email + requesting a magic link unlocks the CSV upload ----
+    //
+    // The gate is confirmed two ways, whichever fires first:
+    //  1. Same-browser: Supabase's own onAuthStateChange fires here directly
+    //     (it syncs sessions across tabs of the same browser via localStorage).
+    //  2. Any device: the "landing_gates" table + Realtime (see
+    //     confirmLandingGateFromRedirect, watchLandingGate below) — the
+    //     device that actually clicked the link flips a row, and this
+    //     device is subscribed to that row's change.
+
+    let landingGateId = null;
+    let landingGateChannel = null;
+    let landingGatePollTimer = null;
+
+    window.landingSendMagicLink = async function() {
+      const emailInput = document.getElementById('landing-email');
+      const msgEl = document.getElementById('landing-auth-message');
+      const email = emailInput.value.trim();
+
+      msgEl.classList.remove('error');
+
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        msgEl.textContent = 'Enter a valid email first.';
+        msgEl.classList.add('error');
+        return;
+      }
+
+      if (!sb) {
+        // Cloud sign-in isn't configured — nothing to actually confirm, so
+        // don't block the product behind a check we can't perform.
+        msgEl.textContent = 'Check your email for a sign-in link.';
+        unlockLandingUpload();
+        return;
+      }
+
+      msgEl.textContent = 'Sending link...';
+
+      landingGateId = crypto.randomUUID();
+      const { error: gateError } = await sb.from('landing_gates').insert({ id: landingGateId, confirmed: false });
+      if (gateError) console.error('Failed to create landing gate:', gateError);
+
+      const redirectUrl = new URL(window.location.href);
+      redirectUrl.searchParams.set('gate', landingGateId);
+
+      const { error } = await sb.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: redirectUrl.toString() }
+      });
+      if (error) {
+        msgEl.textContent = `Error: ${error.message}`;
+        msgEl.classList.add('error');
+        return;
+      }
+
+      msgEl.innerHTML = `Check your email for a sign-in link. This page unlocks itself the moment you click it — on this device or any other — or <a href="#" onclick="landingRecheckSession(); return false;">check again</a> once you have.`;
+      showLandingPending();
+      watchLandingGate(landingGateId);
+    };
+
+    function watchLandingGate(gateId) {
+      stopWatchingLandingGate();
+
+      landingGateChannel = sb
+        .channel('landing-gate-' + gateId)
+        .on('postgres_changes', {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'landing_gates',
+          filter: `id=eq.${gateId}`
+        }, (payload) => {
+          if (payload.new && payload.new.confirmed) confirmLandingGateConfirmed();
+        })
+        .subscribe();
+
+      // Realtime should catch this almost instantly, but poll as a fallback
+      // in case the subscription doesn't fire for any reason.
+      landingGatePollTimer = setInterval(async () => {
+        const { data } = await sb.from('landing_gates').select('confirmed').eq('id', gateId).single();
+        if (data && data.confirmed) confirmLandingGateConfirmed();
+      }, 4000);
+    }
+
+    function stopWatchingLandingGate() {
+      if (landingGatePollTimer) {
+        clearInterval(landingGatePollTimer);
+        landingGatePollTimer = null;
+      }
+      if (landingGateChannel) {
+        sb.removeChannel(landingGateChannel);
+        landingGateChannel = null;
+      }
+    }
+
+    window.landingRecheckSession = async function() {
+      const msgEl = document.getElementById('landing-auth-message');
+      if (!sb) return;
+      msgEl.textContent = 'Checking...';
+      msgEl.classList.remove('error');
+
+      if (landingGateId) {
+        const { data } = await sb.from('landing_gates').select('confirmed').eq('id', landingGateId).single();
+        if (data && data.confirmed) {
+          confirmLandingGateConfirmed();
+          return;
+        }
+      }
+
+      const { data: { session } } = await sb.auth.getSession();
+      handleAuthChange(session);
+      if (!session) {
+        msgEl.textContent = 'Still waiting — click the link in your email (any device), then check again.';
+      }
+    };
+
+    function showLandingPending() {
+      const label = document.getElementById('landing-upload-label');
+      const sub = document.getElementById('landing-upload-sub');
+      label.classList.add('is-pending');
+      sub.textContent = "Unlocks automatically once you click the link in your email.";
+    }
+
+    function confirmLandingSignIn(email) {
+      const panel = document.getElementById('landing-upload-panel');
+      if (!panel || normalModeConfirmed) return;
+      normalModeConfirmed = true;
+      stopWatchingLandingGate();
+      unlockLandingUpload();
+
+      const emailInput = document.getElementById('landing-email');
+      if (emailInput && !emailInput.value.trim()) emailInput.value = email;
+
+      showLandingConnected(`Connected — signed in as ${email}.`);
+    }
+
+    function confirmLandingGateConfirmed() {
+      const panel = document.getElementById('landing-upload-panel');
+      if (!panel || normalModeConfirmed) return;
+      normalModeConfirmed = true;
+      stopWatchingLandingGate();
+      unlockLandingUpload();
+      showLandingConnected('Connected — the link was clicked.');
+    }
+
+    function showLandingConnected(text) {
+      const msgEl = document.getElementById('landing-auth-message');
+      if (msgEl) {
+        msgEl.classList.remove('error');
+        msgEl.classList.add('success');
+        msgEl.textContent = `✓ ${text}`;
+      }
+
+      const emailInput = document.getElementById('landing-email');
+      const magicBtn = document.querySelector('.landing-magic-btn');
+      if (emailInput) emailInput.disabled = true;
+      if (magicBtn) magicBtn.disabled = true;
+    }
+
+    function unlockLandingUpload() {
+      const label = document.getElementById('landing-upload-label');
+      label.classList.remove('is-locked');
+      label.classList.remove('is-pending');
+      document.getElementById('landing-upload-sub').textContent = 'Ready. Drop in any CSV to get started.';
+      document.getElementById('landing-upload-panel').classList.add('unlocked');
+    }
+
+    // ---- Landing mode: Lite (no sign-in, nothing saved) vs Normal (today's
+    // sign-in-gated flow, unlocks cloud save). Lite Mode never calls Supabase
+    // at all — it just skips straight to unlockLandingUpload() instead of
+    // waiting on landingSendMagicLink()/watchLandingGate() to do it.
+    let landingMode = 'lite';
+
+    // True only once a REAL Normal Mode sign-in/gate-confirmation has
+    // happened (set inside confirmLandingSignIn/confirmLandingGateConfirmed).
+    // Kept separate from the upload panel's `.unlocked` CSS class, which
+    // Lite Mode also toggles on as a visual side effect — conflating the two
+    // meant switching Lite -> Normal never re-locked the upload button.
+    let normalModeConfirmed = false;
+
+    window.selectLandingMode = function(mode) {
+      landingMode = mode;
+      document.getElementById('landing-mode-lite-btn').classList.toggle('is-active', mode === 'lite');
+      document.getElementById('landing-mode-normal-btn').classList.toggle('is-active', mode === 'normal');
+      document.getElementById('landing-mode-lite-btn').setAttribute('aria-selected', mode === 'lite');
+      document.getElementById('landing-mode-normal-btn').setAttribute('aria-selected', mode === 'normal');
+      document.getElementById('landing-view').classList.toggle('mode-lite', mode === 'lite');
+      document.getElementById('landing-view').classList.toggle('mode-normal', mode === 'normal');
+
+      const compare = document.getElementById('landing-mode-compare');
+      compare.classList.toggle('active-lite', mode === 'lite');
+      compare.classList.toggle('active-normal', mode === 'normal');
+
+      const panel = document.getElementById('landing-upload-panel');
+      const kicker = document.getElementById('landing-kicker-upload');
+      const label = document.getElementById('landing-upload-label');
+
+      if (mode === 'lite') {
+        stopWatchingLandingGate();
+        unlockLandingUpload();
+        kicker.hidden = true;
+        // A real Normal Mode sign-in that already happened stays unlocked
+        // with its own copy — Lite Mode never overwrites a genuine sign-in.
+        if (!normalModeConfirmed) {
+          document.getElementById('landing-upload-sub').textContent =
+            'No sign-in. Nothing saved to the cloud. Upload a CSV to jump right in.';
+        }
+      } else {
+        kicker.hidden = false;
+        if (normalModeConfirmed) {
+          document.getElementById('landing-upload-sub').textContent = 'Ready. Drop in any CSV to get started.';
+        } else {
+          panel.classList.remove('unlocked');
+          label.classList.add('is-locked');
+          label.classList.remove('is-pending');
+          document.getElementById('landing-upload-sub').textContent = 'Unlocks once your magic link is on its way.';
+        }
+      }
+    };
+
+    // Runs before initAuth() so a returning signed-in user, or someone who
+    // just clicked a magic link on another device (?gate=...), never lands
+    // on a dimmed-out Normal Mode panel — Lite Mode is only the default for
+    // a fresh, session-less visit.
+    async function initLandingMode() {
+      const params = new URLSearchParams(window.location.search);
+      let forceNormal = params.has('gate');
+      if (!forceNormal && sb) {
+        try {
+          const { data: { session } } = await sb.auth.getSession();
+          forceNormal = !!session;
+        } catch (err) {
+          console.error('Failed to check session for landing mode:', err);
+        }
+      }
+      selectLandingMode(forceNormal ? 'normal' : 'lite');
+    }
+
+    window.signOutUser = async function() {
+      if (!sb) return;
+      await sb.auth.signOut();
+      document.getElementById('auth-panel').hidden = true;
+    };
+
+    // Serializes a live table's current rows back into CSV text, so saving
+    // doesn't depend on still having the original uploaded File object
+    // around (renamed tables, or tables added well after the first upload,
+    // don't have one) — it always reflects exactly what's in `db` right now.
+    function tableToCSVBlob(tableName) {
+      const result = db.exec(`SELECT * FROM "${tableName}"`);
+      const escapeCsv = (v) => {
+        const s = v === null || v === undefined ? '' : String(v);
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      if (!result.length) return new Blob([''], { type: 'text/csv' });
+      const { columns, values } = result[0];
+      const lines = [columns.map(escapeCsv).join(',')];
+      values.forEach(row => lines.push(row.map(escapeCsv).join(',')));
+      return new Blob([lines.join('\n')], { type: 'text/csv' });
+    }
+
+    window.saveCurrentCSV = async function() {
+      if (!sb || !currentUser || !tables.length) return;
+      const btn = document.getElementById('save-csv-btn');
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
       try {
-        const text = await file.text();
-        const lines = text.split('\n').filter(line => line.trim());
+        const workspaceName = currentWorkspaceName || tables[0].fileName || 'Untitled workspace';
 
-        if (lines.length === 0) {
-          throw new Error('Empty CSV file');
+        let workspaceId = currentWorkspaceId;
+        if (workspaceId) {
+          const { error: wsErr } = await sb.from('workspaces')
+            .update({ name: workspaceName, updated_at: new Date().toISOString() })
+            .eq('id', workspaceId);
+          if (wsErr) throw wsErr;
+        } else {
+          const { data: ws, error: wsErr } = await sb.from('workspaces')
+            .insert({ user_id: currentUser.id, name: workspaceName })
+            .select().single();
+          if (wsErr) throw wsErr;
+          workspaceId = ws.id;
         }
 
-        const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-        const rows = lines.slice(1).map(line => {
-          const values = [];
-          let current = '';
-          let inQuotes = false;
+        // Replace this workspace's rows/files wholesale rather than diffing
+        // — simpler to keep correct, and guarantees a renamed or removed
+        // table never leaves an orphaned row or Storage object behind.
+        const { error: delDsErr } = await sb.from('datasets').delete().eq('workspace_id', workspaceId);
+        if (delDsErr) throw delDsErr;
+        await sb.from('workspace_relationships').delete().eq('workspace_id', workspaceId);
 
-          for (let i = 0; i < line.length; i++) {
-            const char = line[i];
-            if (char === '"') {
-              inQuotes = !inQuotes;
-            } else if (char === ',' && !inQuotes) {
-              values.push(current.trim().replace(/^"|"$/g, ''));
-              current = '';
-            } else {
-              current += char;
+        const { data: oldFiles } = await sb.storage.from('csvs').list(`${currentUser.id}/${workspaceId}`);
+        if (oldFiles && oldFiles.length) {
+          await sb.storage.from('csvs').remove(oldFiles.map(f => `${currentUser.id}/${workspaceId}/${f.name}`));
+        }
+
+        for (const t of tables) {
+          const blob = tableToCSVBlob(t.name);
+          const path = `${currentUser.id}/${workspaceId}/${t.name}.csv`;
+          const { error: upErr } = await sb.storage.from('csvs').upload(path, blob, { upsert: true, contentType: 'text/csv' });
+          if (upErr) throw upErr;
+
+          const { error: dsErr } = await sb.from('datasets').insert({
+            user_id: currentUser.id,
+            workspace_id: workspaceId,
+            filename: t.fileName,
+            table_name: t.name,
+            storage_path: path,
+            row_count: t.rowCount,
+            columns: t.columns,
+          });
+          if (dsErr) throw dsErr;
+        }
+
+        const confirmedRels = relationships.filter(r => r.confirmed);
+        if (confirmedRels.length) {
+          const { error: relErr } = await sb.from('workspace_relationships').insert(
+            confirmedRels.map(r => ({
+              workspace_id: workspaceId,
+              from_table: r.fromTable,
+              from_column: r.fromColumn,
+              to_table: r.toTable,
+              to_column: r.toColumn,
+              confirmed: true,
+            }))
+          );
+          if (relErr) throw relErr;
+        }
+
+        currentWorkspaceId = workspaceId;
+        currentWorkspaceName = workspaceName;
+        btn.textContent = 'Saved ✓';
+      } catch (err) {
+        alert('Failed to save workspace: ' + err.message);
+        btn.textContent = 'Save to cloud';
+      } finally {
+        btn.disabled = false;
+      }
+    };
+
+    window.saveCurrentSession = async function() {
+      if (!sb || !currentUser || chatHistory.length === 0) return;
+      const btn = document.getElementById('save-session-btn');
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+      try {
+        // A session with nothing to reopen isn't useful — make sure the
+        // workspace itself is saved first.
+        if (!currentWorkspaceId) {
+          await window.saveCurrentCSV();
+        }
+        if (!currentWorkspaceId) throw new Error('Save the workspace first');
+
+        const firstUserMsg = chatHistory.find(m => m.role === 'user');
+        const title = firstUserMsg ? firstUserMsg.content.slice(0, 60) : 'Untitled session';
+
+        const { data: session, error: sessionError } = await sb
+          .from('chat_sessions')
+          .insert({ user_id: currentUser.id, workspace_id: currentWorkspaceId, title })
+          .select()
+          .single();
+        if (sessionError) throw sessionError;
+
+        const rows = chatHistory.map(m => ({ session_id: session.id, role: m.role, content: m.content }));
+        const { error: messagesError } = await sb.from('chat_messages').insert(rows);
+        if (messagesError) throw messagesError;
+
+        btn.textContent = 'Saved ✓';
+      } catch (err) {
+        alert('Failed to save session: ' + err.message);
+        btn.textContent = 'Save session';
+      } finally {
+        btn.disabled = false;
+      }
+    };
+
+    window.openCloudPanel = async function() {
+      if (!sb || !currentUser) return;
+      document.getElementById('cloud-modal').hidden = false;
+      const dsList = document.getElementById('cloud-datasets-list');
+      const sessList = document.getElementById('cloud-sessions-list');
+      dsList.innerHTML = 'Loading...';
+      sessList.innerHTML = 'Loading...';
+
+      const { data: workspaces, error: dsError } = await sb
+        .from('workspaces').select('*, datasets(id, row_count)').order('updated_at', { ascending: false });
+      dsList.innerHTML = (!dsError && workspaces && workspaces.length)
+        ? workspaces.map(w => {
+            const tableCount = w.datasets.length;
+            const totalRows = w.datasets.reduce((sum, d) => sum + (d.row_count || 0), 0);
+            return `
+          <div class="cloud-item">
+            <span>${escapeHtml(w.name)} <span class="cloud-meta">(${tableCount} table${tableCount === 1 ? '' : 's'}, ${totalRows.toLocaleString()} rows, updated ${new Date(w.updated_at).toLocaleDateString()})</span></span>
+            <button class="cloud-load-btn" onclick="loadCloudWorkspace('${w.id}')">Load</button>
+          </div>`;
+          }).join('')
+        : '<div class="empty">No saved workspaces yet.</div>';
+
+      const { data: sessions, error: sessError } = await sb
+        .from('chat_sessions').select('*').order('created_at', { ascending: false });
+      sessList.innerHTML = (!sessError && sessions && sessions.length)
+        ? sessions.map(s => `
+          <div class="cloud-item">
+            <span>${escapeHtml(s.title)} <span class="cloud-meta">(${new Date(s.created_at).toLocaleDateString()})</span></span>
+            <button class="cloud-load-btn" onclick="loadCloudSession('${s.id}')">Load</button>
+          </div>`).join('')
+        : '<div class="empty">No saved sessions yet.</div>';
+    };
+
+    window.closeCloudPanel = function() {
+      document.getElementById('cloud-modal').hidden = true;
+    };
+
+    // ---- Dashboard (premium home base: every saved workspace, at a glance) ----
+
+    let dashboardPreviousView = null;
+    let pendingDeleteWorkspaceId = null;
+    let pendingOpenWorkspaceId = null;
+    let pendingOpenSessionId = null;
+
+    function timeAgo(dateStr) {
+      const diffMs = Date.now() - new Date(dateStr).getTime();
+      const mins = Math.floor(diffMs / 60000);
+      if (mins < 1) return 'just now';
+      if (mins < 60) return `${mins}m ago`;
+      const hours = Math.floor(mins / 60);
+      if (hours < 24) return `${hours}h ago`;
+      const days = Math.floor(hours / 24);
+      if (days < 30) return `${days}d ago`;
+      return new Date(dateStr).toLocaleDateString();
+    }
+
+    window.openDashboard = async function() {
+      if (!currentUser || !isPremium) return;
+      dashboardPreviousView = document.getElementById('landing-view').hidden ? 'app' : 'landing';
+      document.getElementById('landing-view').hidden = true;
+      document.getElementById('app-view').hidden = true;
+      document.getElementById('dashboard-view').hidden = false;
+      await renderDashboard();
+    };
+
+    window.closeDashboard = function() {
+      document.getElementById('dashboard-view').hidden = true;
+      if (dashboardPreviousView === 'app') {
+        document.getElementById('app-view').hidden = false;
+      } else {
+        document.getElementById('landing-view').hidden = false;
+      }
+    };
+
+    async function renderDashboard() {
+      const body = document.getElementById('dashboard-body');
+      body.innerHTML = '<div class="empty">Loading your workspaces...</div>';
+
+      const { data: workspaces, error } = await sb
+        .from('workspaces')
+        .select('*, datasets(id, table_name, row_count), chat_sessions(id, title, created_at)')
+        .order('updated_at', { ascending: false });
+
+      if (error) {
+        body.innerHTML = `<div class="empty">Failed to load workspaces: ${escapeHtml(error.message)}</div>`;
+        return;
+      }
+
+      if (!workspaces || !workspaces.length) {
+        body.innerHTML = '<div class="empty">No saved workspaces yet — upload a CSV, then hit "Save to cloud" to see it here.</div>';
+        return;
+      }
+
+      body.innerHTML = workspaces.map(w => {
+        const totalRows = w.datasets.reduce((sum, d) => sum + (d.row_count || 0), 0);
+        const tableChips = w.datasets.map(d => `<span class="workspace-table-chip">${escapeHtml(d.table_name)}</span>`).join('');
+        const sessions = (w.chat_sessions || []).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        const sessionsHtml = sessions.length ? `
+          <div class="workspace-sessions">
+            <div class="workspace-sessions-label">Saved chats</div>
+            ${sessions.map(s => `
+              <div class="workspace-session-row">
+                <span class="workspace-session-title" title="${escapeHtml(s.title)}">${escapeHtml(s.title)}</span>
+                <button onclick="requestOpenSession('${s.id}')">Open</button>
+              </div>
+            `).join('')}
+          </div>` : '';
+
+        return `
+          <div class="workspace-card" data-workspace="${w.id}">
+            <div class="workspace-card-head">
+              <span class="workspace-name" data-workspace-name="${w.id}">${escapeHtml(w.name)}</span>
+              <button class="workspace-rename-btn" title="Rename" onclick="startRenameWorkspace('${w.id}')">✎</button>
+            </div>
+            <div class="workspace-meta">${w.datasets.length} table${w.datasets.length === 1 ? '' : 's'} &middot; ${totalRows.toLocaleString()} rows &middot; updated ${timeAgo(w.updated_at)}</div>
+            <div class="workspace-tables">${tableChips}</div>
+            ${sessionsHtml}
+            <div class="workspace-card-actions">
+              <button class="workspace-open-btn" onclick="requestOpenWorkspace('${w.id}')">Open</button>
+              <button class="workspace-delete-btn" onclick="openDeleteWorkspaceModal('${w.id}', '${escapeHtml(w.name).replace(/'/g, "\\'")}')">Delete</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    window.startRenameWorkspace = function(workspaceId) {
+      const label = document.querySelector(`.workspace-name[data-workspace-name="${CSS.escape(workspaceId)}"]`);
+      if (!label) return;
+      const original = label.textContent;
+
+      label.contentEditable = 'true';
+      label.focus();
+      document.execCommand('selectAll', false, null);
+
+      const commit = async () => {
+        label.removeAttribute('contenteditable');
+        const newName = label.textContent.trim();
+        if (!newName || newName === original) { label.textContent = original; return; }
+        const { error } = await sb.from('workspaces').update({ name: newName, updated_at: new Date().toISOString() }).eq('id', workspaceId);
+        if (error) {
+          alert('Failed to rename: ' + error.message);
+          label.textContent = original;
+          return;
+        }
+        if (currentWorkspaceId === workspaceId) currentWorkspaceName = newName;
+      };
+
+      label.addEventListener('blur', commit, { once: true });
+      label.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); label.blur(); }
+        if (e.key === 'Escape') { label.textContent = original; label.blur(); }
+      });
+    };
+
+    window.openDeleteWorkspaceModal = function(workspaceId, name) {
+      pendingDeleteWorkspaceId = workspaceId;
+      document.getElementById('delete-workspace-name').textContent = `"${name}"`;
+      document.getElementById('delete-workspace-modal').hidden = false;
+    };
+
+    window.closeDeleteWorkspaceModal = function() {
+      document.getElementById('delete-workspace-modal').hidden = true;
+      pendingDeleteWorkspaceId = null;
+    };
+
+    window.confirmDeleteWorkspace = async function() {
+      const workspaceId = pendingDeleteWorkspaceId;
+      if (!workspaceId) return;
+      document.getElementById('delete-workspace-modal').hidden = true;
+
+      try {
+        // Deleting the workspaces row cascades datasets/relationships/
+        // chat_sessions at the DB level, but Storage objects are a
+        // separate system entirely and are NOT touched by that cascade —
+        // confirmed directly in testing. They have to be removed here,
+        // explicitly, or they'd sit in the bucket forever as orphans.
+        const prefix = `${currentUser.id}/${workspaceId}`;
+        const { data: files } = await sb.storage.from('csvs').list(prefix);
+        if (files && files.length) {
+          await sb.storage.from('csvs').remove(files.map(f => `${prefix}/${f.name}`));
+        }
+
+        const { error } = await sb.from('workspaces').delete().eq('id', workspaceId);
+        if (error) throw error;
+
+        if (currentWorkspaceId === workspaceId) {
+          currentWorkspaceId = null;
+          currentWorkspaceName = null;
+        }
+
+        await renderDashboard();
+      } catch (err) {
+        alert('Failed to delete workspace: ' + err.message);
+      } finally {
+        pendingDeleteWorkspaceId = null;
+      }
+    };
+
+    // Opening a different workspace than what's currently loaded replaces
+    // it entirely — warn first rather than silently discarding whatever's
+    // in the app right now (no fine-grained "has this actually changed
+    // since last save" tracking exists yet, so this errs toward always
+    // confirming rather than risking a silent loss).
+    function hasLoadedWorkspace() {
+      return csvLoaded && tables.length > 0;
+    }
+
+    window.requestOpenWorkspace = function(workspaceId) {
+      if (hasLoadedWorkspace()) {
+        pendingOpenWorkspaceId = workspaceId;
+        pendingOpenSessionId = null;
+        document.getElementById('switch-workspace-modal').hidden = false;
+        return;
+      }
+      document.getElementById('dashboard-view').hidden = true;
+      window.loadCloudWorkspace(workspaceId);
+    };
+
+    window.requestOpenSession = function(sessionId) {
+      if (hasLoadedWorkspace()) {
+        pendingOpenSessionId = sessionId;
+        pendingOpenWorkspaceId = null;
+        document.getElementById('switch-workspace-modal').hidden = false;
+        return;
+      }
+      document.getElementById('dashboard-view').hidden = true;
+      window.loadCloudSession(sessionId);
+    };
+
+    window.closeSwitchWorkspaceModal = function() {
+      document.getElementById('switch-workspace-modal').hidden = true;
+      pendingOpenWorkspaceId = null;
+      pendingOpenSessionId = null;
+    };
+
+    window.confirmSwitchWorkspace = function() {
+      document.getElementById('switch-workspace-modal').hidden = true;
+      document.getElementById('dashboard-view').hidden = true;
+      if (pendingOpenWorkspaceId) window.loadCloudWorkspace(pendingOpenWorkspaceId);
+      else if (pendingOpenSessionId) window.loadCloudSession(pendingOpenSessionId);
+      pendingOpenWorkspaceId = null;
+      pendingOpenSessionId = null;
+    };
+
+    window.openHelpPanel = function() {
+      document.getElementById('help-modal').hidden = false;
+    };
+
+    window.closeHelpPanel = function() {
+      document.getElementById('help-modal').hidden = true;
+    };
+
+    // ---- Premium checkout (Stripe embedded Checkout Form) ----
+
+    let premiumCheckoutStarted = false;
+
+    window.openPremiumPanel = function() {
+      if (!currentUser) {
+        document.getElementById('premium-signin-modal').hidden = false;
+        return;
+      }
+      if (isPremium) {
+        openSettingsPanel();
+        return;
+      }
+      document.getElementById('premium-modal').hidden = false;
+      if (!premiumCheckoutStarted) {
+        premiumCheckoutStarted = true;
+        startPremiumCheckout();
+      }
+    };
+
+    window.closePremiumPanel = function() {
+      document.getElementById('premium-modal').hidden = true;
+    };
+
+    window.closePremiumSigninModal = function() {
+      document.getElementById('premium-signin-modal').hidden = true;
+    };
+
+    window.signInThenGoPremium = function() {
+      document.getElementById('premium-signin-modal').hidden = true;
+      toggleAuthPanel();
+    };
+
+    async function startPremiumCheckout() {
+      const statusEl = document.getElementById('premium-checkout-status');
+
+      if (!stripeClient) {
+        statusEl.textContent = 'Checkout isn\'t configured yet — set a real Stripe publishable key (see STRIPE_INTEGRATION_TODO.md).';
+        return;
+      }
+
+      try {
+        const clientSecretPromise = fetch('/api/create-checkout-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: currentUser.id }),
+        })
+          .then(async (response) => {
+            if (!response.ok) {
+              const body = await response.json().catch(() => ({}));
+              throw new Error(body?.error?.message || `Checkout session request failed (${response.status})`);
             }
-          }
-          values.push(current.trim().replace(/^"|"$/g, ''));
-          return values;
-        }).filter(row => row.some(val => val));
+            return response.json();
+          })
+          .then((json) => json.client_secret);
 
-        db = new SQL.Database();
-
-        const columnDefs = headers.map(h => `"${h}" TEXT`).join(', ');
-        db.run(`CREATE TABLE data (${columnDefs})`);
-
-        const stmt = db.prepare(`INSERT INTO data VALUES (${headers.map(() => '?').join(', ')})`);
-        rows.forEach(row => {
-          if (row.length === headers.length) {
-            stmt.run(row);
-          } else if (row.length < headers.length) {
-            const paddedRow = [...row, ...Array(headers.length - row.length).fill('')];
-            stmt.run(paddedRow);
-          } else {
-            stmt.run(row.slice(0, headers.length));
-          }
+        // initCheckoutFormSdk doesn't reject its own promise when
+        // clientSecretPromise fails — it reports the failure internally as
+        // a "loaderror" instead. Without this, a failed fetch above becomes
+        // a silent, unhandled promise rejection instead of user-visible
+        // feedback. Attaching .catch() here doesn't change what value
+        // Stripe receives, it just also handles it for our own UI.
+        clientSecretPromise.catch((err) => {
+          statusEl.textContent = `Couldn't start checkout: ${err.message}`;
+          premiumCheckoutStarted = false;
         });
-        stmt.free();
 
-        const count = rows.length;
-        const sizeKB = (file.size / 1024).toFixed(1);
-        const sizeLabel = sizeKB > 1024 ? `${(sizeKB / 1024).toFixed(1)}MB` : `${sizeKB}KB`;
+        const appearance = {
+          theme: 'flat',
+          labels: 'auto',
+          inputs: 'spaced',
+          variables: {
+            borderRadius: '4px',
+            colorBackground: '#ffffff',
+            colorDanger: '#df1b41',
+            colorPrimary: '#0570de',
+            colorSuccess: '#00c853',
+            colorText: '#30313d',
+            fontFamily: 'Inter',
+            fontSizeBase: '16px',
+            spacingUnit: '4px',
+          },
+        };
 
-        statusEl.textContent = `${file.name} (${sizeLabel}, ${count.toLocaleString()} rows)`;
+        const checkout = await stripeClient.initCheckoutFormSdk({ clientSecret: clientSecretPromise, appearance });
+        statusEl.textContent = '';
+
+        const form = checkout.createForm({ layout: 'expanded' });
+        form.mount('#checkout-form');
+
+        const loadActionsResult = await checkout.loadActions();
+        if (loadActionsResult.type === 'success') {
+          form.on('confirm', async (event) => {
+            try {
+              await loadActionsResult.actions.confirm({ formConfirmEvent: event });
+            } catch (error) {
+              console.error('Payment confirmation error:', error);
+              statusEl.textContent = 'Something went wrong confirming payment. Please try again.';
+            }
+          });
+        }
+      } catch (err) {
+        console.error('Stripe checkout error:', err);
+        statusEl.textContent = `Couldn't start checkout: ${err.message}`;
+        premiumCheckoutStarted = false; // allow retry on next open
+      }
+    }
+
+    // ---- Saved queries: per-CSV list, kept in this browser's localStorage ----
+
+    const SAVED_QUERIES_KEY = 'synth_saved_queries_v1';
+    let editingQueryId = null;
+    let selectedLoadQueryId = null;
+    let queryPendingDelete = null;
+
+    function getSavedQueriesStore() {
+      try {
+        return JSON.parse(localStorage.getItem(SAVED_QUERIES_KEY) || '{}');
+      } catch {
+        return {};
+      }
+    }
+
+    function setSavedQueriesStore(store) {
+      try {
+        localStorage.setItem(SAVED_QUERIES_KEY, JSON.stringify(store));
+        return true;
+      } catch (err) {
+        console.error('Failed to save query:', err);
+        alert('Could not save this query. Your browser may be blocking local storage (e.g. private browsing mode).');
+        return false;
+      }
+    }
+
+    function currentCSVKey() {
+      return currentCSVFile ? currentCSVFile.name : null;
+    }
+
+    function getSavedQueriesForCurrentCSV() {
+      const key = currentCSVKey();
+      if (!key) return [];
+      const store = getSavedQueriesStore();
+      return store[key] || [];
+    }
+
+    window.openSaveQueryModal = function() {
+      editingQueryId = null;
+      document.getElementById('save-query-modal-title').textContent = 'Save Query';
+      document.getElementById('save-query-title-input').value = '';
+      document.getElementById('save-query-sql-input').value = document.getElementById('query-input').value;
+      document.getElementById('save-query-desc-input').value = '';
+      document.getElementById('save-query-desc-count').textContent = '0';
+      document.getElementById('save-query-modal').hidden = false;
+      document.getElementById('save-query-title-input').focus();
+    };
+
+    window.closeSaveQueryModal = function() {
+      document.getElementById('save-query-modal').hidden = true;
+      editingQueryId = null;
+    };
+
+    window.submitSaveQuery = function() {
+      const key = currentCSVKey();
+      if (!key) return;
+
+      const titleInput = document.getElementById('save-query-title-input');
+      const sqlInput = document.getElementById('save-query-sql-input');
+      const title = titleInput.value.trim();
+      const sql = sqlInput.value.trim();
+      const description = document.getElementById('save-query-desc-input').value.trim().slice(0, 64);
+
+      if (!title) { titleInput.focus(); return; }
+      if (!sql) { sqlInput.focus(); return; }
+
+      const store = getSavedQueriesStore();
+      const list = store[key] || [];
+
+      if (editingQueryId) {
+        const idx = list.findIndex(q => q.id === editingQueryId);
+        if (idx !== -1) list[idx] = { ...list[idx], title, sql, description };
+      } else {
+        list.push({
+          id: 'q-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+          title,
+          sql,
+          description,
+          createdAt: new Date().toISOString()
+        });
+      }
+
+      store[key] = list;
+      if (!setSavedQueriesStore(store)) return;
+      closeSaveQueryModal();
+    };
+
+    window.openLoadQueryModal = function() {
+      selectedLoadQueryId = null;
+      renderLoadQueryList();
+      document.getElementById('load-query-modal').hidden = false;
+    };
+
+    window.closeLoadQueryModal = function() {
+      document.getElementById('load-query-modal').hidden = true;
+      closeAllQueryMenus();
+    };
+
+    function renderLoadQueryList() {
+      const listEl = document.getElementById('load-query-list');
+      const loadBtn = document.getElementById('load-query-confirm-btn');
+      const queries = getSavedQueriesForCurrentCSV();
+
+      loadBtn.disabled = true;
+
+      if (!queries.length) {
+        listEl.innerHTML = '<div class="empty">No saved queries yet for this file.</div>';
+        return;
+      }
+
+      listEl.innerHTML = queries.map(q => `
+        <div class="query-card" data-id="${q.id}">
+          <input type="radio" name="load-query-radio" class="query-card-radio" onchange="selectLoadQuery('${q.id}')">
+          <div class="query-card-body">
+            <div class="query-card-title">${escapeHtml(q.title)}</div>
+            ${q.description ? `<div class="query-card-desc">${escapeHtml(q.description)}</div>` : ''}
+          </div>
+          <div class="query-card-menu">
+            <button class="query-card-menu-btn" onclick="toggleQueryMenu(event, '${q.id}')">⋯</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    window.selectLoadQuery = function(id) {
+      selectedLoadQueryId = id;
+      document.getElementById('load-query-confirm-btn').disabled = false;
+      document.querySelectorAll('.query-card').forEach(card => {
+        card.classList.toggle('selected', card.dataset.id === id);
+      });
+    };
+
+    window.confirmLoadQuery = function() {
+      if (!selectedLoadQueryId) return;
+      const q = getSavedQueriesForCurrentCSV().find(x => x.id === selectedLoadQueryId);
+      if (!q) return;
+      document.getElementById('query-input').value = q.sql;
+      resetQueryInputView();
+      closeLoadQueryModal();
+    };
+
+    // The popup lives once outside the scrollable list (position: fixed,
+    // repositioned per click) so it never gets clipped by the list's own
+    // overflow-y: auto, the way a popup nested inside each card would.
+    let openQueryMenuId = null;
+
+    window.toggleQueryMenu = function(event, id) {
+      event.stopPropagation();
+      const popup = document.getElementById('query-card-menu-popup');
+
+      if (openQueryMenuId === id) {
+        closeAllQueryMenus();
+        return;
+      }
+
+      const rect = event.currentTarget.getBoundingClientRect();
+      popup.style.top = (rect.bottom + 4) + 'px';
+      popup.style.right = (window.innerWidth - rect.right) + 'px';
+      document.getElementById('query-menu-edit-btn').onclick = () => editSavedQuery(id);
+      document.getElementById('query-menu-delete-btn').onclick = () => confirmDeleteQuery(id);
+      popup.hidden = false;
+      openQueryMenuId = id;
+    };
+
+    function closeAllQueryMenus() {
+      document.getElementById('query-card-menu-popup').hidden = true;
+      openQueryMenuId = null;
+    }
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.query-card-menu-btn') && !e.target.closest('#query-card-menu-popup')) {
+        closeAllQueryMenus();
+      }
+    });
+
+    window.editSavedQuery = function(id) {
+      closeAllQueryMenus();
+      const q = getSavedQueriesForCurrentCSV().find(x => x.id === id);
+      if (!q) return;
+
+      editingQueryId = id;
+      document.getElementById('save-query-modal-title').textContent = 'Edit Query';
+      document.getElementById('save-query-title-input').value = q.title;
+      document.getElementById('save-query-sql-input').value = q.sql;
+      document.getElementById('save-query-desc-input').value = q.description || '';
+      document.getElementById('save-query-desc-count').textContent = (q.description || '').length;
+
+      closeLoadQueryModal();
+      document.getElementById('save-query-modal').hidden = false;
+    };
+
+    window.confirmDeleteQuery = function(id) {
+      closeAllQueryMenus();
+      queryPendingDelete = id;
+      document.getElementById('delete-query-modal').hidden = false;
+    };
+
+    window.closeDeleteQueryModal = function() {
+      queryPendingDelete = null;
+      document.getElementById('delete-query-modal').hidden = true;
+    };
+
+    window.confirmDeleteQuerySubmit = function() {
+      if (!queryPendingDelete) return;
+      const key = currentCSVKey();
+      if (key) {
+        const store = getSavedQueriesStore();
+        store[key] = (store[key] || []).filter(q => q.id !== queryPendingDelete);
+        setSavedQueriesStore(store);
+      }
+      queryPendingDelete = null;
+      document.getElementById('delete-query-modal').hidden = true;
+      renderLoadQueryList();
+    };
+
+    window.loadCloudWorkspace = async function(workspaceId) {
+      const { data: ws, error: wsErr } = await sb.from('workspaces').select('*').eq('id', workspaceId).single();
+      if (wsErr) { alert('Failed to load workspace: ' + wsErr.message); return; }
+
+      const { data: dsRows, error: dsErr } = await sb
+        .from('datasets').select('*').eq('workspace_id', workspaceId).order('created_at', { ascending: true });
+      if (dsErr) { alert('Failed to load workspace tables: ' + dsErr.message); return; }
+      if (!dsRows || !dsRows.length) { alert('This workspace has no tables.'); return; }
+
+      const { data: relRows } = await sb.from('workspace_relationships').select('*').eq('workspace_id', workspaceId);
+
+      closeCloudPanel();
+      showLoadingOverlay();
+
+      try {
+        db = new SQL.Database();
+        tables = [];
+        activeTableName = null;
+
+        for (const d of dsRows) {
+          const { data: blob, error: dlErr } = await sb.storage.from('csvs').download(d.storage_path);
+          if (dlErr) throw dlErr;
+          const text = await blob.text();
+          const { headers, rows } = parseCSVText(text);
+
+          // Load under the SAVED table_name, not a re-slugified filename —
+          // a rename made before saving has to survive the round trip.
+          const columnDefs = headers.map(h => `"${h}" TEXT`).join(', ');
+          db.run(`CREATE TABLE "${d.table_name}" (${columnDefs})`);
+          const stmt = db.prepare(`INSERT INTO "${d.table_name}" VALUES (${headers.map(() => '?').join(', ')})`);
+          rows.forEach(row => {
+            if (row.length === headers.length) stmt.run(row);
+            else if (row.length < headers.length) stmt.run([...row, ...Array(headers.length - row.length).fill('')]);
+            else stmt.run(row.slice(0, headers.length));
+          });
+          stmt.free();
+
+          tables.push({ name: d.table_name, fileName: d.filename, rowCount: rows.length, columns: headers });
+        }
+
+        activeTableName = tables[0].name;
+
+        relationships = (relRows || []).map(r => ({
+          id: `${r.from_table}.${r.from_column}|${r.to_table}.${r.to_column}`,
+          fromTable: r.from_table,
+          fromColumn: r.from_column,
+          toTable: r.to_table,
+          toColumn: r.to_column,
+          confirmed: true,
+          manual: true,
+        }));
+        rejectedRelationshipKeys = new Set();
+
+        currentWorkspaceId = ws.id;
+        currentWorkspaceName = ws.name;
+        currentCSVFile = null;
+        csvLoaded = true;
+
+        const statusEl = document.getElementById('file-info');
+        statusEl.textContent = `Workspace "${ws.name}" (${tables.length} table${tables.length === 1 ? '' : 's'})`;
+        statusEl.classList.remove('error');
         statusEl.classList.add('loaded');
 
-        document.getElementById('query-input').value = 'SELECT * FROM data LIMIT 100';
-        document.getElementById('query-input').focus();
+        document.getElementById('query-input').value = `SELECT * FROM "${activeTableName}" LIMIT 100`;
+
+        updateCloudButtons();
+        renderTableChips();
+        recomputeRelationships();
+        populateManualFkTableSelects();
+        updateAIState();
+        renderTableView();
+
+        runLoadingAnimation(() => {
+          revealApp();
+          resetQueryInputView();
+        });
+      } catch (err) {
+        hideLoadingOverlay();
+        alert('Failed to load workspace: ' + err.message);
+      }
+    };
+
+    window.loadCloudSession = async function(sessionId) {
+      const { data: sess, error } = await sb.from('chat_sessions').select('*').eq('id', sessionId).single();
+      if (error) { alert('Failed to load session: ' + error.message); return; }
+      const { data: messages, error: msgError } = await sb
+        .from('chat_messages').select('*').eq('session_id', sessionId).order('created_at', { ascending: true });
+      if (msgError) { alert('Failed to load messages: ' + msgError.message); return; }
+
+      // Set this before loading the workspace: loadCloudWorkspace
+      // synchronously calls updateAIState() as part of loading, and that
+      // reads aiEnabled to decide the toggle's ON/OFF label. Setting it
+      // first means that reset lands in the right "ON" state, instead of
+      // ON becoming checked but visually mislabeled "OFF".
+      aiEnabled = true;
+      document.getElementById('ai-toggle').checked = true;
+      document.getElementById('chat-input').disabled = false;
+      document.getElementById('chat-send').disabled = false;
+
+      // A session's workspace always loads with it now (no confirm prompt),
+      // so it gets the same branded loading screen as any other load. That
+      // must happen BEFORE we restore this session's chat messages below:
+      // loadCloudWorkspace resets the AI panel back to its fresh-greeting
+      // state as a side effect of loading, which would wipe out the very
+      // messages we're about to restore if we set them first.
+      if (sess.workspace_id) {
+        await window.loadCloudWorkspace(sess.workspace_id);
+      } else {
+        closeCloudPanel();
+      }
+
+      chatHistory = messages.map(m => ({ role: m.role, content: m.content }));
+      const messagesDiv = document.getElementById('chat-messages');
+      messagesDiv.innerHTML = chatHistory.map(m =>
+        m.role === 'user'
+          ? `<div class="chat-message user">${renderUserMessage(m.content)}</div>`
+          : `<div class="chat-turn assistant-turn">${renderAssistantMessage(m.content)}</div>`
+      ).join('');
+
+      updateCloudButtons();
+    };
+
+    function getCurrentColumns(tableName) {
+      const name = tableName || activeTableName;
+      if (!db || !name) return null;
+      try {
+        const result = db.exec(`PRAGMA table_info("${name}")`);
+        return result[0].values.map(c => c[1]);
+      } catch {
+        return null;
+      }
+    }
+
+    function getCurrentRowCount(tableName) {
+      const name = tableName || activeTableName;
+      if (!db || !name) return null;
+      try {
+        const result = db.exec(`SELECT COUNT(*) FROM "${name}"`);
+        return result[0].values[0][0];
+      } catch {
+        return null;
+      }
+    }
+
+    // ---- CSV parsing (shared by fresh uploads and "+ Add table") ----
+
+    function parseCSVText(text) {
+      const lines = text.split('\n').filter(line => line.trim());
+      if (lines.length === 0) {
+        throw new Error('Empty CSV file');
+      }
+
+      const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+      const rows = lines.slice(1).map(line => {
+        const values = [];
+        let current = '';
+        let inQuotes = false;
+
+        for (let i = 0; i < line.length; i++) {
+          const char = line[i];
+          if (char === '"') {
+            inQuotes = !inQuotes;
+          } else if (char === ',' && !inQuotes) {
+            values.push(current.trim().replace(/^"|"$/g, ''));
+            current = '';
+          } else {
+            current += char;
+          }
+        }
+        values.push(current.trim().replace(/^"|"$/g, ''));
+        return values;
+      }).filter(row => row.some(val => val));
+
+      return { headers, rows };
+    }
+
+    // Loads one file into the shared `db` as a new table and returns its
+    // metadata. Assumes `db` already exists — callers create it first.
+    function loadFileAsTable(file, headers, rows, proposedName) {
+      const name = uniqueTableName(proposedName);
+
+      const columnDefs = headers.map(h => `"${h}" TEXT`).join(', ');
+      db.run(`CREATE TABLE "${name}" (${columnDefs})`);
+
+      const stmt = db.prepare(`INSERT INTO "${name}" VALUES (${headers.map(() => '?').join(', ')})`);
+      rows.forEach(row => {
+        if (row.length === headers.length) {
+          stmt.run(row);
+        } else if (row.length < headers.length) {
+          const paddedRow = [...row, ...Array(headers.length - row.length).fill('')];
+          stmt.run(paddedRow);
+        } else {
+          stmt.run(row.slice(0, headers.length));
+        }
+      });
+      stmt.free();
+
+      const meta = { name, fileName: file.name, rowCount: rows.length, columns: headers };
+      tables.push(meta);
+      return meta;
+    }
+
+    const MAX_TABLES_PER_WORKSPACE = 10;
+
+    function formatFileSize(file) {
+      const sizeKB = (file.size / 1024).toFixed(1);
+      return sizeKB > 1024 ? `${(sizeKB / 1024).toFixed(1)}MB` : `${sizeKB}KB`;
+    }
+
+    // ---- Upload flow: parse CSV(s) -> show a timed loading transition -> reveal the app ----
+    // Starts a brand-new workspace, replacing anything currently loaded.
+
+    window.uploadCSV = async function(event) {
+      const files = Array.from(event.target.files || []);
+      if (files.length === 0) return;
+
+      const statusEl = document.getElementById('file-info');
+      showLoadingOverlay();
+
+      try {
+        db = new SQL.Database();
+        tables = [];
+        activeTableName = null;
+
+        let loaded = [];
+        for (const file of files.slice(0, MAX_TABLES_PER_WORKSPACE)) {
+          const text = await file.text();
+          const { headers, rows } = parseCSVText(text);
+          loaded.push(loadFileAsTable(file, headers, rows, slugifyTableName(file.name)));
+        }
+
+        activeTableName = loaded[0].name;
+
+        if (loaded.length === 1) {
+          statusEl.textContent = `${loaded[0].fileName} (${formatFileSize(files[0])}, ${loaded[0].rowCount.toLocaleString()} rows) → table "${loaded[0].name}"`;
+        } else {
+          statusEl.textContent = `${loaded.length} tables loaded`;
+        }
+        statusEl.classList.remove('error');
+        statusEl.classList.add('loaded');
+
+        document.getElementById('query-input').value = `SELECT * FROM "${activeTableName}" LIMIT 100`;
 
         csvLoaded = true;
+        currentCSVFile = files[0];
+        currentWorkspaceId = null;
+        currentWorkspaceName = null;
+        updateCloudButtons();
+        renderTableChips();
+        rejectedRelationshipKeys = new Set();
+        relationships = [];
+        recomputeRelationships();
+        populateManualFkTableSelects();
         updateAIState();
+        renderTableView();
+
+        runLoadingAnimation(() => {
+          revealApp();
+          document.getElementById('query-input').focus();
+          resetQueryInputView();
+        });
 
       } catch (err) {
+        hideLoadingOverlay();
         statusEl.textContent = `Error: ${err.message}`;
         statusEl.classList.add('error');
         console.error(err);
       }
     };
 
+    // Adds one or more tables to the *current* workspace, without
+    // disturbing tables already loaded.
+    window.addTablesCSV = async function(event) {
+      const files = Array.from(event.target.files || []);
+      if (files.length === 0) return;
+
+      if (!db) {
+        return window.uploadCSV(event);
+      }
+
+      const statusEl = document.getElementById('file-info');
+      const room = MAX_TABLES_PER_WORKSPACE - tables.length;
+      if (room <= 0) {
+        statusEl.textContent = `Error: this workspace already has ${MAX_TABLES_PER_WORKSPACE} tables, the maximum per workspace`;
+        statusEl.classList.add('error');
+        return;
+      }
+
+      showLoadingOverlay();
+      try {
+        let loaded = [];
+        for (const file of files.slice(0, room)) {
+          const text = await file.text();
+          const { headers, rows } = parseCSVText(text);
+          loaded.push(loadFileAsTable(file, headers, rows, slugifyTableName(file.name)));
+        }
+
+        if (files.length > room) {
+          statusEl.textContent = `Added ${loaded.length} table(s) — ${files.length - room} skipped, workspace cap is ${MAX_TABLES_PER_WORKSPACE} tables`;
+        } else {
+          statusEl.textContent = `Added ${loaded.map(t => t.name).join(', ')}`;
+        }
+        statusEl.classList.remove('error');
+        statusEl.classList.add('loaded');
+
+        activeTableName = loaded[loaded.length - 1].name;
+        updateCloudButtons();
+        renderTableChips();
+        recomputeRelationships();
+        populateManualFkTableSelects();
+        updateAIState();
+        renderTableView();
+
+        runLoadingAnimation(() => {
+          document.getElementById('query-input').focus();
+        });
+      } catch (err) {
+        hideLoadingOverlay();
+        statusEl.textContent = `Error: ${err.message}`;
+        statusEl.classList.add('error');
+        console.error(err);
+      }
+    };
+
+    // ---- Table chip bar + AI focus selector (two views of `activeTableName`) ----
+
+    function renderTableChips() {
+      const bar = document.getElementById('table-chip-bar');
+      const addBtn = document.getElementById('add-table-btn');
+      const badge = document.getElementById('workspace-badge');
+      const focusRow = document.getElementById('chat-table-focus-row');
+      const focusSelect = document.getElementById('chat-table-focus');
+
+      if (!tables.length) {
+        bar.hidden = true;
+        bar.innerHTML = '';
+        addBtn.hidden = true;
+        badge.hidden = true;
+        focusRow.hidden = true;
+        return;
+      }
+
+      addBtn.hidden = tables.length >= MAX_TABLES_PER_WORKSPACE;
+      addBtn.title = addBtn.hidden ? `Workspace cap reached (${MAX_TABLES_PER_WORKSPACE} tables)` : '';
+      badge.hidden = tables.length <= 1;
+
+      bar.hidden = false;
+      bar.innerHTML = tables.map(t => `
+        <div class="table-chip${t.name === activeTableName ? ' active' : ''}" data-table="${t.name}" onclick="handleChipClick(event, '${t.name}')">
+          <span class="chip-name" data-table="${t.name}">${t.name}</span>
+          <span class="chip-rows">${t.rowCount.toLocaleString()}</span>
+          <button class="chip-rename" title="Rename table" onclick="startRenameChip(event, '${t.name}')">✎</button>
+        </div>
+      `).join('');
+
+      focusRow.hidden = tables.length <= 1;
+      focusSelect.innerHTML = tables.map(t =>
+        `<option value="${t.name}"${t.name === activeTableName ? ' selected' : ''}>${t.name}</option>`
+      ).join('');
+    }
+
+    window.handleChipClick = function(event, name) {
+      if (event.target.closest('.chip-rename') || event.target.isContentEditable) return;
+      setActiveTable(name);
+    };
+
+    window.setActiveTable = function(name) {
+      if (!tables.some(t => t.name === name)) return;
+      activeTableName = name;
+      document.getElementById('query-input').value = `SELECT * FROM "${name}" LIMIT 100`;
+      renderTableChips();
+      renderTableView();
+      resetQueryInputView();
+    };
+
+    window.startRenameChip = function(event, name) {
+      event.stopPropagation();
+      const bar = document.getElementById('table-chip-bar');
+      const label = bar.querySelector(`.chip-name[data-table="${CSS.escape(name)}"]`);
+      if (!label) return;
+
+      label.contentEditable = 'true';
+      label.focus();
+      document.execCommand('selectAll', false, null);
+
+      const commit = () => {
+        label.removeAttribute('contenteditable');
+        const proposed = slugifyTableName(label.textContent.trim() || name);
+        renameTable(name, proposed);
+      };
+
+      label.addEventListener('blur', commit, { once: true });
+      label.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); label.blur(); }
+        if (e.key === 'Escape') { label.textContent = name; label.blur(); }
+      });
+    };
+
+    function renameTable(oldName, proposedName) {
+      if (proposedName === oldName) { renderTableChips(); return; }
+
+      const collision = tables.some(t => t.name === proposedName && t.name !== oldName);
+      const finalName = collision ? uniqueTableName(proposedName) : proposedName;
+
+      db.run(`ALTER TABLE "${oldName}" RENAME TO "${finalName}"`);
+      const entry = tables.find(t => t.name === oldName);
+      entry.name = finalName;
+      if (activeTableName === oldName) activeTableName = finalName;
+
+      // Existing relationships (including confirmed ones) reference tables by
+      // name — follow the rename so a confirmed FK doesn't silently vanish.
+      relationships.forEach(r => {
+        if (r.fromTable === oldName) r.fromTable = finalName;
+        if (r.toTable === oldName) r.toTable = finalName;
+      });
+      rejectedRelationshipKeys = new Set(
+        [...rejectedRelationshipKeys].map(k => k.split('|').map(part => part.startsWith(oldName + '.') ? finalName + part.slice(oldName.length) : part).join('|'))
+      );
+
+      if (collision) {
+        const statusEl = document.getElementById('file-info');
+        statusEl.textContent = `"${proposedName}" was already taken — renamed to "${finalName}"`;
+      }
+
+      renderTableChips();
+      updateAIState();
+      recomputeRelationships();
+      populateManualFkTableSelects();
+      if (activeTableName === finalName) {
+        document.getElementById('query-input').value = `SELECT * FROM "${finalName}" LIMIT 100`;
+      }
+    }
+
+    // ---- Heuristic foreign-key matching + ERD (Relationships tab) ----
+    // Relationships are metadata only: they inform the AI's system prompt
+    // and the ERD view, and are never created as real SQLite FOREIGN KEY
+    // constraints, since real-world CSVs commonly have orphaned rows that
+    // would break constraint enforcement on import.
+
+    let relationships = [];              // [{ id, fromTable, fromColumn, toTable, toColumn, confirmed, manual }]
+    let rejectedRelationshipKeys = new Set();
+
+    function relationshipKey(r) {
+      return `${r.fromTable}.${r.fromColumn}|${r.toTable}.${r.toColumn}`;
+    }
+
+    function singularize(name) {
+      if (/ies$/i.test(name)) return name.slice(0, -3) + 'y';
+      if (/ses$/i.test(name)) return name.slice(0, -2);
+      if (/s$/i.test(name) && !/ss$/i.test(name)) return name.slice(0, -1);
+      return name;
+    }
+
+    // Suggests A.foo_id -> B.id whenever "foo" matches B's name (singular or
+    // literal) and B actually has an "id" column. A narrow, explainable rule
+    // rather than a fuzzy matcher — misses things like a self-referential
+    // "manager_id" that doesn't name its own table, which is exactly what
+    // the manual-add control below is for.
+    function inferRelationships() {
+      const suggestions = [];
+      for (const a of tables) {
+        for (const colA of a.columns) {
+          if (!/_id$/i.test(colA)) continue;
+          const base = colA.slice(0, -3).toLowerCase();
+          for (const b of tables) {
+            const matches = base === singularize(b.name).toLowerCase() || base === b.name.toLowerCase();
+            if (!matches) continue;
+            const toCol = b.columns.find(c => c.toLowerCase() === 'id');
+            if (!toCol) continue;
+            if (a.name === b.name && colA === toCol) continue;
+            suggestions.push({ fromTable: a.name, fromColumn: colA, toTable: b.name, toColumn: toCol });
+          }
+        }
+      }
+      return suggestions;
+    }
+
+    // Re-derives suggestions after any schema change, preserving confirmed/
+    // manual relationships and not resurrecting rejected suggestions.
+    function recomputeRelationships() {
+      const suggested = inferRelationships();
+      const existingByKey = new Map(relationships.map(r => [relationshipKey(r), r]));
+      const next = [];
+
+      suggested.forEach(s => {
+        const k = relationshipKey(s);
+        if (rejectedRelationshipKeys.has(k)) return;
+        const existing = existingByKey.get(k);
+        if (existing) {
+          next.push(existing);
+          existingByKey.delete(k);
+        } else {
+          next.push({ id: k, ...s, confirmed: false, manual: false });
+        }
+      });
+
+      // Keep confirmed/manual relationships the heuristic no longer
+      // suggests, as long as both ends still exist (e.g. a manual add, or a
+      // confirmed relationship the naming heuristic wouldn't catch).
+      existingByKey.forEach(r => {
+        if (!(r.confirmed || r.manual)) return;
+        const fromOk = tables.some(t => t.name === r.fromTable && t.columns.includes(r.fromColumn));
+        const toOk = tables.some(t => t.name === r.toTable && t.columns.includes(r.toColumn));
+        if (fromOk && toOk) next.push(r);
+      });
+
+      relationships = next;
+      renderRelationshipsTabVisibility();
+      renderERD();
+      renderRelationshipList();
+    }
+
+    function renderRelationshipsTabVisibility() {
+      document.getElementById('relationships-tab-btn').hidden = tables.length < 2;
+    }
+
+    window.confirmRelationship = function(id) {
+      const r = relationships.find(x => x.id === id);
+      if (!r) return;
+      r.confirmed = true;
+      renderERD();
+      renderRelationshipList();
+      updateAIState();
+    };
+
+    window.rejectRelationship = function(id) {
+      const r = relationships.find(x => x.id === id);
+      if (!r) return;
+      rejectedRelationshipKeys.add(relationshipKey(r));
+      relationships = relationships.filter(x => x.id !== id);
+      renderERD();
+      renderRelationshipList();
+      updateAIState();
+    };
+
+    window.removeRelationship = function(id) {
+      const r = relationships.find(x => x.id === id);
+      if (!r) return;
+      if (!r.manual) rejectedRelationshipKeys.add(relationshipKey(r));
+      relationships = relationships.filter(x => x.id !== id);
+      renderERD();
+      renderRelationshipList();
+      updateAIState();
+    };
+
+    window.addManualRelationship = function() {
+      const fromTable = document.getElementById('manual-fk-from-table').value;
+      const fromColumn = document.getElementById('manual-fk-from-col').value;
+      const toTable = document.getElementById('manual-fk-to-table').value;
+      const toColumn = document.getElementById('manual-fk-to-col').value;
+      if (!fromTable || !fromColumn || !toTable || !toColumn) return;
+
+      const r = { fromTable, fromColumn, toTable, toColumn };
+      const k = relationshipKey(r);
+      rejectedRelationshipKeys.delete(k);
+      if (relationships.some(x => relationshipKey(x) === k)) return;
+
+      relationships.push({ id: k, ...r, confirmed: true, manual: true });
+      renderERD();
+      renderRelationshipList();
+      updateAIState();
+    };
+
+    window.populateManualFkColumns = function(side) {
+      const tableSel = document.getElementById(`manual-fk-${side}-table`);
+      const colSel = document.getElementById(`manual-fk-${side}-col`);
+      const t = tables.find(x => x.name === tableSel.value);
+      colSel.innerHTML = (t ? t.columns : []).map(c => `<option value="${c}">${c}</option>`).join('');
+    };
+
+    function populateManualFkTableSelects() {
+      const opts = tables.map(t => `<option value="${t.name}">${t.name}</option>`).join('');
+      ['from', 'to'].forEach(side => {
+        const sel = document.getElementById(`manual-fk-${side}-table`);
+        const prev = sel.value;
+        sel.innerHTML = opts;
+        if (tables.some(t => t.name === prev)) sel.value = prev;
+        populateManualFkColumns(side);
+      });
+    }
+
+    function renderRelationshipList() {
+      const list = document.getElementById('relationship-list');
+      if (!relationships.length) {
+        list.innerHTML = '<div class="empty">No relationships yet — suggestions appear here once you have 2+ tables with matching id columns.</div>';
+        return;
+      }
+      list.innerHTML = relationships.map(r => `
+        <div class="relationship-row${r.confirmed ? ' confirmed' : ''}">
+          <span class="rel-badge ${r.confirmed ? 'confirmed' : 'suggested'}">${r.confirmed ? 'Confirmed' : 'Suggested'}</span>
+          <span class="rel-path">${r.fromTable}.${r.fromColumn} &rarr; ${r.toTable}.${r.toColumn}</span>
+          <span class="rel-actions">
+            ${r.confirmed
+              ? `<button class="reject-btn" onclick="removeRelationship('${r.id}')">Remove</button>`
+              : `<button class="confirm-btn" onclick="confirmRelationship('${r.id}')">Confirm</button><button class="reject-btn" onclick="rejectRelationship('${r.id}')">Reject</button>`}
+          </span>
+        </div>
+      `).join('');
+    }
+
+    // Draws each table as a box (columns listed inside) and overlays an SVG
+    // connecting confirmed (solid, premium blue) vs. suggested (dashed,
+    // neutral) relationships between the specific column rows involved.
+    function renderERD() {
+      const canvas = document.getElementById('erd-canvas');
+      if (!canvas) return;
+
+      if (tables.length < 2) {
+        canvas.innerHTML = '<div class="empty">Load a second table to see suggested relationships here.</div>';
+        return;
+      }
+
+      const colId = (table, col) => `erd-col-${cssEscapeId(table)}-${cssEscapeId(col)}`;
+
+      canvas.innerHTML = tables.map(t => `
+        <div class="erd-table-box" data-table="${t.name}">
+          <div class="erd-table-name">${t.name}</div>
+          ${t.columns.map(c => `<div class="erd-col-row" id="${colId(t.name, c)}">${c}</div>`).join('')}
+        </div>
+      `).join('') + '<svg class="erd-svg-overlay"></svg>';
+
+      requestAnimationFrame(() => drawERDLines(canvas, colId));
+    }
+
+    function cssEscapeId(s) {
+      return s.replace(/[^a-zA-Z0-9_-]/g, '_');
+    }
+
+    function drawERDLines(canvas, colId) {
+      const svg = canvas.querySelector('.erd-svg-overlay');
+      if (!svg) return;
+      const canvasRect = canvas.getBoundingClientRect();
+      svg.setAttribute('width', canvas.scrollWidth);
+      svg.setAttribute('height', canvas.scrollHeight);
+
+      const lines = relationships.map(r => {
+        const fromEl = document.getElementById(colId(r.fromTable, r.fromColumn));
+        const toEl = document.getElementById(colId(r.toTable, r.toColumn));
+        if (!fromEl || !toEl) return '';
+
+        const fr = fromEl.getBoundingClientRect();
+        const tr = toEl.getBoundingClientRect();
+        const fromOnLeft = fr.left < tr.left;
+        const x1 = (fromOnLeft ? fr.right : fr.left) - canvasRect.left;
+        const y1 = fr.top + fr.height / 2 - canvasRect.top;
+        const x2 = (fromOnLeft ? tr.left : tr.right) - canvasRect.left;
+        const y2 = tr.top + tr.height / 2 - canvasRect.top;
+
+        const stroke = r.confirmed ? '#489fdf' : '#b3ada0';
+        const dash = r.confirmed ? '' : 'stroke-dasharray="4 4"';
+        const width = r.confirmed ? '2' : '1.5';
+        return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" stroke-width="${width}" ${dash} />`;
+      }).join('');
+
+      svg.innerHTML = lines;
+    }
+
+    // Confirmed relationships are surfaced to the AI as explicit join
+    // hints, on top of (not instead of) the multi-table schema it already
+    // reasons over.
+    function relationshipHintsText() {
+      const confirmed = relationships.filter(r => r.confirmed);
+      if (!confirmed.length) return '';
+      const lines = confirmed.map(r => `- ${r.fromTable}.${r.fromColumn} -> ${r.toTable}.${r.toColumn}`).join('\n');
+      return `\nConfirmed relationships in this workspace (use these joins when relevant):\n${lines}\n`;
+    }
+
+    function showLoadingOverlay() {
+      const overlay = document.getElementById('loading-overlay');
+      const fill = document.getElementById('loading-fill');
+      fill.style.transition = 'none';
+      fill.style.width = '0%';
+      overlay.hidden = false;
+      // force reflow so the width reset above is committed before the first step animates
+      void fill.offsetWidth;
+      fill.style.transition = 'width 0.5s cubic-bezier(0.4, 0, 0.2, 1)';
+      document.body.classList.add('bg-blur');
+    }
+
+    // A real progress bar doesn't creep evenly - it jumps, stalls near the
+    // end, then snaps to 100 right as the work actually finishes. This
+    // mimics that shape instead of one flat linear fill.
+    const LOADING_STEPS = [
+      { pct: 50, transitionMs: 700, holdMs: 500 },
+      { pct: 75, transitionMs: 450, holdMs: 350 },
+      { pct: 97, transitionMs: 600, holdMs: 550 },
+      { pct: 100, transitionMs: 250, holdMs: 350 }
+    ];
+
+    function runLoadingAnimation(cb) {
+      const fill = document.getElementById('loading-fill');
+      let i = 0;
+
+      function nextStep() {
+        if (i >= LOADING_STEPS.length) {
+          hideLoadingOverlay();
+          if (cb) cb();
+          return;
+        }
+        const step = LOADING_STEPS[i++];
+        fill.style.transitionDuration = step.transitionMs + 'ms';
+        fill.style.width = step.pct + '%';
+        setTimeout(nextStep, step.transitionMs + step.holdMs);
+      }
+
+      nextStep();
+    }
+
+    function hideLoadingOverlay() {
+      document.getElementById('loading-overlay').hidden = true;
+      document.body.classList.remove('bg-blur');
+    }
+
+    function revealApp() {
+      document.getElementById('landing-view').hidden = true;
+      document.getElementById('app-view').hidden = false;
+    }
+
+    // Schema text for every table in the workspace — what the AI's system
+    // prompt gets. Validated (see phase-1 brainstorm notes) that giving the
+    // model every table's schema, plus a focus-table hint, produces correct
+    // cross-table joins without over-restricting it to one table.
     let tableSchema = '';
+
+    function schemaTextFor(tableName) {
+      const result = db.exec(`PRAGMA table_info("${tableName}")`);
+      const columns = result[0].values.map(col => ({ name: col[1], type: col[2] }));
+      const rowCount = getCurrentRowCount(tableName);
+      return { columns, text: `Table: ${tableName}\nColumns:\n${columns.map(c => `- ${c.name} (${c.type})`).join('\n')}\nTotal rows: ${rowCount}` };
+    }
+
+    // Multi-table system prompt: the AI always sees every table's schema,
+    // never just the focused one, so cross-table joins keep working
+    // regardless of which table is selected in the chip bar / focus dropdown.
+    function buildSystemPrompt() {
+      if (tables.length <= 1) {
+        return `You are a SQL query assistant. The user has loaded a CSV file into a SQLite database. Here is the schema:\n\n${tableSchema}\n\nYour job is to:\n1. ONLY respond with SQL queries that work on this exact table\n2. Use the table name "${activeTableName}"\n3. Format SQL queries in markdown code blocks with \`\`\`sql\n4. Keep explanations brief\n5. Never suggest anything other than SQL queries\n6. If asked about non-SQL topics, redirect to SQL help\n7. CRITICAL: Use proper SQL syntax - ensure spaces between all keywords\n8. Use single quotes for string literals (e.g., 'value' not "value")\n9. For not-equals use <> or != (both work in SQLite)\n10. Column names are case-sensitive - match them exactly from the schema\n11. All SQL must be valid SQLite syntax\n\nBe concise, practical, and syntactically perfect.`;
+      }
+
+      const focusNote = activeTableName
+        ? `\nThe user currently has the "${activeTableName}" table focused in the UI. If a question is ambiguous about which table it refers to (e.g. "show me the first 10 rows"), default to "${activeTableName}". If the question clearly needs other tables (joins, cross-table aggregation), use whichever tables are actually needed regardless of focus.\n`
+        : '';
+      const relationshipNote = relationshipHintsText();
+
+      return `You are a SQL query assistant. The user has loaded multiple related tables into one SQLite database. Here is the schema for every table in the workspace:\n\n${tableSchema}\n${focusNote}${relationshipNote}\nYour job is to:\n1. ONLY respond with SQL queries that work on these exact tables\n2. Use the correct table name(s) from the schema above — never invent a table\n3. Several tables may share column names (id, name, status, etc.) — always qualify column names with a table alias once more than one table is involved, and pick the specific table's column the question actually refers to\n4. If a question requires data from more than one table, write a proper JOIN using the relationships implied by matching id columns (e.g. orders.customer_id -> customers.id)\n5. Format SQL queries in markdown code blocks with \`\`\`sql\n6. Keep explanations brief\n7. Never suggest anything other than SQL queries\n8. CRITICAL: Use proper SQL syntax - ensure spaces between all keywords\n9. Use single quotes for string literals (e.g., 'value' not "value")\n10. Column names are case-sensitive - match them exactly from the schema\n11. All SQL must be valid SQLite syntax\n\nBe concise, practical, and syntactically perfect.`;
+    }
 
     function updateAIState() {
       const toggle = document.getElementById('ai-toggle');
@@ -117,22 +1990,21 @@
         toggleLabel.textContent = 'ON';
 
         try {
-          const result = db.exec('PRAGMA table_info(data)');
-          const columns = result[0].values.map(col => ({
-            name: col[1],
-            type: col[2]
-          }));
+          const perTable = tables.map(t => schemaTextFor(t.name));
+          tableSchema = perTable.map(t => t.text).join('\n\n');
 
-          const rowCountResult = db.exec('SELECT COUNT(*) FROM data');
-          const rowCount = rowCountResult[0].values[0][0];
+          const greeting = tables.length > 1
+            ? `I can help you write SQL across all ${tables.length} tables in this workspace: ${tables.map(t => t.name).join(', ')}.\n\nAsk me anything, including questions that span multiple tables — I'll write the join.`
+            : `I can help you write SQL queries for your data. I know your table has these columns:\n\n${perTable[0].columns.map(c => c.name).join(', ')}\n\nAsk me anything like "show me rows where X > 100" or "group by category and count".`;
 
-          tableSchema = `Table: data\nColumns:\n${columns.map(c => `- ${c.name} (${c.type})`).join('\n')}\nTotal rows: ${rowCount}`;
-
-          chatMessages.innerHTML = `<div class="chat-message assistant">I can help you write SQL queries for your data. I know your table has these columns:\n\n${columns.map(c => c.name).join(', ')}\n\nAsk me anything like "show me rows where X > 100" or "group by category and count".</div>`;
+          chatMessages.innerHTML = `<div class="chat-message assistant">${greeting}</div>`;
 
           chatInput.disabled = false;
           chatSend.disabled = false;
           chatInput.focus();
+
+          chatHistory = [];
+          updateCloudButtons();
 
         } catch (err) {
           console.error('Schema error:', err);
@@ -157,10 +2029,35 @@
       lineNumbers.innerHTML = Array.from({length: lines}, (_, i) => i + 1).join('<br>');
     }
 
+    // The query box grows to fit what you type/load (up to a max height,
+    // beyond which it scrolls normally) instead of staying a fixed size and
+    // silently clipping content a manual resize handle doesn't fix, because
+    // dragging that handle bigger doesn't reset the box's existing scroll
+    // position back to the top.
+    function autoGrowQueryInput(el) {
+      el.style.height = 'auto';
+      el.style.height = Math.min(Math.max(el.scrollHeight, 120), 400) + 'px';
+    }
+
+    // Used after we set the query's value ourselves (loading a saved query,
+    // inserting an AI suggestion, the initial default query) so the box
+    // resizes to fit AND always shows the top of that query, rather than
+    // keeping whatever scroll position was left over from before.
+    function resetQueryInputView() {
+      const textarea = document.getElementById('query-input');
+      updateLineNumbers();
+      autoGrowQueryInput(textarea);
+      textarea.scrollTop = 0;
+      document.getElementById('line-numbers').scrollTop = 0;
+    }
+
     window.addEventListener('DOMContentLoaded', () => {
       const textarea = document.getElementById('query-input');
 
-      textarea.addEventListener('input', updateLineNumbers);
+      textarea.addEventListener('input', () => {
+        updateLineNumbers();
+        autoGrowQueryInput(textarea);
+      });
       textarea.addEventListener('scroll', () => {
         document.getElementById('line-numbers').scrollTop = textarea.scrollTop;
       });
@@ -170,14 +2067,55 @@
         updateAIState();
       });
 
-      document.getElementById('chat-input').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
+      const chatInputEl = document.getElementById('chat-input');
+      chatInputEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
           sendMessage();
+        }
+      });
+      chatInputEl.addEventListener('input', () => autoGrowChatInput(chatInputEl));
+
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+          document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+          btn.classList.add('active');
+          document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+          if (btn.dataset.tab === 'relationships') {
+            requestAnimationFrame(renderERD);
+          }
+        });
+      });
+
+      document.getElementById('table-search').addEventListener('input', (e) => tableSearch(e.target.value));
+
+      document.getElementById('save-query-desc-input').addEventListener('input', (e) => {
+        document.getElementById('save-query-desc-count').textContent = e.target.value.length;
+      });
+
+      document.getElementById('load-query-list').addEventListener('scroll', closeAllQueryMenus);
+
+      document.getElementById('landing-email').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          landingSendMagicLink();
         }
       });
 
       updateLineNumbers();
     });
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    function autoGrowChatInput(el) {
+      el.style.height = 'auto';
+      el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+    }
 
     async function sendMessage() {
       if (!aiEnabled) {
@@ -190,31 +2128,39 @@
       if (!message) return;
 
       const messagesDiv = document.getElementById('chat-messages');
+      const replyContext = activeReplyContext;
 
-      messagesDiv.innerHTML += `<div class="chat-message user">${message}</div>`;
+      messagesDiv.innerHTML += `<div class="chat-message user">${renderUserMessage(message, replyContext ? replyContext.snippet : null)}</div>`;
       input.value = '';
+      autoGrowChatInput(input);
+      chatHistory.push({ role: 'user', content: message });
+      updateCloudButtons();
+      cancelReplyContext();
 
-      messagesDiv.innerHTML += `<div class="chat-message assistant">Thinking...</div>`;
+      messagesDiv.innerHTML += `<div class="chat-turn assistant-turn"><div class="chat-message assistant">Thinking...</div></div>`;
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
 
       try {
-        const response = await fetch('http://localhost:8001/chat', {
+        const apiMessages = [
+          {
+            role: 'system',
+            content: buildSystemPrompt()
+          }
+        ];
+
+        if (replyContext) {
+          apiMessages.push({ role: 'assistant', content: replyContext.fullText });
+        }
+        apiMessages.push({ role: 'user', content: message });
+
+        const response = await fetch(CHAT_ENDPOINT, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            model: 'gpt-4o-mini',
-            messages: [
-              {
-                role: 'system',
-                content: `You are a SQL query assistant. The user has loaded a CSV file into a SQLite database. Here is the schema:\n\n${tableSchema}\n\nYour job is to:\n1. ONLY respond with SQL queries that work on this exact table\n2. Always use the table name "data"\n3. Format SQL queries in markdown code blocks with \`\`\`sql\n4. Keep explanations brief\n5. Never suggest anything other than SQL queries\n6. If asked about non-SQL topics, redirect to SQL help\n7. CRITICAL: Use proper SQL syntax - ensure spaces between all keywords\n8. Use single quotes for string literals (e.g., 'value' not "value")\n9. For not-equals use <> or != (both work in SQLite)\n10. Column names are case-sensitive - match them exactly from the schema\n11. All SQL must be valid SQLite syntax\n\nBe concise, practical, and syntactically perfect.`
-              },
-              {
-                role: 'user',
-                content: message
-              }
-            ],
+            model: 'openai/gpt-oss-120b',
+            messages: apiMessages,
             temperature: 0.3
           })
         });
@@ -232,18 +2178,21 @@
 
         const assistantMessage = data.choices[0].message.content;
 
-        const lastMessage = messagesDiv.lastElementChild;
-        lastMessage.innerHTML = formatMessage(assistantMessage);
+        const lastTurn = messagesDiv.lastElementChild;
+        lastTurn.innerHTML = renderAssistantMessage(assistantMessage);
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        chatHistory.push({ role: 'assistant', content: assistantMessage });
+        updateCloudButtons();
 
       } catch (err) {
-        const lastMessage = messagesDiv.lastElementChild;
+        const lastTurn = messagesDiv.lastElementChild;
+        const bubble = lastTurn.querySelector('.chat-message') || lastTurn;
         if (err.message.includes('Failed to fetch')) {
-          lastMessage.innerHTML = `Error: Cannot connect to proxy server. Make sure proxy-server.py is running on port 8001.`;
+          bubble.innerHTML = `Error: Cannot reach ${CHAT_ENDPOINT}. If you're running locally, make sure \`vercel dev\` (or proxy-server.py) is running.`;
         } else {
-          lastMessage.innerHTML = `Error: ${err.message}`;
+          bubble.innerHTML = `Error: ${err.message}`;
         }
-        lastMessage.style.background = '#dc2626';
+        bubble.style.background = '#dc2626';
       }
     }
 
@@ -281,6 +2230,60 @@
       return `<div id="${msgId}" class="message-content">${text}</div><button class="copy-message-btn" onclick="copyMessage('${msgId}')" title="Copy message">📋</button>`;
     }
 
+    // ---- Reply-to-a-response: quote a prior AI answer as context for a follow-up ----
+
+    let activeReplyContext = null; // { fullText, snippet }
+
+    function truncateForQuote(text, max = 180) {
+      const clean = text.trim();
+      return clean.length > max ? clean.slice(0, max).trim() + '…' : clean;
+    }
+
+    // Strips markdown code fences for the human-readable quote preview only
+    // (the composer bar + the sent bubble). The unmodified original text is
+    // what actually gets sent back to the AI as context, via fullText.
+    function cleanQuoteText(text) {
+      return text
+        .replace(/```sql\n?([\s\S]*?)```/g, (m, code) => code.trim())
+        .replace(/```\n?([\s\S]*?)```/g, (m, code) => code.trim())
+        .trim();
+    }
+
+    function renderAssistantMessage(content) {
+      return `<div class="chat-message assistant">${formatMessage(content)}</div>
+        <div class="message-below-actions">
+          <button type="button" class="reply-btn" data-raw="${encodeURIComponent(content)}" onclick="startReplyToMessage(this)" title="Reply to this answer">↩ Reply</button>
+        </div>`;
+    }
+
+    function renderUserMessage(content, quoteSnippet) {
+      const quoteHtml = quoteSnippet
+        ? `<div class="reply-quote">${escapeHtml(quoteSnippet)}</div>`
+        : '';
+      return `${quoteHtml}${escapeHtml(content).replace(/\n/g, '<br>')}`;
+    }
+
+    window.startReplyToMessage = function(btn) {
+      const raw = decodeURIComponent(btn.dataset.raw || '');
+      if (!raw) return;
+      activeReplyContext = { fullText: raw, snippet: truncateForQuote(cleanQuoteText(raw)) };
+      document.getElementById('reply-context-text').textContent = activeReplyContext.snippet;
+      document.getElementById('reply-context-bar').hidden = false;
+      const input = document.getElementById('chat-input');
+      if (!input.disabled) input.focus();
+    };
+
+    window.cancelReplyContext = function() {
+      activeReplyContext = null;
+      document.getElementById('reply-context-bar').hidden = true;
+    };
+
+    window.clearChatSession = function() {
+      cancelReplyContext();
+      chatHistory = [];
+      updateAIState();
+    };
+
     window.copyMessage = function(msgId) {
       const msgDiv = document.getElementById(msgId);
       let text = msgDiv.innerText || msgDiv.textContent;
@@ -316,7 +2319,7 @@
         document.getElementById('query-input').value = code;
       }
 
-      updateLineNumbers();
+      resetQueryInputView();
       document.getElementById('query-input').focus();
     };
 
@@ -339,7 +2342,7 @@
           return;
         }
 
-        renderTable('results', result);
+        renderTable('results', 'results', result);
 
       } catch (err) {
         resultsEl.innerHTML = '';
@@ -349,9 +2352,15 @@
         if (errorMsg.includes('syntax error')) {
           errorMsg += '\n\n💡 Tip: Check for missing spaces between keywords (e.g., "SELECT column FROM" not "SELECT columnFROM")';
         } else if (errorMsg.includes('no such column')) {
-          errorMsg += '\n\n💡 Tip: Column names are case-sensitive. Available columns: formularyID, affectedDrugOption, formularyVersion, rxCUI, rxNormBrandName, rxNormSCDC, rxNormDoseForm, tierLevel, selectedDrug';
+          const columns = getCurrentColumns();
+          errorMsg += columns
+            ? `\n\n💡 Tip: Column names are case-sensitive. Available columns: ${columns.join(', ')}`
+            : '\n\n💡 Tip: Column names are case-sensitive.';
         } else if (errorMsg.includes('no such table')) {
-          errorMsg += '\n\n💡 Tip: The table name is "data" (lowercase)';
+          const names = tables.map(t => t.name).join(', ');
+          errorMsg += names
+            ? `\n\n💡 Tip: Tables in this workspace: ${names}`
+            : '\n\n💡 Tip: Upload a CSV first to create a table.';
         }
 
         errorEl.textContent = errorMsg;
@@ -360,55 +2369,74 @@
       }
     };
 
-    let tableData = { columns: [], rows: [] };
-    let sortState = {};
-    let filterState = {};
+    // ---- Table rendering (shared by Query Results and Table View) ----
+    // Each consumer gets its own state (columns/rows/sort/filter/search) keyed
+    // by name, so sorting or filtering one table never touches the other.
 
-    function renderTable(targetId, result) {
+    let viewStates = {
+      results: { columns: [], rows: [], sort: {}, filter: {}, search: '', scrollBarId: 'results-scroll-top', scrollInnerId: 'results-scroll-top-inner' },
+      tableview: { columns: [], rows: [], sort: {}, filter: {}, search: '', scrollBarId: 'table-view-scroll-top', scrollInnerId: 'table-view-scroll-top-inner' }
+    };
+
+    function renderTable(targetId, stateKey, result) {
       const target = document.getElementById(targetId);
+      const state = viewStates[stateKey];
 
       if (result.length === 0 || !result[0].values.length) {
         target.innerHTML = '<div class="empty">No results</div>';
         return;
       }
 
-      tableData.columns = result[0].columns;
-      tableData.rows = result[0].values;
-      sortState = {};
-      filterState = {};
+      state.columns = result[0].columns;
+      state.rows = result[0].values;
+      state.sort = {};
+      state.filter = {};
+      state.search = '';
 
-      updateTable(targetId);
+      if (stateKey === 'tableview') {
+        const searchInput = document.getElementById('table-search');
+        if (searchInput) searchInput.value = '';
+      }
+
+      updateTable(targetId, stateKey);
     }
 
-    function updateTable(targetId) {
+    function updateTable(targetId, stateKey) {
       const target = document.getElementById(targetId);
-      let filteredRows = [...tableData.rows];
+      const state = viewStates[stateKey];
+      let filteredRows = [...state.rows];
 
-      // Apply filters
-      Object.keys(filterState).forEach(colIndex => {
-        const filterValue = filterState[colIndex].toLowerCase();
+      // Apply per-column filters
+      Object.keys(state.filter).forEach(colIndex => {
+        const filterValue = state.filter[colIndex].toLowerCase();
         if (filterValue) {
           filteredRows = filteredRows.filter(row => {
-            const cellValue = String(row[colIndex] || '').toLowerCase();
+            const cellValue = String(row[colIndex] ?? '').toLowerCase();
             return cellValue.includes(filterValue);
           });
         }
       });
 
+      // Apply the "search all columns" box (Table View only)
+      if (state.search) {
+        const term = state.search.toLowerCase();
+        filteredRows = filteredRows.filter(row =>
+          row.some(val => String(val ?? '').toLowerCase().includes(term))
+        );
+      }
+
       // Apply sorting
-      if (sortState.column !== undefined) {
-        const colIndex = sortState.column;
-        const direction = sortState.direction;
+      if (state.sort.column !== undefined) {
+        const colIndex = state.sort.column;
+        const direction = state.sort.direction;
 
         filteredRows.sort((a, b) => {
           let aVal = a[colIndex];
           let bVal = b[colIndex];
 
-          // Handle nulls
           if (aVal === null || aVal === undefined) return 1;
           if (bVal === null || bVal === undefined) return -1;
 
-          // Try numeric comparison first
           const aNum = parseFloat(aVal);
           const bNum = parseFloat(bVal);
 
@@ -416,7 +2444,6 @@
             return direction === 'asc' ? aNum - bNum : bNum - aNum;
           }
 
-          // Fall back to string comparison
           const aStr = String(aVal).toLowerCase();
           const bStr = String(bVal).toLowerCase();
 
@@ -429,22 +2456,22 @@
       }
 
       let html = '<table><thead><tr>';
-      tableData.columns.forEach((col, index) => {
-        const sortIcon = sortState.column === index
-          ? (sortState.direction === 'asc' ? '▲' : '▼')
+      state.columns.forEach((col, index) => {
+        const sortIcon = state.sort.column === index
+          ? (state.sort.direction === 'asc' ? '▲' : '▼')
           : '⇅';
-        const sortClass = sortState.column === index ? 'active' : '';
+        const sortClass = state.sort.column === index ? 'active' : '';
 
         html += `<th>
           <div class="th-content">
-            <div class="th-label" onclick="sortColumn(${index})">
+            <div class="th-label" onclick="sortColumn('${stateKey}', ${index})">
               ${col}
               <span class="sort-icon ${sortClass}">${sortIcon}</span>
             </div>
           </div>
           <input type="text" class="column-filter" placeholder="Filter..."
-                 onkeyup="filterColumn(${index}, this.value)"
-                 value="${filterState[index] || ''}">
+                 onkeyup="filterColumn('${stateKey}', ${index}, this.value)"
+                 value="${state.filter[index] || ''}">
         </th>`;
       });
       html += '</tr></thead><tbody>';
@@ -458,25 +2485,79 @@
       });
 
       html += '</tbody></table>';
-      html += `<div class="row-count">${filteredRows.length.toLocaleString()} of ${tableData.rows.length.toLocaleString()} rows</div>`;
+      html += `<div class="row-count">${filteredRows.length.toLocaleString()} of ${state.rows.length.toLocaleString()} rows</div>`;
 
       target.innerHTML = html;
+      syncTopScrollbar(targetId, state.scrollBarId, state.scrollInnerId);
+
+      if (stateKey === 'tableview') {
+        const meta = document.getElementById('table-view-meta');
+        if (meta) meta.textContent = `${state.columns.length.toLocaleString()} columns · ${state.rows.length.toLocaleString()} rows`;
+      }
     }
 
-    window.sortColumn = function(colIndex) {
-      if (sortState.column === colIndex) {
-        sortState.direction = sortState.direction === 'asc' ? 'desc' : 'asc';
-      } else {
-        sortState.column = colIndex;
-        sortState.direction = 'asc';
+    function syncTopScrollbar(targetId, topBarId, topInnerId) {
+      const resultsEl = document.getElementById(targetId);
+      const topBar = document.getElementById(topBarId);
+      const topInner = document.getElementById(topInnerId);
+      const table = resultsEl.querySelector('table');
+
+      if (!table) {
+        topBar.classList.remove('visible');
+        return;
       }
-      updateTable('results');
+
+      const needsScroll = table.scrollWidth > resultsEl.clientWidth;
+      topBar.classList.toggle('visible', needsScroll);
+      topInner.style.width = table.scrollWidth + 'px';
+
+      if (!topBar.dataset.wired) {
+        topBar.addEventListener('scroll', () => {
+          resultsEl.scrollLeft = topBar.scrollLeft;
+        });
+        resultsEl.addEventListener('scroll', () => {
+          topBar.scrollLeft = resultsEl.scrollLeft;
+        });
+        topBar.dataset.wired = 'true';
+      }
+    }
+
+    window.sortColumn = function(stateKey, colIndex) {
+      const state = viewStates[stateKey];
+      if (state.sort.column === colIndex) {
+        state.sort.direction = state.sort.direction === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.sort.column = colIndex;
+        state.sort.direction = 'asc';
+      }
+      const targetId = stateKey === 'tableview' ? 'table-view-results' : 'results';
+      updateTable(targetId, stateKey);
     };
 
-    window.filterColumn = function(colIndex, value) {
-      filterState[colIndex] = value;
-      updateTable('results');
+    window.filterColumn = function(stateKey, colIndex, value) {
+      viewStates[stateKey].filter[colIndex] = value;
+      const targetId = stateKey === 'tableview' ? 'table-view-results' : 'results';
+      updateTable(targetId, stateKey);
     };
+
+    window.tableSearch = function(value) {
+      viewStates.tableview.search = value;
+      updateTable('table-view-results', 'tableview');
+    };
+
+    function renderTableView() {
+      if (!db || !activeTableName) return;
+      try {
+        const result = db.exec(`SELECT * FROM "${activeTableName}"`);
+        if (!result.length || !result[0].values.length) {
+          document.getElementById('table-view-results').innerHTML = '<div class="empty">No data</div>';
+          return;
+        }
+        renderTable('table-view-results', 'tableview', result);
+      } catch (err) {
+        console.error('Table view render error:', err);
+      }
+    }
 
     document.addEventListener('keydown', (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
@@ -492,11 +2573,25 @@
       box-sizing: border-box;
     }
 
+    html, body {
+      height: 100%;
+    }
+
     body {
       font-family: 'Inter', system-ui, -apple-system, sans-serif;
       background: #fffefb;
       color: #201515;
       line-height: 1.5;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    body.bg-blur > .header,
+    body.bg-blur > #landing-view,
+    body.bg-blur > #app-view {
+      filter: blur(8px);
+      transition: filter 0.2s ease;
     }
 
     .header {
@@ -507,15 +2602,315 @@
       justify-content: space-between;
       align-items: center;
       border-bottom: 1px solid #c5c0b1;
+      flex: 0 0 auto;
     }
 
-    .header h1 {
-      font-size: 32px;
-      font-weight: 500;
-      letter-spacing: 1px;
+    .header-logo {
+      height: 40px;
+      width: auto;
+      display: block;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .auth-area {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .auth-btn {
+      background: #fffefb;
+      border: 1px solid #201515;
+      color: #201515;
+      padding: 8px 16px;
+      border-radius: 12px;
+      font-family: inherit;
+      font-size: 14.4px;
+      font-weight: 700;
+      letter-spacing: 0.144px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .auth-btn:hover {
+      border-color: #ff4f00;
+      color: #ff4f00;
+    }
+
+    .auth-btn-primary {
+      background: #ff4f00;
+      border-color: #ff4f00;
+      color: #fffefb;
+    }
+
+    .auth-btn-primary:hover {
+      background: #e64600;
+      color: #fffefb;
+    }
+
+    /* Premium blue (#489FDF) — reserved for premium-only UI, see the
+       Multi-Table Workspaces spec. */
+    .auth-btn-premium {
+      background: #489fdf;
+      border-color: #489fdf;
+      color: #fffefb;
+    }
+
+    .auth-btn-premium:hover {
+      background: #3689c9;
+      border-color: #3689c9;
+      color: #fffefb;
+    }
+
+    .auth-panel {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      background: #fffefb;
+      border: 1px solid #c5c0b1;
+      border-radius: 12px;
+      padding: 16px;
+      min-width: 260px;
+      box-shadow: 0 4px 16px rgba(32, 21, 21, 0.12);
+      z-index: 20;
+    }
+
+    #auth-signed-out {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    #auth-email {
+      padding: 8px 12px;
+      border: 1px solid #c5c0b1;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 14px;
+      background: #fffefb;
+      color: #201515;
+    }
+
+    #auth-email:focus {
+      outline: none;
+      border-color: #ff4f00;
+    }
+
+    .auth-message {
+      font-size: 13px;
+      color: #939084;
+    }
+
+    #auth-signed-in {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: stretch;
+    }
+
+    #auth-signed-in[hidden],
+    #auth-signed-out[hidden] {
+      display: none;
+    }
+
+    .auth-user-email {
+      font-size: 14px;
+      font-weight: 600;
+      color: #201515;
+      word-break: break-all;
+      background: none;
+      border: none;
+      padding: 0;
+      font-family: inherit;
+      cursor: pointer;
+      text-decoration: underline;
+      text-decoration-color: transparent;
+      transition: text-decoration-color 0.15s;
+    }
+
+    .auth-user-email:hover {
+      text-decoration-color: #201515;
+    }
+
+    .auth-btn-premium.is-premium-active {
+      background: #dceefb;
+      border-color: #489fdf;
+      color: #0b4a78;
+    }
+
+    .auth-btn-premium.is-premium-active:hover {
+      background: #cbe6fa;
+    }
+
+    .save-btn {
+      background: none;
+      border: 1px solid #201515;
+      color: #201515;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .save-btn:hover:not(:disabled) {
+      background: #201515;
+      color: #fffefb;
+    }
+
+    .save-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .ai-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .clear-session-btn {
+      background: #c5c0b1;
+      color: #201515;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .clear-session-btn:hover {
+      background: #b6b0a0;
+    }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(32, 21, 21, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+    }
+
+    .modal-overlay[hidden] {
+      display: none;
+    }
+
+    .modal {
+      background: #fffefb;
+      border-radius: 16px;
+      padding: 24px;
+      width: 520px;
+      max-width: 90vw;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      font-size: 24px;
+      line-height: 1;
+      cursor: pointer;
+      color: #939084;
+      padding: 0;
+    }
+
+    .modal-close:hover {
+      color: #201515;
+    }
+
+    .cloud-add-btn {
+      display: block;
+      width: 100%;
+      background: #ff4f00;
+      color: #fffefb;
+      border: none;
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-family: inherit;
+      font-weight: 600;
+      font-size: 15px;
+      cursor: pointer;
+      margin-bottom: 20px;
+      transition: background 0.15s;
+    }
+
+    .cloud-add-btn:hover {
+      background: #e64600;
+    }
+
+    .modal-section {
+      margin-bottom: 20px;
+    }
+
+    .modal-subhead {
+      font-weight: 600;
+      font-size: 14px;
+      color: #605d52;
+      margin-bottom: 8px;
+    }
+
+    .cloud-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .cloud-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      background: #f8f4f0;
+      border-radius: 8px;
+      font-size: 14px;
+      gap: 12px;
+    }
+
+    .cloud-meta {
+      color: #939084;
+      font-size: 12px;
+    }
+
+    .cloud-load-btn {
+      background: #201515;
+      color: #fffefb;
+      border: none;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .cloud-load-btn:hover {
+      background: #2f2a26;
     }
 
     #status {
+      display: none;
       font-size: 16px;
       color: #939084;
       font-weight: 400;
@@ -526,10 +2921,505 @@
       font-weight: 600;
     }
 
+    /* ---- Landing (gated split screen: email unlocks upload) ---- */
+
+    #landing-view {
+      flex: 1;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    #landing-view[hidden] {
+      display: none;
+    }
+
+    .landing-split {
+      flex: 1;
+      min-height: 540px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .landing-panel {
+      position: relative;
+      display: flex;
+      align-items: center;
+      padding: 64px;
+      overflow: hidden;
+    }
+
+    .landing-panel-inner {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      max-width: 420px;
+    }
+
+    .landing-panel-auth {
+      background: linear-gradient(165deg, #201515 0%, #2f2a26 100%);
+    }
+
+    .landing-watermark {
+      position: absolute;
+      right: -60px;
+      bottom: -150px;
+      font-size: 460px;
+      font-weight: 700;
+      line-height: 1;
+      color: #fffefb;
+      opacity: 0.04;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .landing-kicker {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: #ff4f00;
+      margin-bottom: 20px;
+    }
+
+    .landing-panel-title {
+      font-size: 36px;
+      font-weight: 500;
+      line-height: 1.15;
+      letter-spacing: -0.01em;
+      margin-bottom: 12px;
+    }
+
+    .landing-panel-auth .landing-panel-title { color: #fffefb; }
+    .landing-panel-upload .landing-panel-title { color: #201515; }
+
+    .landing-panel-sub {
+      font-size: 16px;
+      line-height: 24px;
+      margin-bottom: 28px;
+    }
+
+    .landing-panel-auth .landing-panel-sub { color: #c5c0b1; }
+    .landing-panel-upload .landing-panel-sub { color: #605d52; }
+
+    .landing-auth-form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    #landing-email {
+      padding: 14px 16px;
+      border: 1px solid rgba(255, 254, 251, 0.24);
+      border-radius: 12px;
+      background: rgba(255, 254, 251, 0.06);
+      color: #fffefb;
+      font-family: inherit;
+      font-size: 16px;
+    }
+
+    #landing-email::placeholder {
+      color: #939084;
+    }
+
+    #landing-email:focus {
+      outline: none;
+      border-color: #ff4f00;
+      background: rgba(255, 254, 251, 0.1);
+    }
+
+    .landing-magic-btn {
+      background: #ff4f00;
+      color: #fffefb;
+      border: none;
+      padding: 14px 24px;
+      border-radius: 12px;
+      font-family: inherit;
+      font-weight: 600;
+      font-size: 16px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .landing-magic-btn:hover {
+      background: #e64600;
+    }
+
+    .landing-magic-btn:active {
+      transform: translateY(1px);
+    }
+
+    .landing-magic-btn:disabled {
+      background: rgba(255, 79, 0, 0.35);
+      cursor: not-allowed;
+    }
+
+    #landing-email:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .landing-auth-message {
+      margin-top: 14px;
+      font-size: 14px;
+      color: #c5c0b1;
+      min-height: 20px;
+    }
+
+    .landing-auth-message.error {
+      color: #ff8a5c;
+    }
+
+    .landing-auth-message.success {
+      color: #4ade80;
+      font-weight: 600;
+    }
+
+    .landing-mode-bar {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      padding: 28px 24px 20px;
+      background: #fffefb;
+    }
+
+    .landing-mode-toggle {
+      display: inline-flex;
+      padding: 4px;
+      border: 1px solid #201515;
+      border-radius: 9999px;
+      background: #fffefb;
+    }
+
+    .landing-mode-btn {
+      appearance: none;
+      border: none;
+      background: transparent;
+      color: #201515;
+      font-family: inherit;
+      font-size: 14.4px;
+      font-weight: 700;
+      letter-spacing: 0.144px;
+      padding: 10px 22px;
+      border-radius: 9999px;
+      cursor: pointer;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+
+    .landing-mode-btn.is-active {
+      background: #201515;
+      color: #fffefb;
+    }
+
+    .landing-mode-btn:not(.is-active):hover {
+      background: #f8f4f0;
+    }
+
+    .landing-mode-compare {
+      width: 100%;
+      max-width: 760px;
+      margin: 4px auto 0;
+      background: #f8f4f0;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .lmc-row {
+      display: grid;
+      grid-template-columns: 132px 1fr 1fr;
+      gap: 20px;
+      padding: 14px 24px;
+      border-top: 1px solid #e5e0d5;
+    }
+
+    .lmc-row:first-child {
+      border-top: none;
+    }
+
+    .lmc-cell {
+      font-size: 14px;
+      line-height: 20px;
+      color: #201515;
+    }
+
+    .lmc-cell-label {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: #ff4f00;
+    }
+
+    .lmc-row-head .lmc-cell-lite,
+    .lmc-row-head .lmc-cell-normal {
+      font-size: 13px;
+      font-weight: 700;
+      color: #201515;
+    }
+
+    .lmc-cell-lite,
+    .lmc-cell-normal {
+      transition: opacity 0.2s ease;
+    }
+
+    .landing-mode-compare.active-lite .lmc-row:not(.lmc-row-head) .lmc-cell-normal {
+      opacity: 0.45;
+    }
+
+    .landing-mode-compare.active-normal .lmc-row:not(.lmc-row-head) .lmc-cell-lite {
+      opacity: 0.45;
+    }
+
+    #landing-view.mode-lite .landing-panel-auth {
+      opacity: 0.35;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+    }
+
+    #landing-view.mode-normal .landing-panel-auth {
+      opacity: 1;
+      pointer-events: auto;
+      transition: opacity 0.25s ease;
+    }
+
+    @media (max-width: 767px) {
+      .landing-mode-bar { padding: 20px 20px 16px; }
+
+      .lmc-row {
+        grid-template-columns: 1fr;
+        gap: 6px;
+        padding: 16px 20px;
+      }
+
+      .lmc-row-head { display: none; }
+
+      .lmc-cell-lite::before,
+      .lmc-cell-normal::before {
+        content: attr(data-mode-label);
+        display: block;
+        font-weight: 700;
+        color: #201515;
+        margin-bottom: 2px;
+      }
+
+      .landing-mode-compare.active-lite .lmc-row:not(.lmc-row-head) .lmc-cell-normal,
+      .landing-mode-compare.active-normal .lmc-row:not(.lmc-row-head) .lmc-cell-lite {
+        opacity: 1;
+      }
+    }
+
+    .landing-panel-upload {
+      background: #fffefb;
+      transition: background 0.3s ease;
+    }
+
+    .landing-panel-upload.unlocked {
+      background: #fdf6f0;
+    }
+
+    .landing-upload-btn {
+      display: inline-block;
+      background: #ff4f00;
+      color: #fffefb;
+      padding: 16px 32px;
+      border-radius: 12px;
+      font-family: inherit;
+      font-weight: 600;
+      font-size: 18px;
+      line-height: 27px;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s, opacity 0.2s;
+      box-shadow: 0 14px 32px rgba(255, 79, 0, 0.22);
+    }
+
+    .landing-upload-btn:hover {
+      background: #e64600;
+    }
+
+    .landing-upload-btn:active {
+      transform: translateY(1px) scale(0.99);
+    }
+
+    .landing-upload-btn.is-locked {
+      background: #e5e0d5;
+      color: #a39d8e;
+      pointer-events: none;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    .landing-upload-btn.is-pending {
+      background: #f3ece1;
+      color: #ff4f00;
+      border: 1.5px dashed rgba(255, 79, 0, 0.4);
+      pointer-events: none;
+      cursor: not-allowed;
+      box-shadow: none;
+      animation: landing-pending-pulse 1.6s ease-in-out infinite;
+    }
+
+    @keyframes landing-pending-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .landing-upload-btn.is-pending { animation: none; }
+    }
+
+    .landing-auth-message a {
+      color: #ff4f00;
+      font-weight: 600;
+      text-decoration: underline;
+    }
+
+    .about-band {
+      background: #f8f4f0;
+      border-top: 1px solid #c5c0b1;
+      padding: 48px 64px;
+      flex: 0 0 auto;
+    }
+
+    .about-band-title {
+      font-size: 24px;
+      font-weight: 600;
+      line-height: 30px;
+      letter-spacing: -0.6px;
+      color: #201515;
+      margin-bottom: 32px;
+    }
+
+    .about-steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .about-step {
+      padding-right: 24px;
+      border-right: 1px solid #c5c0b1;
+    }
+
+    .about-step + .about-step {
+      padding-left: 24px;
+    }
+
+    .about-step:last-child {
+      border-right: none;
+    }
+
+    .about-step-num {
+      font-size: 16px;
+      font-weight: 600;
+      line-height: 24px;
+      color: #ff4f00;
+      margin-bottom: 10px;
+    }
+
+    .about-step-title {
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 25px;
+      letter-spacing: -0.5px;
+      color: #201515;
+      margin-bottom: 8px;
+    }
+
+    .about-step-body {
+      font-size: 16px;
+      font-weight: 400;
+      line-height: 24px;
+      color: #605d52;
+    }
+
+    @media (max-width: 900px) {
+      .landing-split { grid-template-columns: 1fr; }
+      .landing-panel { padding: 48px 24px; min-height: 420px; }
+      .landing-watermark { font-size: 260px; right: -40px; bottom: -80px; }
+      .about-band { padding: 40px 24px; }
+      .about-steps { grid-template-columns: 1fr; }
+      .about-step { border-right: none; border-bottom: 1px solid #c5c0b1; padding: 0 0 24px; }
+      .about-step + .about-step { padding-left: 0; padding-top: 24px; }
+      .about-step:last-child { border-bottom: none; }
+    }
+
+    /* ---- Loading transition (shown while a CSV is being parsed) ---- */
+
+    .loading-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(32, 21, 21, 0.55);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+    }
+
+    .loading-overlay[hidden] {
+      display: none;
+    }
+
+    .loading-box {
+      background: #fffefb;
+      border-radius: 16px;
+      padding: 40px 48px;
+      width: 420px;
+      max-width: 90vw;
+      text-align: center;
+      box-shadow: 0 20px 60px rgba(32, 21, 21, 0.25);
+    }
+
+    .loading-label {
+      font-weight: 600;
+      font-size: 17px;
+      color: #201515;
+      margin-bottom: 22px;
+    }
+
+    .loading-track {
+      height: 10px;
+      border-radius: 999px;
+      background: #f0ebe3;
+      overflow: hidden;
+    }
+
+    .loading-fill {
+      height: 100%;
+      width: 0%;
+      background: #ff4f00;
+      border-radius: 999px;
+      transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .loading-caption {
+      margin-top: 14px;
+      font-size: 13px;
+      color: #939084;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* ---- Main app (shown once a CSV is loaded) ---- */
+
+    #app-view {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    #app-view[hidden] {
+      display: none;
+    }
+
     .upload-area {
       background: #f8f4f0;
-      padding: 24px;
+      padding: 16px 24px;
       border-bottom: 1px solid #c5c0b1;
+      flex: 0 0 auto;
     }
 
     .upload-wrapper {
@@ -539,41 +3429,344 @@
       flex: 1;
     }
 
-    .api-key-wrapper {
+    .help-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 1px solid #201515;
+      background: #fffefb;
+      color: #201515;
+      font-family: inherit;
+      font-weight: 700;
+      font-size: 15px;
+      cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 0.5rem;
-      margin-left: 2rem;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-left: auto;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
     }
 
-    #api-key {
-      width: 280px;
-      padding: 0.625rem 1rem;
-      border: 1px solid #e5e7eb;
-      border-radius: 6px;
+    .help-btn:hover {
+      border-color: #ff4f00;
+      color: #ff4f00;
+    }
+
+    .help-text {
+      font-size: 14px;
+      line-height: 1.6;
+      color: #605d52;
+    }
+
+    .help-text code {
+      background: #f8f4f0;
+      padding: 2px 6px;
+      border-radius: 4px;
       font-family: 'JetBrains Mono', monospace;
-      font-size: 0.875rem;
+      font-size: 13px;
+      color: #201515;
     }
 
-    #api-key:focus {
+    /* ---- Save Query / Load Query modal forms ---- */
+
+    .field-label {
+      display: block;
+      font-weight: 600;
+      font-size: 14px;
+      color: #201515;
+      margin-bottom: 6px;
+    }
+
+    .field-optional {
+      font-weight: 400;
+      color: #939084;
+    }
+
+    .field-input,
+    .field-textarea {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1px solid #c5c0b1;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 15px;
+      background: #fffefb;
+      color: #201515;
+    }
+
+    .field-input:focus,
+    .field-textarea:focus {
       outline: none;
-      border-color: #06b6d4;
-      box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.1);
+      border-color: #ff4f00;
+      box-shadow: 0 0 0 2px rgba(255, 79, 0, 0.1);
     }
 
-    .api-key-hint {
-      font-size: 0.8125rem;
-      color: #6b7280;
+    .field-textarea.sql-textarea {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      min-height: 120px;
+      resize: vertical;
+      line-height: 1.6;
+    }
+
+    .field-hint {
+      margin-top: 4px;
+      font-size: 12px;
+      color: #939084;
+      text-align: right;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 8px;
+    }
+
+    .modal-cancel-btn {
+      background: none;
+      border: 1px solid #c5c0b1;
+      color: #201515;
+      padding: 10px 20px;
+      border-radius: 10px;
+      font-family: inherit;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .modal-cancel-btn:hover {
+      border-color: #201515;
+    }
+
+    .modal-save-btn {
+      background: #ff4f00;
+      color: #fffefb;
+      border: none;
+      padding: 10px 22px;
+      border-radius: 10px;
+      font-family: inherit;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .modal-save-btn:hover:not(:disabled) {
+      background: #e64600;
+    }
+
+    .modal-save-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* ---- Saved-query cards (Load Query modal) ---- */
+
+    .query-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: 320px;
+      overflow-y: auto;
+      margin-bottom: 20px;
+    }
+
+    .query-card {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px;
+      background: #f8f4f0;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      position: relative;
+    }
+
+    .query-card.selected {
+      border-color: #ff4f00;
+      background: #fdf1ea;
+    }
+
+    .query-card-radio {
+      margin-top: 3px;
+      accent-color: #ff4f00;
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+
+    .query-card-body {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .query-card-title {
+      font-weight: 600;
+      font-size: 14px;
+      color: #201515;
+    }
+
+    .query-card-desc {
+      margin-top: 4px;
+      font-size: 13px;
+      color: #605d52;
+    }
+
+    .query-card-menu {
+      position: relative;
+      flex-shrink: 0;
+    }
+
+    .query-card-menu-btn {
+      background: none;
+      border: none;
+      font-size: 18px;
+      line-height: 1;
+      color: #939084;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 6px;
+    }
+
+    .query-card-menu-btn:hover {
+      background: #efe9df;
+      color: #201515;
+    }
+
+    .query-card-menu-popup {
+      position: fixed;
+      background: #fffefb;
+      border: 1px solid #c5c0b1;
+      border-radius: 8px;
+      box-shadow: 0 4px 16px rgba(32, 21, 21, 0.14);
+      z-index: 60;
+      min-width: 140px;
+      overflow: hidden;
+    }
+
+    .query-card-menu-popup[hidden] {
+      display: none;
+    }
+
+    .query-card-menu-popup button {
+      display: block;
+      width: 100%;
+      text-align: left;
+      background: none;
+      border: none;
+      padding: 10px 14px;
+      font-family: inherit;
+      font-size: 13px;
+      color: #201515;
+      cursor: pointer;
+    }
+
+    .query-card-menu-popup button:hover {
+      background: #f8f4f0;
+    }
+
+    .query-card-menu-popup button.danger {
+      color: #dc2626;
+    }
+
+    .query-card-menu-popup button.danger:hover {
+      background: #fdecec;
+    }
+
+    /* ---- Delete-query confirmation ---- */
+
+    .modal-small {
+      width: 360px;
+      text-align: center;
+    }
+
+    .delete-warning-icon {
+      font-size: 32px;
+      color: #dc2626;
+      margin-bottom: 12px;
+    }
+
+    .delete-warning-title {
+      font-weight: 700;
+      font-size: 17px;
+      color: #201515;
+      margin-bottom: 6px;
+    }
+
+    .delete-warning-body {
+      font-size: 14px;
+      color: #605d52;
+      margin-bottom: 20px;
+    }
+
+    .modal-confirm-delete-btn {
+      background: #dc2626;
+      color: #fffefb;
+      border: none;
+      padding: 10px 22px;
+      border-radius: 10px;
+      font-family: inherit;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .modal-confirm-delete-btn:hover {
+      background: #b91c1c;
+    }
+
+    .premium-icon {
+      color: #489fdf;
+    }
+
+    .premium-cta-btn {
+      background: #489fdf;
+      border-color: #489fdf;
+      color: #fffefb;
+    }
+
+    .premium-cta-btn:hover {
+      background: #3689c9;
+    }
+
+    .premium-success-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: #e1f3ea;
+      border-bottom: 1px solid #a8dcc0;
+      color: #1e6b45;
+      padding: 10px 24px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .premium-success-banner[hidden] {
+      display: none;
+    }
+
+    .premium-success-banner button {
+      background: none;
+      border: none;
+      color: #1e6b45;
+      font-size: 18px;
+      cursor: pointer;
+      line-height: 1;
     }
 
     .upload-btn {
       background: #ff4f00;
       color: #fffefb;
-      padding: 12px 24px;
+      padding: 10px 20px;
       border: none;
-      border-radius: 12px;
+      border-radius: 10px;
       font-weight: 600;
-      font-size: 18px;
+      font-size: 15px;
       cursor: pointer;
       font-family: inherit;
       transition: background 0.15s;
@@ -588,7 +3781,7 @@
     }
 
     #file-info {
-      font-size: 16px;
+      font-size: 15px;
       color: #939084;
     }
 
@@ -601,21 +3794,596 @@
       color: #ff4f00;
     }
 
+    /* ---- Multi-table workspace: premium blue (#489FDF) marks every
+       workspace-scoped control, so its presence signals "premium". ---- */
+
+    .workspace-badge[hidden] {
+      display: none;
+    }
+
+    .workspace-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #0b4a78;
+      background: #dceefb;
+      border: 1px solid #b9dbf5;
+      border-radius: 6px;
+      padding: 3px 8px;
+      margin-left: 10px;
+    }
+
+    .add-table-btn {
+      background: #fffefb;
+      color: #201515;
+      border: 1px solid #c5c0b1;
+    }
+
+    .add-table-btn:hover {
+      border-color: #489fdf;
+      color: #0b4a78;
+    }
+
+    #file-upload-add {
+      display: none;
+    }
+
+    .table-chip-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 24px;
+      background: #fffefb;
+      border-bottom: 1px solid #c5c0b1;
+      overflow-x: auto;
+    }
+
+    .table-chip-bar:empty,
+    .table-chip-bar[hidden] {
+      display: none;
+    }
+
+    .table-chip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex: 0 0 auto;
+      background: #f5f3ec;
+      border: 1px solid #c5c0b1;
+      border-radius: 999px;
+      padding: 5px 6px 5px 12px;
+      font-size: 13px;
+      color: #56534a;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+    }
+
+    .table-chip:hover {
+      border-color: #489fdf;
+    }
+
+    .table-chip.active {
+      background: #dceefb;
+      border-color: #489fdf;
+      color: #0b4a78;
+      font-weight: 600;
+    }
+
+    .table-chip .chip-name {
+      max-width: 160px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .table-chip .chip-name[contenteditable="true"] {
+      outline: none;
+      border-bottom: 1px dashed #489fdf;
+    }
+
+    .table-chip .chip-rows {
+      color: #939084;
+      font-size: 11px;
+    }
+
+    .table-chip.active .chip-rows {
+      color: #3f7fac;
+    }
+
+    .table-chip .chip-rename {
+      border: none;
+      background: none;
+      cursor: pointer;
+      font-size: 12px;
+      color: #939084;
+      padding: 2px 4px;
+      line-height: 1;
+    }
+
+    .table-chip .chip-rename:hover {
+      color: #0b4a78;
+    }
+
+    .chat-table-focus-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-bottom: 1px solid #c5c0b1;
+      font-size: 12px;
+      color: #56534a;
+    }
+
+    .chat-table-focus-row[hidden] {
+      display: none;
+    }
+
+    #chat-table-focus {
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      color: #0b4a78;
+      background: #dceefb;
+      border: 1px solid #b9dbf5;
+      border-radius: 6px;
+      padding: 4px 8px;
+      cursor: pointer;
+    }
+
+    #chat-table-focus:focus-visible {
+      outline: 2px solid #489fdf;
+      outline-offset: 1px;
+    }
+
+    /* ---- Dashboard (premium home base) ---- */
+
+    #dashboard-view {
+      min-height: 100vh;
+      background: #f5f3ec;
+      padding: 32px 40px 80px;
+    }
+
+    .dashboard-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+
+    .dashboard-header h1 {
+      font-size: 24px;
+      margin: 0;
+      color: #201515;
+    }
+
+    .dashboard-header-actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    .dashboard-body {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 18px;
+    }
+
+    .dashboard-body .empty {
+      grid-column: 1 / -1;
+      text-align: center;
+      padding: 60px 20px;
+      color: #939084;
+      font-size: 15px;
+    }
+
+    .workspace-card {
+      background: #fffefb;
+      border: 1px solid #c5c0b1;
+      border-radius: 12px;
+      padding: 18px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      transition: border-color 0.15s;
+    }
+
+    .workspace-card:hover {
+      border-color: #489fdf;
+    }
+
+    .workspace-card-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .workspace-name {
+      font-size: 16px;
+      font-weight: 700;
+      color: #201515;
+      word-break: break-word;
+      outline: none;
+    }
+
+    .workspace-name[contenteditable="true"] {
+      border-bottom: 1px dashed #489fdf;
+    }
+
+    .workspace-rename-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 13px;
+      color: #939084;
+      flex: none;
+      padding: 2px 4px;
+    }
+
+    .workspace-rename-btn:hover { color: #0b4a78; }
+
+    .workspace-meta {
+      font-size: 12.5px;
+      color: #939084;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .workspace-tables {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+
+    .workspace-table-chip {
+      font-size: 11.5px;
+      font-family: 'JetBrains Mono', monospace;
+      background: #f5f3ec;
+      border: 1px solid #e5e1d4;
+      border-radius: 5px;
+      padding: 2px 7px;
+      color: #56534a;
+    }
+
+    .workspace-sessions {
+      border-top: 1px solid #ece9df;
+      padding-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .workspace-sessions-label {
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #939084;
+    }
+
+    .workspace-session-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 13px;
+    }
+
+    .workspace-session-row button {
+      background: none;
+      border: none;
+      color: #0b4a78;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      flex: none;
+      text-decoration: underline;
+    }
+
+    .workspace-session-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #56534a;
+    }
+
+    .workspace-card-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: auto;
+      padding-top: 6px;
+    }
+
+    .workspace-open-btn {
+      flex: 1;
+      background: #489fdf;
+      color: #fffefb;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-family: inherit;
+      font-weight: 600;
+      font-size: 13.5px;
+      cursor: pointer;
+    }
+
+    .workspace-open-btn:hover { background: #3689c9; }
+
+    .workspace-delete-btn {
+      background: #fffefb;
+      border: 1px solid #c5c0b1;
+      color: #bc3a2c;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-family: inherit;
+      font-weight: 600;
+      font-size: 13.5px;
+      cursor: pointer;
+    }
+
+    .workspace-delete-btn:hover { border-color: #bc3a2c; background: #fce7e3; }
+
+    /* ---- Relationships / ERD ---- */
+
+    .erd-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      padding: 20px 24px;
+      overflow-y: auto;
+      height: 100%;
+    }
+
+    .erd-intro .help-text {
+      margin: 0;
+      color: #56534a;
+      font-size: 13px;
+      max-width: 74ch;
+    }
+
+    .erd-canvas {
+      position: relative;
+      display: flex;
+      flex-wrap: wrap;
+      align-content: flex-start;
+      gap: 48px 64px;
+      min-height: 160px;
+      padding: 12px 4px;
+    }
+
+    .erd-table-box {
+      position: relative;
+      z-index: 1;
+      background: #fffefb;
+      border: 1px solid #c5c0b1;
+      border-radius: 10px;
+      min-width: 160px;
+      overflow: hidden;
+      flex: 0 0 auto;
+    }
+
+    .erd-table-name {
+      background: #f5f3ec;
+      border-bottom: 1px solid #c5c0b1;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 7px 12px;
+    }
+
+    .erd-col-row {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: #56534a;
+      padding: 4px 12px;
+      border-bottom: 1px solid #ece9df;
+    }
+
+    .erd-col-row:last-child { border-bottom: none; }
+
+    .erd-col-row.is-fk-source { color: #0b4a78; font-weight: 600; }
+    .erd-col-row.is-fk-target { color: #0b4a78; }
+
+    .erd-svg-overlay {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .relationship-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .relationship-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #fffefb;
+      border: 1px solid #c5c0b1;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 13px;
+      flex-wrap: wrap;
+    }
+
+    .relationship-row.confirmed {
+      border-color: #489fdf;
+    }
+
+    .relationship-row .rel-path {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12.5px;
+      color: #201515;
+      flex: 1;
+      min-width: 200px;
+    }
+
+    .rel-badge {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 5px;
+      flex: none;
+    }
+
+    .rel-badge.suggested {
+      background: #f0ede3;
+      color: #939084;
+      border: 1px dashed #c5c0b1;
+    }
+
+    .rel-badge.confirmed {
+      background: #dceefb;
+      color: #0b4a78;
+      border: 1px solid #b9dbf5;
+    }
+
+    .rel-actions {
+      display: flex;
+      gap: 6px;
+      flex: none;
+    }
+
+    .rel-actions button {
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 6px;
+      padding: 4px 10px;
+      cursor: pointer;
+      border: 1px solid #c5c0b1;
+      background: #fffefb;
+    }
+
+    .rel-actions button.confirm-btn {
+      border-color: #489fdf;
+      color: #0b4a78;
+    }
+
+    .rel-actions button.confirm-btn:hover { background: #dceefb; }
+
+    .rel-actions button.reject-btn:hover { border-color: #bc3a2c; color: #bc3a2c; }
+
+    .erd-manual-add {
+      border-top: 1px solid #c5c0b1;
+      padding-top: 16px;
+    }
+
+    .erd-manual-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+
+    .erd-manual-row select {
+      font-family: inherit;
+      font-size: 13px;
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid #c5c0b1;
+      background: #fffefb;
+    }
+
+    .erd-manual-arrow {
+      color: #939084;
+    }
+
+    .erd-add-btn {
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: 1px solid #489fdf;
+      color: #0b4a78;
+      background: #dceefb;
+      cursor: pointer;
+    }
+
+    .erd-add-btn:hover { background: #b9dbf5; }
+
+    /* ---- Tabs ---- */
+
+    .tabs {
+      display: flex;
+      gap: 4px;
+      padding: 0 24px;
+      border-bottom: 1px solid #c5c0b1;
+      background: #fffefb;
+      flex: 0 0 auto;
+    }
+
+    .tab-btn {
+      background: none;
+      border: none;
+      padding: 14px 18px;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 600;
+      color: #939084;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .tab-btn:hover {
+      color: #201515;
+    }
+
+    .tab-btn.active {
+      color: #ff4f00;
+      border-bottom-color: #ff4f00;
+    }
+
+    .tab-panels {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .tab-panel {
+      display: none;
+      flex-direction: column;
+      height: 100%;
+      min-height: 0;
+    }
+
+    .tab-panel.active {
+      display: flex;
+    }
+
     .workspace {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      height: calc(100vh - 120px);
+      height: 100%;
+      min-height: 0;
     }
 
     .left-pane {
       display: flex;
       flex-direction: column;
       border-right: 1px solid #c5c0b1;
+      min-width: 0;
+      min-height: 0;
     }
 
     .editor-section {
       padding: 24px;
       border-bottom: 1px solid #c5c0b1;
+      flex: 0 0 auto;
     }
 
     .editor-label {
@@ -625,8 +4393,21 @@
       color: #201515;
     }
 
+    .editor-label-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .editor-label-row .editor-label {
+      margin-bottom: 0;
+    }
+
     .editor-wrapper {
       display: flex;
+      min-height: 120px;
+      max-height: 400px;
       border: 1px solid #201515;
       border-radius: 6px;
       background: #fffefb;
@@ -654,6 +4435,8 @@
 
     #query-input {
       height: 120px;
+      min-height: 120px;
+      max-height: 400px;
       font-family: 'JetBrains Mono', 'SF Mono', 'Monaco', 'Consolas', monospace;
       font-size: 16px;
       padding: 12px 16px;
@@ -702,6 +4485,51 @@
       transform: translateY(1px);
     }
 
+    .editor-actions-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .save-query-btn {
+      background: #c5c0b1;
+      color: #201515;
+      padding: 12px 20px;
+      border: none;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 15px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s;
+    }
+
+    .save-query-btn:hover {
+      background: #b6b0a0;
+    }
+
+    .save-query-btn:active {
+      transform: translateY(1px);
+    }
+
+    .load-query-btn {
+      background: none;
+      border: 1px solid #201515;
+      color: #201515;
+      padding: 12px 20px;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 15px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .load-query-btn:hover {
+      background: #201515;
+      color: #fffefb;
+    }
+
     .keyboard-hint {
       font-size: 14px;
       color: #939084;
@@ -711,8 +4539,34 @@
     .results-section {
       flex: 1;
       padding: 24px;
-      overflow: auto;
+      overflow: hidden;
       background: #fffefb;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .results-scroll-top {
+      overflow-x: auto;
+      overflow-y: hidden;
+      height: 14px;
+      margin-top: 4px;
+      display: none;
+      flex: 0 0 auto;
+    }
+
+    .results-scroll-top.visible {
+      display: block;
+    }
+
+    .results-scroll-top-inner {
+      height: 1px;
+    }
+
+    #results {
+      overflow: auto;
+      flex: 1;
+      min-height: 0;
     }
 
     .preview-pane {
@@ -721,9 +4575,9 @@
       padding: 24px;
       overflow: hidden;
       background: #f8f4f0;
-      position: sticky;
-      top: 0;
-      height: calc(100vh - 120px);
+      min-height: 0;
+      min-width: 0;
+      height: 100%;
     }
 
     #chat-container {
@@ -731,6 +4585,7 @@
       flex-direction: column;
       flex: 1;
       overflow: hidden;
+      min-height: 0;
     }
 
     #chat-messages {
@@ -740,6 +4595,7 @@
       display: flex;
       flex-direction: column;
       gap: 1rem;
+      min-height: 0;
     }
 
     .chat-message {
@@ -763,6 +4619,96 @@
       align-self: flex-start;
       padding-right: 40px;
       border-radius: 12px;
+    }
+
+    .chat-turn {
+      display: flex;
+      flex-direction: column;
+      max-width: 90%;
+    }
+
+    .chat-turn.assistant-turn {
+      align-self: flex-start;
+    }
+
+    .chat-turn .chat-message {
+      max-width: 100%;
+    }
+
+    .message-below-actions {
+      margin-top: 4px;
+      padding-left: 4px;
+    }
+
+    .reply-btn {
+      background: none;
+      border: none;
+      color: #939084;
+      font-size: 12px;
+      font-family: inherit;
+      cursor: pointer;
+      padding: 2px 4px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: color 0.15s;
+    }
+
+    .reply-btn:hover {
+      color: #ff4f00;
+    }
+
+    .reply-quote {
+      background: rgba(32, 21, 21, 0.06);
+      border-left: 3px solid #ff4f00;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 13px;
+      color: #605d52;
+      margin-bottom: 8px;
+      white-space: pre-wrap;
+    }
+
+    .reply-context-bar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+      background: #f8f4f0;
+      border-left: 3px solid #ff4f00;
+      border-radius: 6px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
+      font-size: 13px;
+      color: #605d52;
+      flex: 0 0 auto;
+    }
+
+    .reply-context-bar[hidden] {
+      display: none;
+    }
+
+    .reply-context-text {
+      flex: 1;
+      min-width: 0;
+      white-space: pre-wrap;
+      max-height: 60px;
+      overflow: hidden;
+    }
+
+    .reply-context-cancel {
+      background: none;
+      border: none;
+      color: #939084;
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0 2px;
+      flex-shrink: 0;
+    }
+
+    .reply-context-cancel:hover {
+      color: #201515;
     }
 
     .copy-message-btn {
@@ -832,6 +4778,7 @@
 
     .chat-input-wrapper {
       display: flex;
+      align-items: flex-end;
       gap: 0.5rem;
     }
 
@@ -844,6 +4791,10 @@
       font-size: 16px;
       background: #fffefb;
       color: #201515;
+      resize: none;
+      max-height: 200px;
+      overflow-y: auto;
+      line-height: 1.4;
     }
 
     #chat-input:focus {
@@ -955,10 +4906,7 @@
       font-size: 14px;
       margin-bottom: 16px;
       display: none;
-    }
-
-    #results, #preview {
-      overflow: auto;
+      flex: 0 0 auto;
     }
 
     .loading, .empty {
@@ -1050,22 +4998,88 @@
       font-weight: 600;
     }
 
+    /* ---- Table View tab ---- */
+
+    .table-view-panel {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      min-height: 0;
+      padding: 24px;
+      gap: 12px;
+    }
+
+    .table-view-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex: 0 0 auto;
+    }
+
+    #table-search {
+      flex: 1;
+      max-width: 360px;
+      padding: 10px 14px;
+      border: 1px solid #201515;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 14px;
+      background: #fffefb;
+      color: #201515;
+    }
+
+    #table-search:focus {
+      outline: none;
+      border-color: #ff4f00;
+      box-shadow: 0 0 0 2px rgba(255, 79, 0, 0.1);
+    }
+
+    #table-search::placeholder {
+      color: #939084;
+    }
+
+    #table-view-meta {
+      font-size: 13px;
+      color: #939084;
+      font-weight: 600;
+      font-family: 'JetBrains Mono', monospace;
+      white-space: nowrap;
+    }
+
+    #table-view-results {
+      flex: 1;
+      overflow: auto;
+      min-height: 0;
+    }
+
     @media (max-width: 1024px) {
+      #app-view {
+        overflow: auto;
+      }
+
+      .tab-panels {
+        overflow: visible;
+      }
+
+      .tab-panel.active {
+        height: auto;
+      }
+
       .workspace {
         grid-template-columns: 1fr;
         grid-template-rows: auto 400px;
         height: auto;
-        min-height: calc(100vh - 120px);
+        min-height: 0;
+      }
+
+      .table-view-panel {
+        height: 500px;
       }
 
       .left-pane {
         border-right: none;
-        border-bottom: 1px solid #e5e7eb;
-      }
-
-      .api-key-wrapper {
-        margin-left: 0;
-        margin-top: 0.75rem;
+        border-bottom: 1px solid #c5c0b1;
       }
 
       .upload-area .upload-wrapper {
@@ -1086,61 +5100,453 @@
 </head>
 <body>
   <div class="header">
-    <h1>Synth</h1>
-    <div id="status">Initializing...</div>
-  </div>
-
-  <div class="upload-area">
-    <div class="upload-wrapper">
-      <input type="file" id="file-upload" accept=".csv" onchange="uploadCSV(event)">
-      <label for="file-upload" class="upload-btn">Upload CSV</label>
-      <div id="file-info">No file selected</div>
+    <img src="synth-cream-orangediscs.png" alt="Synth" class="header-logo">
+    <div class="header-right">
+      <div class="auth-area">
+        <button id="go-premium-btn" class="auth-btn auth-btn-premium" onclick="openPremiumPanel()">Go Premium</button>
+        <button id="dashboard-nav-btn" class="auth-btn auth-btn-premium" onclick="openDashboard()" hidden>Dashboard</button>
+        <button id="sign-in-btn" class="auth-btn" onclick="toggleAuthPanel()">Sign in</button>
+        <button id="my-projects-btn" class="auth-btn auth-btn-primary" onclick="openCloudPanel()" hidden>Load Sessions</button>
+        <div id="auth-panel" class="auth-panel" hidden>
+          <div id="auth-signed-out">
+            <input type="email" id="auth-email" placeholder="you@example.com">
+            <button class="auth-btn auth-btn-primary" onclick="sendMagicLink()">Send magic link</button>
+            <div id="auth-message" class="auth-message"></div>
+          </div>
+          <div id="auth-signed-in" hidden>
+            <button type="button" id="auth-user-email" class="auth-user-email" onclick="openSettingsPanel()" title="Account settings"></button>
+            <button class="auth-btn" onclick="signOutUser()">Sign out</button>
+          </div>
+        </div>
+      </div>
+      <div id="status">Initializing...</div>
     </div>
   </div>
 
-  <div class="workspace">
-    <div class="left-pane">
-      <div class="editor-section">
-        <div class="editor-label">SQL Query</div>
-        <div class="editor-wrapper">
-          <div class="line-numbers" id="line-numbers">1</div>
-          <textarea id="query-input" placeholder="SELECT * FROM data&#10;WHERE column = 'value'&#10;ORDER BY column DESC&#10;LIMIT 100"></textarea>
-        </div>
-        <div class="editor-actions">
-          <button class="run-btn" onclick="runQuery()">
-            <span>Run Query</span>
-            <span>▶</span>
-          </button>
-          <div class="keyboard-hint">⌘ Enter or Ctrl Enter</div>
-        </div>
-      </div>
+  <div id="premium-success-banner" class="premium-success-banner" hidden>
+    <span>&#10003; Payment successful — thanks for going Premium.</span>
+    <button onclick="dismissPremiumSuccessBanner()" aria-label="Dismiss">&times;</button>
+  </div>
 
-      <div class="results-section">
-        <div class="section-label">Query Results</div>
-        <div id="error"></div>
-        <div id="results">
-          <div class="empty">Run a query to see results</div>
+  <div id="premium-modal" class="modal-overlay" hidden>
+    <div class="modal">
+      <div class="modal-header">
+        <div class="section-label">Go Premium</div>
+        <button class="modal-close" onclick="closePremiumPanel()">&times;</button>
+      </div>
+      <div class="modal-section">
+        <p class="help-text">Multi-table workspaces, table renaming, cross-table AI queries, and relationship detection — all the features from the Multi-Table Workspaces spec.</p>
+      </div>
+      <div class="modal-section">
+        <div id="premium-checkout-status" class="help-text"></div>
+        <div id="checkout-form"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="premium-signin-modal" class="modal-overlay" hidden>
+    <div class="modal modal-small">
+      <div class="delete-warning-icon premium-icon">★</div>
+      <div class="delete-warning-title">Sign in to go Premium</div>
+      <div class="delete-warning-body">Premium is tied to your account, so we need you signed in first — it only takes a magic link.</div>
+      <div class="modal-actions">
+        <button class="modal-cancel-btn" onclick="closePremiumSigninModal()">Cancel</button>
+        <button class="modal-save-btn premium-cta-btn" onclick="signInThenGoPremium()">Sign in</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="settings-modal" class="modal-overlay" hidden>
+    <div class="modal">
+      <div class="modal-header">
+        <div class="section-label">Account Settings</div>
+        <button class="modal-close" onclick="closeSettingsPanel()">&times;</button>
+      </div>
+      <div class="modal-section">
+        <label class="field-label">Signed in as</label>
+        <div id="settings-email" class="help-text"></div>
+      </div>
+      <div class="modal-section">
+        <label class="field-label">Plan</label>
+        <div id="settings-premium-row"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="cancel-premium-modal" class="modal-overlay" hidden>
+    <div class="modal modal-small">
+      <div class="delete-warning-icon">⚠</div>
+      <div class="delete-warning-title">Cancel Premium?</div>
+      <div class="delete-warning-body">You'll lose access to multi-table workspaces, table renaming, cross-table AI queries, and relationship detection. This doesn't issue a refund.</div>
+      <div class="modal-actions">
+        <button class="modal-cancel-btn" onclick="closeCancelPremiumModal()">Keep Premium</button>
+        <button class="modal-confirm-delete-btn" onclick="confirmCancelPremium()">Cancel Premium</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="cloud-modal" class="modal-overlay" hidden>
+    <div class="modal">
+      <div class="modal-header">
+        <div class="section-label">Load Sessions</div>
+        <button class="modal-close" onclick="closeCloudPanel()">&times;</button>
+      </div>
+      <button class="cloud-add-btn" onclick="closeCloudPanel(); document.getElementById('file-upload').click();">+ Add More Data</button>
+      <div class="modal-section">
+        <div class="modal-subhead">Saved Workspaces</div>
+        <div id="cloud-datasets-list" class="cloud-list"></div>
+      </div>
+      <div class="modal-section">
+        <div class="modal-subhead">Saved Chat Sessions</div>
+        <div id="cloud-sessions-list" class="cloud-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="help-modal" class="modal-overlay" hidden>
+    <div class="modal">
+      <div class="modal-header">
+        <div class="section-label">How Synth works</div>
+        <button class="modal-close" onclick="closeHelpPanel()">&times;</button>
+      </div>
+      <div class="modal-section">
+        <div class="modal-subhead">The basics</div>
+        <p class="help-text">Upload a CSV and it loads into a real SQLite database running entirely in this browser tab. Nothing is sent to a server unless you sign in and choose to save it.</p>
+      </div>
+      <div class="modal-section">
+        <div class="modal-subhead">Table names</div>
+        <p class="help-text">Each CSV loads into a table named after its file (click the pencil on a table chip to rename it). Write queries as <code>SELECT * FROM table_name ...</code> — the chip bar above the tabs always shows the current names.</p>
+      </div>
+      <div class="modal-section">
+        <div class="modal-subhead">Table View vs. Query Results</div>
+        <p class="help-text"><strong>Table View</strong> always shows the full contents of whichever table is selected in the chip bar. <strong>Query Results</strong> only shows the output of the last query you ran.</p>
+      </div>
+      <div class="modal-section">
+        <div class="modal-subhead">Uploading again</div>
+        <p class="help-text"><strong>Upload CSV</strong> starts a brand-new workspace and replaces everything currently loaded. <strong>+ Add table</strong> adds more files to the workspace you already have open, up to 10 tables. Save anything important first if you're signed in.</p>
+      </div>
+      <div class="modal-section">
+        <div class="modal-subhead">The AI assistant</div>
+        <p class="help-text">It only suggests SQL, it never runs a query for you. Click <strong>Use Query</strong> on any suggestion to drop it into the editor, then hit Run.</p>
+      </div>
+      <div class="modal-section">
+        <div class="modal-subhead">Saving queries</div>
+        <p class="help-text"><strong>Save Query</strong> and <strong>Load Query</strong> keep a personal list of queries for the current file, stored in this browser. They don't sync across devices.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="save-query-modal" class="modal-overlay" hidden>
+    <div class="modal">
+      <div class="modal-header">
+        <div class="section-label" id="save-query-modal-title">Save Query</div>
+        <button class="modal-close" onclick="closeSaveQueryModal()">&times;</button>
+      </div>
+      <div class="modal-section">
+        <label class="field-label" for="save-query-title-input">Query Title</label>
+        <input type="text" id="save-query-title-input" class="field-input" placeholder="e.g. Monthly spend by category">
+      </div>
+      <div class="modal-section">
+        <label class="field-label" for="save-query-sql-input">Query</label>
+        <textarea id="save-query-sql-input" class="field-textarea sql-textarea"></textarea>
+      </div>
+      <div class="modal-section">
+        <label class="field-label" for="save-query-desc-input">Description <span class="field-optional">(optional)</span></label>
+        <input type="text" id="save-query-desc-input" class="field-input" maxlength="64" placeholder="A short note about what this does">
+        <div class="field-hint"><span id="save-query-desc-count">0</span>/64</div>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-cancel-btn" onclick="closeSaveQueryModal()">Cancel</button>
+        <button class="modal-save-btn" onclick="submitSaveQuery()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="load-query-modal" class="modal-overlay" hidden>
+    <div class="modal">
+      <div class="modal-header">
+        <div class="section-label">Load Query</div>
+        <button class="modal-close" onclick="closeLoadQueryModal()">&times;</button>
+      </div>
+      <div id="load-query-list" class="query-list"></div>
+      <div class="modal-actions">
+        <button class="modal-cancel-btn" onclick="closeLoadQueryModal()">Cancel</button>
+        <button class="modal-save-btn" id="load-query-confirm-btn" onclick="confirmLoadQuery()" disabled>Load Query</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="delete-query-modal" class="modal-overlay" hidden>
+    <div class="modal modal-small">
+      <div class="delete-warning-icon">⚠</div>
+      <div class="delete-warning-title">Delete this query?</div>
+      <div class="delete-warning-body">This can't be undone.</div>
+      <div class="modal-actions">
+        <button class="modal-cancel-btn" onclick="closeDeleteQueryModal()">Cancel</button>
+        <button class="modal-confirm-delete-btn" onclick="confirmDeleteQuerySubmit()">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="query-card-menu-popup" class="query-card-menu-popup" hidden>
+    <button id="query-menu-edit-btn">Edit query</button>
+    <button id="query-menu-delete-btn" class="danger">Delete query</button>
+  </div>
+
+  <input type="file" id="file-upload" accept=".csv" multiple onchange="uploadCSV(event)">
+  <input type="file" id="file-upload-add" accept=".csv" multiple onchange="addTablesCSV(event)">
+
+  <div id="landing-view">
+    <div class="landing-mode-bar">
+      <div class="landing-mode-toggle" role="tablist" aria-label="Choose how to start">
+        <button type="button" class="landing-mode-btn is-active" id="landing-mode-lite-btn" onclick="selectLandingMode('lite')" role="tab" aria-selected="true">Lite Mode</button>
+        <button type="button" class="landing-mode-btn" id="landing-mode-normal-btn" onclick="selectLandingMode('normal')" role="tab" aria-selected="false">Normal Mode</button>
+      </div>
+      <div class="landing-mode-compare active-lite" id="landing-mode-compare">
+        <div class="lmc-row lmc-row-head">
+          <div class="lmc-cell lmc-cell-label"></div>
+          <div class="lmc-cell lmc-cell-lite">Lite Mode</div>
+          <div class="lmc-cell lmc-cell-normal">Normal Mode</div>
+        </div>
+        <div class="lmc-row">
+          <div class="lmc-cell lmc-cell-label">Account</div>
+          <div class="lmc-cell lmc-cell-lite" data-mode-label="Lite Mode: ">No account needed</div>
+          <div class="lmc-cell lmc-cell-normal" data-mode-label="Normal Mode: ">Create an account to save your history</div>
+        </div>
+        <div class="lmc-row">
+          <div class="lmc-cell lmc-cell-label">Session storage</div>
+          <div class="lmc-cell lmc-cell-lite" data-mode-label="Lite Mode: ">Nothing stored beyond this browser session</div>
+          <div class="lmc-cell lmc-cell-normal" data-mode-label="Normal Mode: ">Save datasets and chat sessions across browser sessions and devices</div>
+        </div>
+        <div class="lmc-row">
+          <div class="lmc-cell lmc-cell-label">Data security</div>
+          <div class="lmc-cell lmc-cell-lite" data-mode-label="Lite Mode: ">Nothing touches our cloud or database. Safety first.</div>
+          <div class="lmc-cell lmc-cell-normal" data-mode-label="Normal Mode: ">Saved data is stored securely in the cloud. AI conversations stay private and are never shared publicly.</div>
         </div>
       </div>
     </div>
 
-    <div class="preview-pane">
-      <div class="ai-header">
-        <div class="section-label">AI SQL Assistant</div>
-        <label class="toggle-switch">
-          <input type="checkbox" id="ai-toggle">
-          <span class="toggle-slider"></span>
-          <span class="toggle-label">OFF</span>
-        </label>
+    <section class="landing-split">
+      <div class="landing-panel landing-panel-auth">
+        <div class="landing-panel-inner">
+          <div class="landing-kicker" id="landing-kicker-auth">Step 1</div>
+          <h1 class="landing-panel-title">Start with your email.</h1>
+          <p class="landing-panel-sub">We'll send a one-time sign-in link. No password, ever.</p>
+          <div class="landing-auth-form">
+            <input type="email" id="landing-email" placeholder="you@example.com" autocomplete="email">
+            <button type="button" class="landing-magic-btn" onclick="landingSendMagicLink()">Send magic link</button>
+          </div>
+          <div id="landing-auth-message" class="landing-auth-message"></div>
+        </div>
+        <div class="landing-watermark">S</div>
       </div>
-      <div id="chat-container">
-        <div id="chat-messages">
-          <div class="empty ai-disabled-msg">AI assistant is disabled. Toggle it ON to ask SQL questions.</div>
+
+      <div class="landing-panel landing-panel-upload" id="landing-upload-panel">
+        <div class="landing-panel-inner">
+          <div class="landing-kicker" id="landing-kicker-upload">Step 2</div>
+          <h2 class="landing-panel-title">Upload your CSV.</h2>
+          <p class="landing-panel-sub" id="landing-upload-sub">Unlocks once your magic link is on its way.</p>
+          <label for="file-upload" id="landing-upload-label" class="landing-upload-btn is-locked">Upload a CSV</label>
         </div>
-        <div class="chat-input-wrapper">
-          <input type="text" id="chat-input" placeholder="Ask about your data... e.g., 'show me all rows where amount > 1000'" disabled />
-          <button id="chat-send" onclick="sendMessage()" disabled>Send</button>
+      </div>
+    </section>
+
+    <section class="about-band">
+      <div class="about-band-title">How it works</div>
+      <div class="about-steps">
+        <div class="about-step">
+          <div class="about-step-num">01</div>
+          <div class="about-step-title">Pick a mode</div>
+          <div class="about-step-body">Lite Mode skips sign-in entirely. Normal Mode adds a one-time magic link so datasets and chat sessions sync across devices.</div>
         </div>
+        <div class="about-step">
+          <div class="about-step-num">02</div>
+          <div class="about-step-title">Upload</div>
+          <div class="about-step-body">Drop in any CSV. Synth loads it into a real SQLite database running in your browser tab.</div>
+        </div>
+        <div class="about-step">
+          <div class="about-step-num">03</div>
+          <div class="about-step-title">Query</div>
+          <div class="about-step-body">Write SQL directly, or ask the AI assistant in plain English, then sort and filter instantly.</div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="loading-overlay" class="loading-overlay" hidden>
+    <div class="loading-box">
+      <div class="loading-label">Loading your data...</div>
+      <div class="loading-track"><div class="loading-fill" id="loading-fill"></div></div>
+      <div class="loading-caption">Parsing CSV &amp; building a local database</div>
+    </div>
+  </div>
+
+  <div id="app-view" hidden>
+    <div class="upload-area">
+      <div class="upload-wrapper">
+        <label for="file-upload" class="upload-btn">Upload CSV</label>
+        <button id="add-table-btn" class="upload-btn add-table-btn" hidden onclick="document.getElementById('file-upload-add').click()">+ Add table</button>
+        <div id="file-info">No file selected</div>
+        <span id="workspace-badge" class="workspace-badge" hidden>Workspace</span>
+        <button id="save-csv-btn" class="save-btn" hidden onclick="saveCurrentCSV()">Save to cloud</button>
+        <button class="help-btn" onclick="openHelpPanel()" title="How this works" aria-label="How this works">?</button>
+      </div>
+    </div>
+
+    <div id="table-chip-bar" class="table-chip-bar" hidden></div>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="query">Query &amp; Chat</button>
+      <button class="tab-btn" data-tab="table">Table View</button>
+      <button class="tab-btn" data-tab="relationships" id="relationships-tab-btn" hidden>Relationships</button>
+    </div>
+
+    <div class="tab-panels">
+      <div id="tab-query" class="tab-panel active">
+        <div class="workspace">
+          <div class="left-pane">
+            <div class="editor-section">
+              <div class="editor-label-row">
+                <div class="editor-label">SQL Query</div>
+                <div class="keyboard-hint">⌘ Enter or Ctrl Enter</div>
+              </div>
+              <div class="editor-wrapper">
+                <div class="line-numbers" id="line-numbers">1</div>
+                <textarea id="query-input" placeholder="SELECT * FROM table_name&#10;WHERE column = 'value'&#10;ORDER BY column DESC&#10;LIMIT 100"></textarea>
+              </div>
+              <div class="editor-actions">
+                <div class="editor-actions-left">
+                  <button class="run-btn" onclick="runQuery()">
+                    <span>Run Query</span>
+                    <span>▶</span>
+                  </button>
+                  <button class="save-query-btn" onclick="openSaveQueryModal()">Save Query</button>
+                </div>
+                <button class="load-query-btn" onclick="openLoadQueryModal()">Load Query</button>
+              </div>
+            </div>
+
+            <div class="results-section">
+              <div class="section-label">Query Results</div>
+              <div id="error"></div>
+              <div id="results-scroll-top" class="results-scroll-top">
+                <div id="results-scroll-top-inner"></div>
+              </div>
+              <div id="results">
+                <div class="empty">Run a query to see results</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="preview-pane">
+            <div class="ai-header">
+              <div class="section-label">AI SQL Assistant</div>
+              <div class="ai-header-actions">
+                <button id="save-session-btn" class="save-btn" hidden onclick="saveCurrentSession()">Save session</button>
+                <button id="clear-session-btn" class="clear-session-btn" onclick="clearChatSession()">Clear Session</button>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="ai-toggle">
+                  <span class="toggle-slider"></span>
+                  <span class="toggle-label">OFF</span>
+                </label>
+              </div>
+            </div>
+            <div id="chat-table-focus-row" class="chat-table-focus-row" hidden>
+              Focused table:
+              <select id="chat-table-focus" onchange="setActiveTable(this.value)"></select>
+              <span>— ambiguous questions default here; the AI can still join other tables</span>
+            </div>
+            <div id="chat-container">
+              <div id="chat-messages">
+                <div class="empty ai-disabled-msg">AI assistant is disabled. Toggle it ON to ask SQL questions.</div>
+              </div>
+              <div id="reply-context-bar" class="reply-context-bar" hidden>
+                <div class="reply-context-text" id="reply-context-text"></div>
+                <button type="button" class="reply-context-cancel" onclick="cancelReplyContext()" title="Cancel reply">&times;</button>
+              </div>
+              <div class="chat-input-wrapper">
+                <textarea id="chat-input" rows="1" placeholder="Ask about your data... e.g., 'show me all rows where amount > 1000'" disabled></textarea>
+                <button id="chat-send" onclick="sendMessage()" disabled>Send</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="tab-table" class="tab-panel">
+        <div class="table-view-panel">
+          <div class="table-view-toolbar">
+            <input type="text" id="table-search" placeholder="Search all columns...">
+            <div id="table-view-meta"></div>
+          </div>
+          <div id="table-view-scroll-top" class="results-scroll-top">
+            <div id="table-view-scroll-top-inner"></div>
+          </div>
+          <div id="table-view-results">
+            <div class="empty">Upload a CSV to see its data here</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="tab-relationships" class="tab-panel">
+        <div class="erd-panel">
+          <div class="erd-intro">
+            <p class="help-text">Synth guesses foreign keys by matching column names like <code>customer_id</code> to another table's <code>id</code>. Suggested relationships are dashed and grey until you confirm them — confirmed ones turn solid blue and are the only ones the AI is told about explicitly.</p>
+          </div>
+          <div id="erd-canvas" class="erd-canvas"></div>
+          <div class="erd-list-section">
+            <div class="section-label">Relationships</div>
+            <div id="relationship-list" class="relationship-list"></div>
+          </div>
+          <div class="erd-manual-add">
+            <div class="section-label">Add a relationship manually</div>
+            <div class="erd-manual-row">
+              <select id="manual-fk-from-table" onchange="populateManualFkColumns('from')"></select>
+              <select id="manual-fk-from-col"></select>
+              <span class="erd-manual-arrow">&rarr;</span>
+              <select id="manual-fk-to-table" onchange="populateManualFkColumns('to')"></select>
+              <select id="manual-fk-to-col"></select>
+              <button class="erd-add-btn" onclick="addManualRelationship()">+ Add</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="dashboard-view" hidden>
+    <div class="dashboard-header">
+      <h1>Your workspaces</h1>
+      <div class="dashboard-header-actions">
+        <button class="upload-btn" onclick="closeDashboard(); document.getElementById('file-upload').click();">+ New workspace</button>
+        <button class="auth-btn" onclick="closeDashboard()">&larr; Back to app</button>
+      </div>
+    </div>
+    <div id="dashboard-body" class="dashboard-body">
+      <div class="empty">Loading your workspaces...</div>
+    </div>
+  </div>
+
+  <div id="delete-workspace-modal" class="modal-overlay" hidden>
+    <div class="modal modal-small">
+      <div class="delete-warning-icon">⚠</div>
+      <div class="delete-warning-title">Delete <span id="delete-workspace-name"></span>?</div>
+      <div class="delete-warning-body">This permanently deletes its tables, saved chat sessions, and cloud files. This can't be undone.</div>
+      <div class="modal-actions">
+        <button class="modal-cancel-btn" onclick="closeDeleteWorkspaceModal()">Cancel</button>
+        <button class="modal-confirm-delete-btn" onclick="confirmDeleteWorkspace()">Delete workspace</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="switch-workspace-modal" class="modal-overlay" hidden>
+    <div class="modal modal-small">
+      <div class="delete-warning-icon premium-icon">⇄</div>
+      <div class="delete-warning-title">Switch workspaces?</div>
+      <div class="delete-warning-body">Opening this will replace what you currently have loaded. Anything not saved to the cloud will be lost.</div>
+      <div class="modal-actions">
+        <button class="modal-cancel-btn" onclick="closeSwitchWorkspaceModal()">Cancel</button>
+        <button class="modal-save-btn premium-cta-btn" onclick="confirmSwitchWorkspace()">Open anyway</button>
       </div>
     </div>
   </div>

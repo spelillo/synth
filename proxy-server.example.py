@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Simple proxy server for OpenAI API to avoid CORS issues
+Simple proxy server for the Groq API to avoid CORS issues
 Run with: python3 proxy-server.py
 
 SETUP:
 1. Copy this file to proxy-server.py
-2. Replace YOUR_OPENAI_API_KEY_HERE with your actual OpenAI API key
-3. Run: python3 proxy-server.py
+2. Get a free API key at https://console.groq.com/keys
+3. Replace YOUR_GROQ_API_KEY_HERE with your actual Groq API key
+4. Run: python3 proxy-server.py
 """
 
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -14,8 +15,8 @@ import json
 import urllib.request
 import urllib.error
 
-# TODO: Replace with your actual OpenAI API key
-API_KEY = 'YOUR_OPENAI_API_KEY_HERE'
+# TODO: Replace with your actual Groq API key (https://console.groq.com/keys)
+API_KEY = 'YOUR_GROQ_API_KEY_HERE'
 
 class ProxyHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
@@ -33,16 +34,17 @@ class ProxyHandler(BaseHTTPRequestHandler):
             try:
                 request_data = json.loads(body)
 
-                openai_request = urllib.request.Request(
-                    'https://api.openai.com/v1/chat/completions',
+                groq_request = urllib.request.Request(
+                    'https://api.groq.com/openai/v1/chat/completions',
                     data=json.dumps(request_data).encode('utf-8'),
                     headers={
                         'Content-Type': 'application/json',
-                        'Authorization': f'Bearer {API_KEY}'
+                        'Authorization': f'Bearer {API_KEY}',
+                        'User-Agent': 'Mozilla/5.0 (Synth proxy-server.py)'
                     }
                 )
 
-                with urllib.request.urlopen(openai_request) as response:
+                with urllib.request.urlopen(groq_request) as response:
                     response_data = response.read()
 
                 self.send_response(200)
@@ -76,15 +78,16 @@ class ProxyHandler(BaseHTTPRequestHandler):
 if __name__ == '__main__':
     PORT = 8001
 
-    if API_KEY == 'YOUR_OPENAI_API_KEY_HERE':
-        print('ERROR: Please set your OpenAI API key in proxy-server.py')
-        print('Edit the file and replace YOUR_OPENAI_API_KEY_HERE with your actual key')
+    if API_KEY == 'YOUR_GROQ_API_KEY_HERE':
+        print('ERROR: Please set your Groq API key in proxy-server.py')
+        print('Get a free key at https://console.groq.com/keys')
+        print('Edit the file and replace YOUR_GROQ_API_KEY_HERE with your actual key')
         exit(1)
 
     server = HTTPServer(('localhost', PORT), ProxyHandler)
     print(f'✓ Proxy server running on http://localhost:{PORT}')
     print(f'✓ API Key loaded (length: {len(API_KEY)})')
-    print('✓ Ready to proxy requests to OpenAI')
+    print('✓ Ready to proxy requests to Groq')
     print('\nPress Ctrl+C to stop\n')
     try:
         server.serve_forever()

@@ -1,30 +1,18 @@
-# API Keys and sensitive files
-proxy-server.py
-config.js
-
-# Data files
-*.csv
-formularyID*.txt
-
-# Logs
-*.log
-proxy.log
-
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-venv/
-env/
-
-# OS
+node_modules/
+dist/
+.env
+.env.local
+.dev.vars
 .DS_Store
-Thumbs.db
+.wrangler/
+.vercel/
+proxy-server.py
+aikey.rtf
+.vercel
+.env*
+.Rhistory
+.freebuff/
 
-# Editor
-.vscode/
-.idea/
-*.swp
-*.swo
+# Legacy prototypes (Zapier-analysis notes, old proxy/app/web experiments) —
+# 1.3GB+ of node_modules/.next build output, never meant to ship in the repo.
+archive/
