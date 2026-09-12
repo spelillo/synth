@@ -2457,6 +2457,43 @@
       }
     }
 
+    // Lightweight SQL syntax highlighter for chat code blocks — no library,
+    // one regex pass tokenizing strings/identifiers/comments/keywords/
+    // numbers in priority order (strings and quoted identifiers are matched
+    // before the keyword alternative, so a keyword-looking word inside a
+    // string is never re-highlighted). Escapes HTML first, then tokenizes
+    // the already-escaped text, since none of the token patterns depend on
+    // the characters `&`/`<`/`>` that escaping changes.
+    const SQL_KEYWORDS = [
+      'SELECT', 'FROM', 'WHERE', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'FULL', 'OUTER', 'CROSS', 'ON',
+      'GROUP', 'BY', 'ORDER', 'HAVING', 'LIMIT', 'OFFSET', 'AS', 'AND', 'OR', 'NOT', 'NULL', 'IS',
+      'IN', 'LIKE', 'GLOB', 'BETWEEN', 'INSERT', 'INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE',
+      'CREATE', 'TABLE', 'DROP', 'ALTER', 'DISTINCT', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END',
+      'UNION', 'ALL', 'EXISTS', 'DESC', 'ASC', 'PRIMARY', 'KEY', 'FOREIGN', 'REFERENCES',
+      'DEFAULT', 'CAST', 'WITH', 'OVER', 'PARTITION', 'IF', 'USING', 'INDEX', 'VIEW', 'TRIGGER'
+    ];
+
+    const SQL_TOKEN_RE = new RegExp(
+      `('(?:[^']|'')*')` +                        // 1: string literal
+      `|("(?:[^"]|"")*")` +                        // 2: quoted identifier
+      `|(--[^\\n]*)` +                              // 3: line comment
+      `|\\b(${SQL_KEYWORDS.join('|')})\\b` +       // 4: keyword
+      `|\\b(\\d+\\.?\\d*)\\b`,                     // 5: number
+      'gi'
+    );
+
+    function highlightSQL(code) {
+      const escaped = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return escaped.replace(SQL_TOKEN_RE, (match, str, ident, comment, kw, num) => {
+        if (str !== undefined) return `<span class="sql-tok-string">${match}</span>`;
+        if (ident !== undefined) return `<span class="sql-tok-ident">${match}</span>`;
+        if (comment !== undefined) return `<span class="sql-tok-comment">${match}</span>`;
+        if (kw !== undefined) return `<span class="sql-tok-keyword">${match}</span>`;
+        if (num !== undefined) return `<span class="sql-tok-number">${match}</span>`;
+        return match;
+      });
+    }
+
     function formatMessage(text) {
       const msgId = 'msg-' + Math.random().toString(36).substr(2, 9);
 
@@ -2481,7 +2518,7 @@
       // Now replace SQL block placeholders with formatted HTML
       sqlBlocks.forEach(({ id, code }) => {
         const escapedCode = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/\n/g, '\\n');
-        const displayCode = code.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const displayCode = highlightSQL(code);
         text = text.replace(
           `__SQL_BLOCK_${id}__`,
           `<pre id="${id}"><code data-sql="${escapedCode}">${displayCode}</code><button class="use-query-btn" onclick="insertQuery('${id}')">Use Query</button></pre>`
@@ -5223,6 +5260,30 @@
     .chat-message.assistant pre {
       background: rgba(255, 254, 251, 0.1);
       color: #fffefb;
+    }
+
+    /* SQL syntax highlighting inside chat code blocks — tuned for the dark
+       assistant-bubble background above. */
+    .sql-tok-keyword {
+      color: #6cb6f5;
+      font-weight: 700;
+    }
+
+    .sql-tok-string {
+      color: #ffab66;
+    }
+
+    .sql-tok-ident {
+      color: #8fd19e;
+    }
+
+    .sql-tok-number {
+      color: #7dd3c0;
+    }
+
+    .sql-tok-comment {
+      color: #9a958a;
+      font-style: italic;
     }
 
     .use-query-btn {
