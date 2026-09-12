@@ -1812,6 +1812,7 @@
       populateManualFkTableSelects();
       if (activeTableName === finalName) {
         document.getElementById('query-input').value = `SELECT * FROM "${finalName}" LIMIT 100`;
+        resetQueryInputView();
       }
     }
 
@@ -2378,6 +2379,18 @@
       lineNumbers.innerHTML = Array.from({length: lines}, (_, i) => i + 1).join('<br>');
     }
 
+    // The textarea's own text is transparent (see #query-input CSS) — this
+    // paints the same text, tokenized by highlightSQL(), on a <pre> layered
+    // exactly behind it, so the editor shows live keyword/string/number
+    // coloring without giving up native textarea editing/selection/undo.
+    function updateQueryHighlight() {
+      const textarea = document.getElementById('query-input');
+      const code = document.getElementById('query-highlight-code');
+      let html = highlightSQL(textarea.value);
+      if (textarea.value.endsWith('\n')) html += '\n';
+      code.innerHTML = html;
+    }
+
     // The query box grows to fit what you type/load (up to a max height,
     // beyond which it scrolls normally) instead of staying a fixed size and
     // silently clipping content a manual resize handle doesn't fix, because
@@ -2395,9 +2408,11 @@
     function resetQueryInputView() {
       const textarea = document.getElementById('query-input');
       updateLineNumbers();
+      updateQueryHighlight();
       autoGrowQueryInput(textarea);
       textarea.scrollTop = 0;
       document.getElementById('line-numbers').scrollTop = 0;
+      document.getElementById('query-highlight').scrollTop = 0;
     }
 
     window.addEventListener('DOMContentLoaded', () => {
@@ -2405,10 +2420,14 @@
 
       textarea.addEventListener('input', () => {
         updateLineNumbers();
+        updateQueryHighlight();
         autoGrowQueryInput(textarea);
       });
       textarea.addEventListener('scroll', () => {
         document.getElementById('line-numbers').scrollTop = textarea.scrollTop;
+        const highlight = document.getElementById('query-highlight');
+        highlight.scrollTop = textarea.scrollTop;
+        highlight.scrollLeft = textarea.scrollLeft;
       });
 
       document.getElementById('ai-toggle').addEventListener('change', (e) => {
@@ -3198,17 +3217,56 @@
     }
 
     /* Premium blue (#489FDF) — reserved for premium-only UI, see the
-       Multi-Table Workspaces spec. */
-    .auth-btn-premium {
-      background: #489fdf;
-      border-color: #489fdf;
+       Multi-Table Workspaces spec. Styled as a glossy, reflective 3D
+       surface (gradient body + inset highlight/shadow + a soft gloss
+       sheen in ::before) so premium controls read as a distinct, tactile
+       "upgrade" affordance rather than a flat colored button.
+       .premium-cta-btn always pairs with .modal-save-btn in markup — the
+       compound selector is needed so this beats .modal-save-btn's own
+       (later, equal-specificity) background/color, which would otherwise
+       win the cascade and mask the gradient with flat orange. */
+    .auth-btn-premium,
+    .modal-save-btn.premium-cta-btn {
+      position: relative;
+      overflow: hidden;
+      background: linear-gradient(180deg, #8ecdf7 0%, #489fdf 50%, #2b6fb0 100%);
+      border-color: #2b6fb0;
       color: #fffefb;
+      text-shadow: 0 1px 1px rgba(11, 74, 120, 0.35);
+      box-shadow:
+        0 3px 8px rgba(43, 111, 176, 0.45),
+        inset 0 1px 0 rgba(255, 255, 255, 0.6),
+        inset 0 -3px 5px rgba(20, 60, 100, 0.35);
+      transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.1s;
     }
 
-    .auth-btn-premium:hover {
-      background: #3689c9;
-      border-color: #3689c9;
+    .auth-btn-premium::before,
+    .modal-save-btn.premium-cta-btn::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0.12) 45%, rgba(255, 255, 255, 0) 60%);
+      pointer-events: none;
+    }
+
+    .auth-btn-premium:hover,
+    .modal-save-btn.premium-cta-btn:hover {
+      background: linear-gradient(180deg, #a0d6f9 0%, #57abe8 50%, #2f78bd 100%);
+      border-color: #2f78bd;
       color: #fffefb;
+      transform: translateY(-1px);
+      box-shadow:
+        0 6px 14px rgba(43, 111, 176, 0.5),
+        inset 0 1px 0 rgba(255, 255, 255, 0.7),
+        inset 0 -3px 5px rgba(20, 60, 100, 0.4);
+    }
+
+    .auth-btn-premium:active,
+    .modal-save-btn.premium-cta-btn:active {
+      transform: translateY(0);
+      box-shadow:
+        0 1px 3px rgba(43, 111, 176, 0.4),
+        inset 0 2px 5px rgba(20, 60, 100, 0.5);
     }
 
     .auth-panel {
@@ -3431,12 +3489,13 @@
     }
 
     .premium-onetime-note {
-      background: #f3faff;
+      background: linear-gradient(180deg, #f5faff 0%, #e0f0fd 100%);
       border: 1px solid #b9dbf5;
       border-radius: 8px;
       padding: 10px 12px;
       color: #0b4a78;
       margin: 10px 0 0;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
     }
 
     .modal-subhead {
@@ -4526,16 +4585,7 @@
 
     .premium-icon {
       color: #489fdf;
-    }
-
-    .premium-cta-btn {
-      background: #489fdf;
-      border-color: #489fdf;
-      color: #fffefb;
-    }
-
-    .premium-cta-btn:hover {
-      background: #3689c9;
+      text-shadow: 0 1px 2px rgba(43, 111, 176, 0.35), 0 -1px 0 rgba(255, 255, 255, 0.5);
     }
 
     .premium-success-banner {
@@ -4615,11 +4665,12 @@
       letter-spacing: 0.04em;
       text-transform: uppercase;
       color: #0b4a78;
-      background: #dceefb;
+      background: linear-gradient(180deg, #eaf6ff 0%, #cde6fa 100%);
       border: 1px solid #b9dbf5;
       border-radius: 6px;
       padding: 3px 8px;
       margin-left: 10px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), inset 0 -1px 2px rgba(11, 74, 120, 0.12);
     }
 
     .add-table-btn {
@@ -5451,19 +5502,66 @@
       overflow-y: hidden;
     }
 
+    /* The editable textarea sits on top with its own text made transparent
+       (caret still visible via caret-color); a <pre> underneath, kept in
+       exact size/font/padding sync, renders the same text run through
+       highlightSQL() so keywords/strings/numbers show live color while
+       typing without giving up native textarea editing. */
+    .query-input-stack {
+      position: relative;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .query-highlight {
+      position: absolute;
+      inset: 0;
+      margin: 0;
+      font-family: 'JetBrains Mono', 'SF Mono', 'Monaco', 'Consolas', monospace;
+      font-size: 16px;
+      padding: 12px 16px;
+      line-height: 1.6;
+      color: #201515;
+      background: transparent;
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    .query-highlight code {
+      font: inherit;
+      color: inherit;
+      background: none;
+      padding: 0;
+    }
+
+    /* Light-background palette for the editor overlay — the shared
+       .sql-tok-* classes are tuned for the dark chat bubble background
+       (see below), so these more specific rules override them here. */
+    .query-highlight .sql-tok-keyword { color: #1958c7; font-weight: 700; }
+    .query-highlight .sql-tok-string { color: #9a5b00; }
+    .query-highlight .sql-tok-ident { color: #0f7a4d; }
+    .query-highlight .sql-tok-number { color: #7c3aed; }
+    .query-highlight .sql-tok-comment { color: #6b6459; font-style: italic; }
+
     #query-input {
       height: 120px;
       min-height: 120px;
       max-height: 400px;
+      width: 100%;
+      display: block;
       font-family: 'JetBrains Mono', 'SF Mono', 'Monaco', 'Consolas', monospace;
       font-size: 16px;
       padding: 12px 16px;
       border: none;
       resize: vertical;
-      background: #fffefb;
-      color: #201515;
+      background: transparent;
+      color: transparent;
+      caret-color: #201515;
       line-height: 1.6;
-      flex: 1;
+      position: relative;
+      z-index: 1;
       overflow-y: auto;
       overflow-x: hidden;
     }
@@ -6584,7 +6682,10 @@
               </div>
               <div class="editor-wrapper">
                 <div class="line-numbers" id="line-numbers">1</div>
-                <textarea id="query-input" placeholder="SELECT * FROM table_name&#10;WHERE column = 'value'&#10;ORDER BY column DESC&#10;LIMIT 100"></textarea>
+                <div class="query-input-stack">
+                  <pre class="query-highlight" id="query-highlight" aria-hidden="true"><code id="query-highlight-code"></code></pre>
+                  <textarea id="query-input" placeholder="SELECT * FROM table_name&#10;WHERE column = 'value'&#10;ORDER BY column DESC&#10;LIMIT 100" spellcheck="false"></textarea>
+                </div>
               </div>
               <div class="editor-actions">
                 <div class="editor-actions-left">
