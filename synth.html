@@ -67,12 +67,14 @@
 
     // ---- Multi-table workspace state ----
     // `tables` holds every table currently loaded into the shared `db`
-    // instance. `activeTableName` is the single source of truth for both
-    // "which table is the query editor/Table View pointed at" and "which
-    // table the AI defaults to for an ambiguous question" — the table-chip
-    // bar and the AI focus dropdown are just two views onto it.
+    // instance. `activeTableName` is which table the query editor/Table
+    // View is pointed at (table-chip bar). `focusedTableNames` is a
+    // separate, independent set: which table(s) the AI defaults to for an
+    // ambiguous question (the checkbox dropdown above chat) — a question
+    // that plainly needs other tables (or a join) isn't limited to it.
     let tables = [];              // [{ name, fileName, rowCount, columns }]
     let activeTableName = null;
+    let focusedTableNames = new Set();
 
     function slugifyTableName(filename) {
       let base = filename.replace(/\.[^/.]+$/, '')
@@ -632,6 +634,7 @@
               to_table: r.toTable,
               to_column: r.toColumn,
               confirmed: true,
+              cardinality: r.cardinality || null,
             }))
           );
           if (relErr) throw relErr;
@@ -1323,6 +1326,7 @@
         }
 
         activeTableName = tables[0].name;
+        focusedTableNames = new Set([activeTableName]);
 
         relationships = (relRows || []).map(r => ({
           id: `${r.from_table}.${r.from_column}|${r.to_table}.${r.to_column}`,
@@ -1332,6 +1336,7 @@
           toColumn: r.to_column,
           confirmed: true,
           manual: true,
+          cardinality: r.cardinality || null,
         }));
         rejectedRelationshipKeys = new Set();
 
@@ -1533,6 +1538,7 @@
         }
 
         activeTableName = loaded[0].name;
+        focusedTableNames = new Set([activeTableName]);
 
         if (loaded.length === 1) {
           statusEl.textContent = `${loaded[0].fileName} (${formatFileSize(files[0])}, ${loaded[0].rowCount.toLocaleString()} rows) → table "${loaded[0].name}"`;
@@ -1642,7 +1648,6 @@
       const addBtn = document.getElementById('add-table-btn');
       const badge = document.getElementById('workspace-badge');
       const focusRow = document.getElementById('chat-table-focus-row');
-      const focusSelect = document.getElementById('chat-table-focus');
 
       if (!tables.length) {
         bar.hidden = true;
@@ -1667,10 +1672,39 @@
       `).join('');
 
       focusRow.hidden = tables.length <= 1;
-      focusSelect.innerHTML = tables.map(t =>
-        `<option value="${t.name}"${t.name === activeTableName ? ' selected' : ''}>${t.name}</option>`
-      ).join('');
+      renderFocusDropdown();
     }
+
+    function renderFocusDropdown() {
+      const panel = document.getElementById('focus-dropdown-panel');
+      const label = document.getElementById('focus-dropdown-label');
+      if (!panel || !label) return;
+
+      panel.innerHTML = tables.map(t => `
+        <label class="focus-option">
+          <input type="checkbox" value="${t.name}" ${focusedTableNames.has(t.name) ? 'checked' : ''} onchange="toggleFocusTable('${t.name}', this.checked)">
+          ${t.name}
+        </label>
+      `).join('');
+
+      if (focusedTableNames.size === 0) label.textContent = 'None';
+      else if (focusedTableNames.size === tables.length) label.textContent = 'All tables';
+      else label.textContent = [...focusedTableNames].join(', ');
+    }
+
+    window.toggleFocusTable = function(name, checked) {
+      if (checked) focusedTableNames.add(name);
+      else focusedTableNames.delete(name);
+      renderFocusDropdown();
+    };
+
+    window.toggleFocusDropdown = function() {
+      const panel = document.getElementById('focus-dropdown-panel');
+      const btn = document.getElementById('focus-dropdown-btn');
+      const willOpen = panel.hidden;
+      panel.hidden = !willOpen;
+      btn.setAttribute('aria-expanded', String(willOpen));
+    };
 
     window.handleChipClick = function(event, name) {
       if (event.target.closest('.chip-rename') || event.target.isContentEditable) return;
@@ -1719,6 +1753,10 @@
       const entry = tables.find(t => t.name === oldName);
       entry.name = finalName;
       if (activeTableName === oldName) activeTableName = finalName;
+      if (focusedTableNames.has(oldName)) {
+        focusedTableNames.delete(oldName);
+        focusedTableNames.add(finalName);
+      }
 
       // Existing relationships (including confirmed ones) reference tables by
       // name — follow the rename so a confirmed FK doesn't silently vanish.
@@ -1750,7 +1788,8 @@
     // constraints, since real-world CSVs commonly have orphaned rows that
     // would break constraint enforcement on import.
 
-    let relationships = [];              // [{ id, fromTable, fromColumn, toTable, toColumn, confirmed, manual }]
+    let relationships = [];              // [{ id, fromTable, fromColumn, toTable, toColumn, confirmed, manual, cardinality }]
+                                          // cardinality: '1:1' | '1:M' | 'M:M' | '1:0' | '0:M' | null (unset until confirmed)
     let rejectedRelationshipKeys = new Set();
 
     function relationshipKey(r) {
@@ -1830,10 +1869,7 @@
     window.confirmRelationship = function(id) {
       const r = relationships.find(x => x.id === id);
       if (!r) return;
-      r.confirmed = true;
-      renderERD();
-      renderRelationshipList();
-      updateAIState();
+      openRelationshipTypeModal(r.fromTable, r.fromColumn, r.toTable, r.toColumn, r.id);
     };
 
     window.rejectRelationship = function(id) {
@@ -1862,17 +1898,152 @@
       const toTable = document.getElementById('manual-fk-to-table').value;
       const toColumn = document.getElementById('manual-fk-to-col').value;
       if (!fromTable || !fromColumn || !toTable || !toColumn) return;
+      openRelationshipTypeModal(fromTable, fromColumn, toTable, toColumn, null);
+    };
 
-      const r = { fromTable, fromColumn, toTable, toColumn };
-      const k = relationshipKey(r);
-      rejectedRelationshipKeys.delete(k);
-      if (relationships.some(x => relationshipKey(x) === k)) return;
+    // ---- Relationship type popup ----
+    // Shared by three entry points: dragging column -> column on the
+    // diagram, confirming an auto-suggested relationship, and the manual
+    // dropdown form above. Picking a type commits immediately.
 
-      relationships.push({ id: k, ...r, confirmed: true, manual: true });
+    let pendingRelationshipDraft = null; // { fromTable, fromColumn, toTable, toColumn, existingId }
+
+    function openRelationshipTypeModal(fromTable, fromColumn, toTable, toColumn, existingId) {
+      pendingRelationshipDraft = { fromTable, fromColumn, toTable, toColumn, existingId };
+      document.getElementById('relationship-type-path').textContent =
+        `${fromTable}.${fromColumn} → ${toTable}.${toColumn}`;
+      document.getElementById('relationship-type-modal').hidden = false;
+    }
+
+    window.closeRelationshipTypeModal = function() {
+      document.getElementById('relationship-type-modal').hidden = true;
+      pendingRelationshipDraft = null;
+    };
+
+    window.chooseRelationshipType = function(cardinality) {
+      if (!pendingRelationshipDraft) return;
+      const { fromTable, fromColumn, toTable, toColumn, existingId } = pendingRelationshipDraft;
+
+      if (existingId) {
+        const existing = relationships.find(x => x.id === existingId);
+        if (existing) {
+          existing.confirmed = true;
+          existing.cardinality = cardinality;
+        }
+      } else {
+        const r = { fromTable, fromColumn, toTable, toColumn };
+        const k = relationshipKey(r);
+        rejectedRelationshipKeys.delete(k);
+        const idx = relationships.findIndex(x => relationshipKey(x) === k);
+        if (idx >= 0) {
+          relationships[idx].confirmed = true;
+          relationships[idx].manual = true;
+          relationships[idx].cardinality = cardinality;
+        } else {
+          relationships.push({ id: k, ...r, confirmed: true, manual: true, cardinality });
+        }
+      }
+
+      document.getElementById('relationship-type-modal').hidden = true;
+      pendingRelationshipDraft = null;
       renderERD();
       renderRelationshipList();
       updateAIState();
     };
+
+    // ---- Drag-to-connect: mousedown on a column row, drag to another,
+    // release to open the type popup. Plain mouse events to match the rest
+    // of this file (no drag library, no framework).
+
+    let dragState = null; // { fromTable, fromColumn, canvas, colId }
+
+    window.startRelationshipDrag = function(event) {
+      event.preventDefault();
+      const sourceEl = event.currentTarget;
+      const fromTable = sourceEl.dataset.table;
+      const fromColumn = sourceEl.dataset.column;
+      const canvas = document.getElementById('erd-canvas');
+      const colId = (table, col) => `erd-col-${cssEscapeId(table)}-${cssEscapeId(col)}`;
+      if (!canvas || !sourceEl) return;
+
+      dragState = { fromTable, fromColumn, canvas, colId };
+      sourceEl.classList.add('drag-source');
+
+      document.addEventListener('mousemove', onRelationshipDragMove);
+      document.addEventListener('mouseup', onRelationshipDragEnd);
+    };
+
+    function hoveredColRow(x, y) {
+      const el = document.elementFromPoint(x, y);
+      return el ? el.closest('.erd-col-row') : null;
+    }
+
+    function onRelationshipDragMove(event) {
+      if (!dragState) return;
+      updateDragLine(event.clientX, event.clientY);
+
+      const hovered = hoveredColRow(event.clientX, event.clientY);
+      document.querySelectorAll('.erd-col-row.drag-hover-target').forEach(el => {
+        if (el !== hovered) el.classList.remove('drag-hover-target');
+      });
+      if (hovered && !hovered.classList.contains('drag-source')) {
+        hovered.classList.add('drag-hover-target');
+      }
+    }
+
+    function onRelationshipDragEnd(event) {
+      if (!dragState) return;
+      const { fromTable, fromColumn, canvas, colId } = dragState;
+
+      document.removeEventListener('mousemove', onRelationshipDragMove);
+      document.removeEventListener('mouseup', onRelationshipDragEnd);
+      document.getElementById(colId(fromTable, fromColumn))?.classList.remove('drag-source');
+      document.querySelectorAll('.erd-col-row.drag-hover-target').forEach(el => el.classList.remove('drag-hover-target'));
+      clearDragLine(canvas);
+      dragState = null;
+
+      const target = hoveredColRow(event.clientX, event.clientY);
+      if (!target) return;
+      const toTable = target.closest('.erd-table-box')?.dataset.table;
+      const toColumn = target.dataset.column;
+      if (!toTable || !toColumn) return;
+      if (toTable === fromTable && toColumn === fromColumn) return; // dropped on itself
+
+      openRelationshipTypeModal(fromTable, fromColumn, toTable, toColumn, null);
+    }
+
+    function updateDragLine(clientX, clientY) {
+      if (!dragState) return;
+      const { fromTable, fromColumn, canvas, colId } = dragState;
+      const svg = canvas.querySelector('.erd-svg-overlay');
+      const sourceEl = document.getElementById(colId(fromTable, fromColumn));
+      if (!svg || !sourceEl) return;
+
+      const canvasRect = canvas.getBoundingClientRect();
+      const sr = sourceEl.getBoundingClientRect();
+      const x1 = sr.left + sr.width / 2 - canvasRect.left;
+      const y1 = sr.top + sr.height / 2 - canvasRect.top;
+      const x2 = clientX - canvasRect.left;
+      const y2 = clientY - canvasRect.top;
+
+      let line = svg.querySelector('#erd-drag-line');
+      if (!line) {
+        line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.id = 'erd-drag-line';
+        line.setAttribute('stroke', '#ff4f00');
+        line.setAttribute('stroke-width', '2');
+        line.setAttribute('stroke-dasharray', '5 3');
+        svg.appendChild(line);
+      }
+      line.setAttribute('x1', x1);
+      line.setAttribute('y1', y1);
+      line.setAttribute('x2', x2);
+      line.setAttribute('y2', y2);
+    }
+
+    function clearDragLine(canvas) {
+      canvas?.querySelector('#erd-drag-line')?.remove();
+    }
 
     window.populateManualFkColumns = function(side) {
       const tableSel = document.getElementById(`manual-fk-${side}-table`);
@@ -1901,10 +2072,11 @@
       list.innerHTML = relationships.map(r => `
         <div class="relationship-row${r.confirmed ? ' confirmed' : ''}">
           <span class="rel-badge ${r.confirmed ? 'confirmed' : 'suggested'}">${r.confirmed ? 'Confirmed' : 'Suggested'}</span>
-          <span class="rel-path">${r.fromTable}.${r.fromColumn} &rarr; ${r.toTable}.${r.toColumn}</span>
+          ${r.confirmed && r.cardinality ? `<span class="rel-cardinality">${r.cardinality}</span>` : ''}
+          <span class="rel-path">${escapeHtml(r.fromTable)}.${escapeHtml(r.fromColumn)} &rarr; ${escapeHtml(r.toTable)}.${escapeHtml(r.toColumn)}</span>
           <span class="rel-actions">
             ${r.confirmed
-              ? `<button class="reject-btn" onclick="removeRelationship('${r.id}')">Remove</button>`
+              ? `<button class="edit-btn" onclick="confirmRelationship('${r.id}')">Edit</button><button class="reject-btn" onclick="removeRelationship('${r.id}')">Remove</button>`
               : `<button class="confirm-btn" onclick="confirmRelationship('${r.id}')">Confirm</button><button class="reject-btn" onclick="rejectRelationship('${r.id}')">Reject</button>`}
           </span>
         </div>
@@ -1926,9 +2098,9 @@
       const colId = (table, col) => `erd-col-${cssEscapeId(table)}-${cssEscapeId(col)}`;
 
       canvas.innerHTML = tables.map(t => `
-        <div class="erd-table-box" data-table="${t.name}">
-          <div class="erd-table-name">${t.name}</div>
-          ${t.columns.map(c => `<div class="erd-col-row" id="${colId(t.name, c)}">${c}</div>`).join('')}
+        <div class="erd-table-box" data-table="${escapeHtml(t.name)}">
+          <div class="erd-table-name">${escapeHtml(t.name)}</div>
+          ${t.columns.map(c => `<div class="erd-col-row" id="${colId(t.name, c)}" data-table="${escapeHtml(t.name)}" data-column="${escapeHtml(c)}" onmousedown="startRelationshipDrag(event)">${escapeHtml(c)}</div>`).join('')}
         </div>
       `).join('') + '<svg class="erd-svg-overlay"></svg>';
 
@@ -1962,7 +2134,16 @@
         const stroke = r.confirmed ? '#489fdf' : '#b3ada0';
         const dash = r.confirmed ? '' : 'stroke-dasharray="4 4"';
         const width = r.confirmed ? '2' : '1.5';
-        return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" stroke-width="${width}" ${dash} />`;
+        const line = `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" stroke-width="${width}" ${dash} />`;
+
+        if (!r.confirmed || !r.cardinality) return line;
+        const mx = (x1 + x2) / 2;
+        const my = (y1 + y2) / 2;
+        const label = `
+          <rect x="${mx - 15}" y="${my - 9}" width="30" height="18" rx="4" fill="#dceefb" stroke="#b9dbf5" />
+          <text x="${mx}" y="${my + 4}" font-size="10" font-family="'JetBrains Mono', monospace" font-weight="700" text-anchor="middle" fill="#0b4a78">${r.cardinality}</text>
+        `;
+        return line + label;
       }).join('');
 
       svg.innerHTML = lines;
@@ -1974,7 +2155,7 @@
     function relationshipHintsText() {
       const confirmed = relationships.filter(r => r.confirmed);
       if (!confirmed.length) return '';
-      const lines = confirmed.map(r => `- ${r.fromTable}.${r.fromColumn} -> ${r.toTable}.${r.toColumn}`).join('\n');
+      const lines = confirmed.map(r => `- ${r.fromTable}.${r.fromColumn} -> ${r.toTable}.${r.toColumn}${r.cardinality ? ` (${r.cardinality})` : ''}`).join('\n');
       return `\nConfirmed relationships in this workspace (use these joins when relevant):\n${lines}\n`;
     }
 
@@ -2050,8 +2231,9 @@
         return `You are a SQL query assistant. The user has loaded a CSV file into a SQLite database. Here is the schema:\n\n${tableSchema}\n\nYour job is to:\n1. ONLY respond with SQL queries that work on this exact table\n2. Use the table name "${activeTableName}"\n3. Format SQL queries in markdown code blocks with \`\`\`sql\n4. Keep explanations brief\n5. Never suggest anything other than SQL queries\n6. If asked about non-SQL topics, redirect to SQL help\n7. CRITICAL: Use proper SQL syntax - ensure spaces between all keywords\n8. Use single quotes for string literals (e.g., 'value' not "value")\n9. For not-equals use <> or != (both work in SQLite)\n10. Column names are case-sensitive - match them exactly from the schema\n11. All SQL must be valid SQLite syntax\n\nBe concise, practical, and syntactically perfect.`;
       }
 
-      const focusNote = activeTableName
-        ? `\nThe user currently has the "${activeTableName}" table focused in the UI. If a question is ambiguous about which table it refers to (e.g. "show me the first 10 rows"), default to "${activeTableName}". If the question clearly needs other tables (joins, cross-table aggregation), use whichever tables are actually needed regardless of focus.\n`
+      const focusList = [...focusedTableNames].filter(name => tables.some(t => t.name === name));
+      const focusNote = focusList.length
+        ? `\nThe user has ${focusList.length === 1 ? 'this table' : 'these tables'} focused in the UI: ${focusList.map(n => `"${n}"`).join(', ')}. If a question is ambiguous about which table it refers to (e.g. "show me the first 10 rows"), default to ${focusList.length === 1 ? 'that table' : 'those tables'}. If the question clearly needs other tables (joins, cross-table aggregation), use whichever tables are actually needed regardless of focus.\n`
         : '';
       const relationshipNote = relationshipHintsText();
 
@@ -4059,7 +4241,15 @@
       display: none;
     }
 
-    #chat-table-focus {
+    .focus-dropdown {
+      position: relative;
+      flex: none;
+    }
+
+    .focus-dropdown-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
       font-family: inherit;
       font-size: 12px;
       font-weight: 600;
@@ -4071,9 +4261,59 @@
       cursor: pointer;
     }
 
-    #chat-table-focus:focus-visible {
+    .focus-dropdown-btn:focus-visible {
       outline: 2px solid #489fdf;
       outline-offset: 1px;
+    }
+
+    .focus-dropdown-chevron {
+      transition: transform 0.15s;
+    }
+
+    .focus-dropdown-btn[aria-expanded="true"] .focus-dropdown-chevron {
+      transform: rotate(180deg);
+    }
+
+    .focus-dropdown-panel {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      background: #fffefb;
+      border: 1px solid #c5c0b1;
+      border-radius: 10px;
+      padding: 8px;
+      min-width: 160px;
+      max-height: 220px;
+      overflow-y: auto;
+      box-shadow: 0 4px 16px rgba(32, 21, 21, 0.12);
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .focus-dropdown-panel[hidden] {
+      display: none;
+    }
+
+    .focus-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12.5px;
+      font-weight: 500;
+      color: #201515;
+      padding: 5px 6px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .focus-option:hover {
+      background: #f5f3ec;
+    }
+
+    .focus-hint {
+      color: #939084;
     }
 
     /* ---- Dashboard (premium home base) ---- */
@@ -4410,6 +4650,97 @@
     .rel-actions button.confirm-btn:hover { background: #dceefb; }
 
     .rel-actions button.reject-btn:hover { border-color: #bc3a2c; color: #bc3a2c; }
+
+    .rel-actions button.edit-btn:hover { background: #f0ede3; }
+
+    .rel-cardinality {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      color: #0b4a78;
+      background: #dceefb;
+      border: 1px solid #b9dbf5;
+      border-radius: 5px;
+      padding: 2px 6px;
+      flex: none;
+    }
+
+    /* ---- Drag-to-connect (Relationships tab) ---- */
+
+    .erd-col-row {
+      cursor: grab;
+      user-select: none;
+      transition: background 0.1s;
+    }
+
+    .erd-col-row:hover {
+      background: #f5f3ec;
+    }
+
+    .erd-col-row.drag-source {
+      background: #dceefb;
+      color: #0b4a78;
+      cursor: grabbing;
+    }
+
+    .erd-col-row.drag-hover-target {
+      background: #489fdf;
+      color: #fffefb;
+    }
+
+    #erd-drag-line {
+      pointer-events: none;
+    }
+
+    /* ---- Relationship type popup ---- */
+
+    #relationship-type-path {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+    }
+
+    .rel-type-options {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+
+    .rel-type-btn {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      background: #fffefb;
+      border: 1px solid #c5c0b1;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-family: inherit;
+      cursor: pointer;
+      text-align: left;
+      transition: border-color 0.1s, background 0.1s;
+    }
+
+    .rel-type-btn:hover {
+      border-color: #489fdf;
+      background: #f3faff;
+    }
+
+    .rel-type-symbol {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: 13px;
+      color: #0b4a78;
+      background: #dceefb;
+      border-radius: 6px;
+      padding: 3px 8px;
+      flex: none;
+    }
+
+    .rel-type-desc {
+      font-size: 13px;
+      color: #605d52;
+    }
 
     .erd-manual-add {
       border-top: 1px solid #c5c0b1;
@@ -5426,6 +5757,33 @@
     </div>
   </div>
 
+  <div id="relationship-type-modal" class="modal-overlay" hidden>
+    <div class="modal modal-small">
+      <div class="delete-warning-title">Set relationship type</div>
+      <div class="delete-warning-body" id="relationship-type-path"></div>
+      <div class="rel-type-options" id="relationship-type-options">
+        <button class="rel-type-btn" onclick="chooseRelationshipType('1:1')">
+          <span class="rel-type-symbol">1:1</span><span class="rel-type-desc">One to one</span>
+        </button>
+        <button class="rel-type-btn" onclick="chooseRelationshipType('1:M')">
+          <span class="rel-type-symbol">1:M</span><span class="rel-type-desc">One to many</span>
+        </button>
+        <button class="rel-type-btn" onclick="chooseRelationshipType('M:M')">
+          <span class="rel-type-symbol">M:M</span><span class="rel-type-desc">Many to many</span>
+        </button>
+        <button class="rel-type-btn" onclick="chooseRelationshipType('1:0')">
+          <span class="rel-type-symbol">1:0</span><span class="rel-type-desc">One to optional</span>
+        </button>
+        <button class="rel-type-btn" onclick="chooseRelationshipType('0:M')">
+          <span class="rel-type-symbol">0:M</span><span class="rel-type-desc">Optional to many</span>
+        </button>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-cancel-btn" onclick="closeRelationshipTypeModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <div id="query-card-menu-popup" class="query-card-menu-popup" hidden>
     <button id="query-menu-edit-btn">Edit query</button>
     <button id="query-menu-delete-btn" class="danger">Delete query</button>
@@ -5608,9 +5966,16 @@
               </div>
             </div>
             <div id="chat-table-focus-row" class="chat-table-focus-row" hidden>
-              Focused table:
-              <select id="chat-table-focus" onchange="setActiveTable(this.value)"></select>
-              <span>Ambiguous questions default here; the AI can still join other tables</span>
+              <div class="focus-dropdown">
+                <button type="button" class="focus-dropdown-btn" id="focus-dropdown-btn" onclick="toggleFocusDropdown()" aria-expanded="false" aria-haspopup="true">
+                  AI focus: <span id="focus-dropdown-label">None</span>
+                  <svg class="focus-dropdown-chevron" width="10" height="7" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </button>
+                <div class="focus-dropdown-panel" id="focus-dropdown-panel" hidden></div>
+              </div>
+              <span class="focus-hint">Vague questions default to the checked table(s). To use several tables together, just ask a question that needs them (or a join), and the AI will use whichever tables it actually needs.</span>
             </div>
             <div id="chat-container">
               <div id="chat-messages">
