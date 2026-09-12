@@ -33,6 +33,13 @@
     let aiEnabled = false;
     let csvLoaded = false;
 
+    // ---- Output mode: SQL (every reply is a runnable query, today's
+    // behavior) vs General (plain-English answers about the data, no SQL
+    // forced). Persisted per-browser like saved queries, so it doesn't
+    // reset to SQL every reload.
+    const OUTPUT_MODE_KEY = 'synth_output_mode_v1';
+    let outputMode = 'sql';
+
     // ---- Cloud sync (optional) ----
     // Sign-in is entirely optional: Synth works fully offline/anonymously
     // with these left unconfigured. Fill in to enable "Sign in" + cloud
@@ -960,6 +967,32 @@
 
     window.closeHelpPanel = function() {
       document.getElementById('help-modal').hidden = true;
+    };
+
+    // ---- Landing footer: About / Terms of Service / Privacy Policy ----
+
+    window.openAboutModal = function() {
+      document.getElementById('about-modal').hidden = false;
+    };
+
+    window.closeAboutModal = function() {
+      document.getElementById('about-modal').hidden = true;
+    };
+
+    window.openTermsModal = function() {
+      document.getElementById('terms-modal').hidden = false;
+    };
+
+    window.closeTermsModal = function() {
+      document.getElementById('terms-modal').hidden = true;
+    };
+
+    window.openPrivacyModal = function() {
+      document.getElementById('privacy-modal').hidden = false;
+    };
+
+    window.closePrivacyModal = function() {
+      document.getElementById('privacy-modal').hidden = true;
     };
 
     // ---- Premium checkout (Stripe embedded Checkout Form) ----
@@ -2226,9 +2259,23 @@
     // Multi-table system prompt: the AI always sees every table's schema,
     // never just the focused one, so cross-table joins keep working
     // regardless of which table is selected in the chip bar / focus dropdown.
+    // Real instruction for off-topic input in SQL Mode, replacing the old
+    // toothless "redirect to SQL help" rule that gave the model no actual
+    // way to redirect — its most rule-compliant move was inventing a
+    // SELECT that echoed a conversational reply as a string literal.
+    const SQL_OFFTOPIC_RULE = 'If the question is not about the loaded data, do not write SQL for it. Reply with exactly one line, in plain text, no code fence: "I can only help with questions about your data — try asking about specific rows, columns, or aggregates."';
+
+    // General Mode still only ever gets schema text, never actual row
+    // values (db never leaves the browser) — rule 3 keeps it honest about
+    // that boundary instead of confabulating numbers.
+    const GENERAL_MODE_RULES = `You are a data analyst assistant. The user has loaded the schema above and wants plain-English answers, not SQL.\n1. Never write SQL or use \`\`\`sql code fences — describe things in words.\n2. Ground every answer in the actual schema/columns above; don't invent columns or guess at data you can't see.\n3. If the question needs an actual computed answer from the data itself (not just schema — "what's the average of X"), say plainly that you can't compute it without running a query, and suggest switching to SQL Mode to get the query for it.\n4. Keep answers concise — a few sentences, not an essay.`;
+
     function buildSystemPrompt() {
       if (tables.length <= 1) {
-        return `You are a SQL query assistant. The user has loaded a CSV file into a SQLite database. Here is the schema:\n\n${tableSchema}\n\nYour job is to:\n1. ONLY respond with SQL queries that work on this exact table\n2. Use the table name "${activeTableName}"\n3. Format SQL queries in markdown code blocks with \`\`\`sql\n4. Keep explanations brief\n5. Never suggest anything other than SQL queries\n6. If asked about non-SQL topics, redirect to SQL help\n7. CRITICAL: Use proper SQL syntax - ensure spaces between all keywords\n8. Use single quotes for string literals (e.g., 'value' not "value")\n9. For not-equals use <> or != (both work in SQLite)\n10. Column names are case-sensitive - match them exactly from the schema\n11. All SQL must be valid SQLite syntax\n\nBe concise, practical, and syntactically perfect.`;
+        if (outputMode === 'general') {
+          return `You are a data analyst assistant. The user has loaded a CSV file into a SQLite database. Here is the schema:\n\n${tableSchema}\n\n${GENERAL_MODE_RULES}`;
+        }
+        return `You are a SQL query assistant. The user has loaded a CSV file into a SQLite database. Here is the schema:\n\n${tableSchema}\n\nYour job is to:\n1. ONLY respond with SQL queries that work on this exact table\n2. Use the table name "${activeTableName}"\n3. Format SQL queries in markdown code blocks with \`\`\`sql\n4. Keep explanations brief\n5. Never suggest anything other than SQL queries\n6. ${SQL_OFFTOPIC_RULE}\n7. CRITICAL: Use proper SQL syntax - ensure spaces between all keywords\n8. Use single quotes for string literals (e.g., 'value' not "value")\n9. For not-equals use <> or != (both work in SQLite)\n10. Column names are case-sensitive - match them exactly from the schema\n11. All SQL must be valid SQLite syntax\n\nBe concise, practical, and syntactically perfect.`;
       }
 
       const focusList = [...focusedTableNames].filter(name => tables.some(t => t.name === name));
@@ -2237,7 +2284,38 @@
         : '';
       const relationshipNote = relationshipHintsText();
 
-      return `You are a SQL query assistant. The user has loaded multiple related tables into one SQLite database. Here is the schema for every table in the workspace:\n\n${tableSchema}\n${focusNote}${relationshipNote}\nYour job is to:\n1. ONLY respond with SQL queries that work on these exact tables\n2. Use the correct table name(s) from the schema above — never invent a table\n3. Several tables may share column names (id, name, status, etc.) — always qualify column names with a table alias once more than one table is involved, and pick the specific table's column the question actually refers to\n4. If a question requires data from more than one table, write a proper JOIN using the relationships implied by matching id columns (e.g. orders.customer_id -> customers.id)\n5. Format SQL queries in markdown code blocks with \`\`\`sql\n6. Keep explanations brief\n7. Never suggest anything other than SQL queries\n8. CRITICAL: Use proper SQL syntax - ensure spaces between all keywords\n9. Use single quotes for string literals (e.g., 'value' not "value")\n10. Column names are case-sensitive - match them exactly from the schema\n11. All SQL must be valid SQLite syntax\n\nBe concise, practical, and syntactically perfect.`;
+      if (outputMode === 'general') {
+        return `You are a data analyst assistant. The user has loaded multiple related tables into one SQLite database. Here is the schema for every table in the workspace:\n\n${tableSchema}\n${focusNote}${relationshipNote}\n${GENERAL_MODE_RULES}`;
+      }
+
+      return `You are a SQL query assistant. The user has loaded multiple related tables into one SQLite database. Here is the schema for every table in the workspace:\n\n${tableSchema}\n${focusNote}${relationshipNote}\nYour job is to:\n1. ONLY respond with SQL queries that work on these exact tables\n2. Use the correct table name(s) from the schema above — never invent a table\n3. Several tables may share column names (id, name, status, etc.) — always qualify column names with a table alias once more than one table is involved, and pick the specific table's column the question actually refers to\n4. If a question requires data from more than one table, write a proper JOIN using the relationships implied by matching id columns (e.g. orders.customer_id -> customers.id)\n5. Format SQL queries in markdown code blocks with \`\`\`sql\n6. Keep explanations brief\n7. Never suggest anything other than SQL queries\n8. ${SQL_OFFTOPIC_RULE}\n9. CRITICAL: Use proper SQL syntax - ensure spaces between all keywords\n10. Use single quotes for string literals (e.g., 'value' not "value")\n11. Column names are case-sensitive - match them exactly from the schema\n12. All SQL must be valid SQLite syntax\n\nBe concise, practical, and syntactically perfect.`;
+    }
+
+    // Updates state + toggle button UI + persists the preference. No other
+    // side effects — switching mid-conversation doesn't touch chatHistory
+    // or re-render the transcript, it only changes what system prompt the
+    // *next* message sends.
+    window.selectOutputMode = function(mode) {
+      outputMode = mode;
+      document.getElementById('output-mode-sql-btn').classList.toggle('is-active', mode === 'sql');
+      document.getElementById('output-mode-general-btn').classList.toggle('is-active', mode === 'general');
+      document.getElementById('output-mode-sql-btn').setAttribute('aria-selected', mode === 'sql');
+      document.getElementById('output-mode-general-btn').setAttribute('aria-selected', mode === 'general');
+      try {
+        localStorage.setItem(OUTPUT_MODE_KEY, mode);
+      } catch (err) {
+        console.error('Failed to persist output mode:', err);
+      }
+    };
+
+    function initOutputModePreference() {
+      let saved = 'sql';
+      try {
+        saved = localStorage.getItem(OUTPUT_MODE_KEY) === 'general' ? 'general' : 'sql';
+      } catch (err) {
+        console.error('Failed to read saved output mode:', err);
+      }
+      selectOutputMode(saved);
     }
 
     function updateAIState() {
@@ -2247,6 +2325,15 @@
       const chatSend = document.getElementById('chat-send');
       const chatMessages = document.getElementById('chat-messages');
 
+      // Same "no tables loaded" gate #ai-toggle already runs on: the mode
+      // toggle is meaningless until there's a schema to query.
+      const outputModeSqlBtn = document.getElementById('output-mode-sql-btn');
+      const outputModeGeneralBtn = document.getElementById('output-mode-general-btn');
+      if (outputModeSqlBtn && outputModeGeneralBtn) {
+        outputModeSqlBtn.disabled = !csvLoaded;
+        outputModeGeneralBtn.disabled = !csvLoaded;
+      }
+
       if (aiEnabled && csvLoaded) {
         toggleLabel.textContent = 'ON';
 
@@ -2254,9 +2341,10 @@
           const perTable = tables.map(t => schemaTextFor(t.name));
           tableSchema = perTable.map(t => t.text).join('\n\n');
 
-          const greeting = tables.length > 1
-            ? `I can help you write SQL across all ${tables.length} tables in this workspace: ${tables.map(t => t.name).join(', ')}.\n\nAsk me anything, including questions that span multiple tables. I'll write the join.`
-            : `I can help you write SQL queries for your data. I know your table has these columns:\n\n${perTable[0].columns.map(c => c.name).join(', ')}\n\nAsk me anything like "show me rows where X > 100" or "group by category and count".`;
+          // One mode-agnostic greeting — the old version was SQL-Mode-only
+          // copy ("I can help you write SQL...") that made no sense once
+          // General Mode existed too.
+          const greeting = 'Use SQL mode to get query responses to use. Use General mode to ask questions about your data.';
 
           chatMessages.innerHTML = `<div class="chat-message assistant">${greeting}</div>`;
 
@@ -2328,6 +2416,8 @@
         updateAIState();
       });
 
+      initOutputModePreference();
+
       const chatInputEl = document.getElementById('chat-input');
       chatInputEl.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -2356,6 +2446,10 @@
       });
 
       document.getElementById('load-query-list').addEventListener('scroll', closeAllQueryMenus);
+
+      document.getElementById('editor-results-resizer').addEventListener('mousedown', (e) => startPaneDrag(e, 'h'));
+      document.getElementById('workspace-resizer').addEventListener('mousedown', (e) => startPaneDrag(e, 'v'));
+      window.addEventListener('resize', clearPaneOverridesForMobile);
 
       document.getElementById('landing-email').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
@@ -2637,6 +2731,9 @@
 
         if (result.length === 0) {
           resultsEl.innerHTML = '<div class="empty">No results</div>';
+          viewStates.results.columns = [];
+          viewStates.results.rows = [];
+          setExportButtonVisible('results', false);
           return;
         }
 
@@ -2644,6 +2741,9 @@
 
       } catch (err) {
         resultsEl.innerHTML = '';
+        viewStates.results.columns = [];
+        viewStates.results.rows = [];
+        setExportButtonVisible('results', false);
         let errorMsg = err.message;
 
         // Add helpful suggestions for common errors
@@ -2676,12 +2776,20 @@
       tableview: { columns: [], rows: [], sort: {}, filter: {}, search: '', scrollBarId: 'table-view-scroll-top', scrollInnerId: 'table-view-scroll-top-inner' }
     };
 
+    function setExportButtonVisible(stateKey, visible) {
+      const btn = document.getElementById(stateKey === 'tableview' ? 'export-tableview-csv-btn' : 'export-results-csv-btn');
+      if (btn) btn.hidden = !visible;
+    }
+
     function renderTable(targetId, stateKey, result) {
       const target = document.getElementById(targetId);
       const state = viewStates[stateKey];
 
       if (result.length === 0 || !result[0].values.length) {
         target.innerHTML = '<div class="empty">No results</div>';
+        state.columns = [];
+        state.rows = [];
+        setExportButtonVisible(stateKey, false);
         return;
       }
 
@@ -2690,6 +2798,7 @@
       state.sort = {};
       state.filter = {};
       state.search = '';
+      setExportButtonVisible(stateKey, true);
 
       if (stateKey === 'tableview') {
         const searchInput = document.getElementById('table-search');
@@ -2699,36 +2808,35 @@
       updateTable(targetId, stateKey);
     }
 
-    function updateTable(targetId, stateKey) {
-      const target = document.getElementById(targetId);
+    // Applies a view's active per-column filters, search box, and sort to
+    // its raw rows — shared by the table renderer and CSV export, so
+    // exporting always matches exactly what's currently on screen.
+    function getVisibleRows(stateKey) {
       const state = viewStates[stateKey];
-      let filteredRows = [...state.rows];
+      let rows = [...state.rows];
 
-      // Apply per-column filters
       Object.keys(state.filter).forEach(colIndex => {
         const filterValue = state.filter[colIndex].toLowerCase();
         if (filterValue) {
-          filteredRows = filteredRows.filter(row => {
+          rows = rows.filter(row => {
             const cellValue = String(row[colIndex] ?? '').toLowerCase();
             return cellValue.includes(filterValue);
           });
         }
       });
 
-      // Apply the "search all columns" box (Table View only)
       if (state.search) {
         const term = state.search.toLowerCase();
-        filteredRows = filteredRows.filter(row =>
+        rows = rows.filter(row =>
           row.some(val => String(val ?? '').toLowerCase().includes(term))
         );
       }
 
-      // Apply sorting
       if (state.sort.column !== undefined) {
         const colIndex = state.sort.column;
         const direction = state.sort.direction;
 
-        filteredRows.sort((a, b) => {
+        rows = [...rows].sort((a, b) => {
           let aVal = a[colIndex];
           let bVal = b[colIndex];
 
@@ -2752,6 +2860,14 @@
           }
         });
       }
+
+      return rows;
+    }
+
+    function updateTable(targetId, stateKey) {
+      const target = document.getElementById(targetId);
+      const state = viewStates[stateKey];
+      const filteredRows = getVisibleRows(stateKey);
 
       let html = '<table><thead><tr>';
       state.columns.forEach((col, index) => {
@@ -2849,12 +2965,131 @@
         const result = db.exec(`SELECT * FROM "${activeTableName}"`);
         if (!result.length || !result[0].values.length) {
           document.getElementById('table-view-results').innerHTML = '<div class="empty">No data</div>';
+          viewStates.tableview.columns = [];
+          viewStates.tableview.rows = [];
+          setExportButtonVisible('tableview', false);
           return;
         }
         renderTable('table-view-results', 'tableview', result);
       } catch (err) {
         console.error('Table view render error:', err);
       }
+    }
+
+    // Exports exactly what's currently visible for a view (respecting its
+    // active filters/search/sort via getVisibleRows) as a downloaded CSV.
+    window.exportResultsCSV = function(stateKey) {
+      const state = viewStates[stateKey];
+      if (!state.columns.length) return;
+
+      const escapeCsvCell = (v) => {
+        const s = v === null || v === undefined ? '' : String(v);
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+
+      const rows = getVisibleRows(stateKey);
+      const lines = [state.columns.map(escapeCsvCell).join(',')];
+      rows.forEach(row => lines.push(row.map(escapeCsvCell).join(',')));
+      const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+
+      const filename = stateKey === 'tableview'
+        ? `${activeTableName || 'table'}.csv`
+        : 'query_results.csv';
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    };
+
+    // ---- Drag-to-resize panes: SQL editor <-> Query Results (height), and
+    // left pane <-> AI assistant (width). Plain mouse events, matching the
+    // drag-to-connect relationships feature. Session-only — not persisted
+    // across reloads. Inert below the 1024px breakpoint, where .workspace
+    // stacks into a single column (see .pane-resizer-v's [hidden] rule and
+    // the matching guard in startPaneDrag).
+
+    let paneDragState = null; // { type: 'h' | 'v', resizerEl, startX/startY, startHeight/startWidth }
+
+    function startPaneDrag(event, type) {
+      if (window.innerWidth <= 1024) return;
+      event.preventDefault();
+      const resizerEl = event.currentTarget;
+      resizerEl.classList.add('is-dragging');
+      document.body.classList.add(type === 'h' ? 'resizing-row' : 'resizing-col');
+
+      if (type === 'h') {
+        const editorSection = document.querySelector('.editor-section');
+        paneDragState = { type, resizerEl, startY: event.clientY, startHeight: editorSection.getBoundingClientRect().height };
+      } else {
+        const leftPane = document.querySelector('.left-pane');
+        paneDragState = { type, resizerEl, startX: event.clientX, startWidth: leftPane.getBoundingClientRect().width };
+      }
+
+      document.addEventListener('mousemove', onPaneDragMove);
+      document.addEventListener('mouseup', onPaneDragEnd);
+    }
+
+    function onPaneDragMove(event) {
+      if (!paneDragState) return;
+
+      if (paneDragState.type === 'h') {
+        const editorSection = document.querySelector('.editor-section');
+        const leftPane = document.querySelector('.left-pane');
+        const RESIZER_SIZE = 8;
+        // Matches the editor section's natural content height at the
+        // textarea's own min-height (label row + 120px textarea + the
+        // Run/Save/Load Query button row + padding) — going any smaller
+        // clips or scroll-hides the buttons instead of shrinking the query
+        // textarea, which is exactly the kind of breakage this needed to
+        // be tested for.
+        const MIN_EDITOR = 264;
+        const MIN_RESULTS = 140;
+
+        const dy = event.clientY - paneDragState.startY;
+        const leftPaneHeight = leftPane.getBoundingClientRect().height;
+        const maxHeight = Math.max(MIN_EDITOR, leftPaneHeight - RESIZER_SIZE - MIN_RESULTS);
+        const newHeight = Math.min(Math.max(paneDragState.startHeight + dy, MIN_EDITOR), maxHeight);
+        editorSection.style.flex = `0 0 ${newHeight}px`;
+      } else {
+        const workspace = document.querySelector('.workspace');
+        const RESIZER_SIZE = 8;
+        // Below this, the AI assistant header (label + Clear Session +
+        // the on/off toggle) no longer fits on one line even with
+        // flex-wrap, so keep both panes at least this wide.
+        const MIN_PANE = 340;
+
+        const dx = event.clientX - paneDragState.startX;
+        const workspaceWidth = workspace.getBoundingClientRect().width;
+        const maxWidth = Math.max(MIN_PANE, workspaceWidth - RESIZER_SIZE - MIN_PANE);
+        const newWidth = Math.min(Math.max(paneDragState.startWidth + dx, MIN_PANE), maxWidth);
+        workspace.style.gridTemplateColumns = `${newWidth}px ${RESIZER_SIZE}px 1fr`;
+      }
+    }
+
+    function onPaneDragEnd() {
+      if (!paneDragState) return;
+      paneDragState.resizerEl.classList.remove('is-dragging');
+      document.body.classList.remove('resizing-row', 'resizing-col');
+      paneDragState = null;
+      document.removeEventListener('mousemove', onPaneDragMove);
+      document.removeEventListener('mouseup', onPaneDragEnd);
+    }
+
+    // A resize crossing the 1024px breakpoint (e.g. shrinking the browser
+    // window after dragging) must drop these inline overrides — otherwise
+    // they'd outrank the mobile stacked-layout CSS, which relies on
+    // .workspace having exactly 2 grid items instead of 3.
+    function clearPaneOverridesForMobile() {
+      if (window.innerWidth > 1024) return;
+      const workspace = document.querySelector('.workspace');
+      const editorSection = document.querySelector('.editor-section');
+      if (workspace) workspace.style.gridTemplateColumns = '';
+      if (editorSection) editorSection.style.flex = '';
     }
 
     document.addEventListener('keydown', (e) => {
@@ -3041,8 +3276,50 @@
 
     .ai-header-actions {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
-      gap: 12px;
+      gap: 8px 12px;
+    }
+
+    /* ---- Output mode toggle (SQL / General) — same segmented-control
+       visual language as .landing-mode-toggle, sized to sit inline in the
+       AI panel's compact header row instead of the landing hero. ---- */
+
+    .output-mode-toggle {
+      display: inline-flex;
+      padding: 3px;
+      border: 1px solid #201515;
+      border-radius: 9999px;
+      background: #fffefb;
+    }
+
+    .output-mode-btn {
+      appearance: none;
+      border: none;
+      background: transparent;
+      color: #201515;
+      font-family: inherit;
+      font-size: 12.5px;
+      font-weight: 700;
+      letter-spacing: 0.1px;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      cursor: pointer;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+
+    .output-mode-btn.is-active {
+      background: #201515;
+      color: #fffefb;
+    }
+
+    .output-mode-btn:not(.is-active):not(:disabled):hover {
+      background: #f8f4f0;
+    }
+
+    .output-mode-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
     }
 
     .clear-session-btn {
@@ -3084,6 +3361,7 @@
       max-width: 90vw;
       max-height: 80vh;
       overflow-y: auto;
+      box-shadow: 0 24px 48px -16px rgba(32, 21, 21, 0.35), 0 0 0 1px rgba(32, 21, 21, 0.06);
     }
 
     .modal-header {
@@ -3127,14 +3405,24 @@
       background: #e64600;
     }
 
+    /* Every modal section renders as its own raised card (background +
+       border, no shadow of its own — the shadow lives on .modal so nested
+       cards don't stack shadows) so popups read as distinct objects
+       instead of one flat block of stacked text. */
     .modal-section {
-      margin-bottom: 20px;
+      margin-bottom: 12px;
+      padding: 14px 16px;
+      background: #f8f4f0;
+      border: 1px solid #ece7de;
+      border-radius: 12px;
+    }
+
+    .modal-section:last-child {
+      margin-bottom: 0;
     }
 
     .modal-section-signout {
-      margin-bottom: 0;
-      padding-top: 4px;
-      border-top: 1px solid #ece7de;
+      padding-top: 14px;
     }
 
     .settings-member-since {
@@ -3152,10 +3440,103 @@
     }
 
     .modal-subhead {
+      display: flex;
+      align-items: center;
+      gap: 8px;
       font-weight: 600;
       font-size: 14px;
       color: #605d52;
       margin-bottom: 8px;
+    }
+
+    .subhead-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      width: 22px;
+      height: 22px;
+      border-radius: 7px;
+      background: #ece7de;
+      font-size: 12px;
+      line-height: 1;
+    }
+
+    /* ---- Help modal: on/off toggle reference cards ---- */
+
+    .help-toggle-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 2px;
+    }
+
+    .help-toggle-card {
+      background: #fffefb;
+      border: 1px solid #ece7de;
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+
+    .help-toggle-name {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-weight: 700;
+      font-size: 13px;
+      color: #201515;
+      margin-bottom: 4px;
+    }
+
+    .help-toggle-onoff {
+      flex-shrink: 0;
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      color: #ff4f00;
+      background: #fff1e8;
+      border-radius: 9999px;
+      padding: 2px 8px;
+      white-space: nowrap;
+    }
+
+    .help-toggle-desc {
+      font-size: 12.5px;
+      line-height: 1.5;
+      color: #605d52;
+    }
+
+    @media (max-width: 560px) {
+      .help-toggle-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ---- Premium feature checklist (help modal + premium modal) ---- */
+
+    .premium-feature-list {
+      list-style: none;
+      margin: 4px 0 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .premium-feature-list li {
+      position: relative;
+      padding-left: 22px;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #201515;
+    }
+
+    .premium-feature-list li::before {
+      content: '\2713';
+      position: absolute;
+      left: 0;
+      top: 0;
+      color: #ff4f00;
+      font-weight: 700;
     }
 
     .cloud-list {
@@ -3689,6 +4070,72 @@
       color: #605d52;
     }
 
+    /* ---- Landing footer: About / Terms / Privacy ---- */
+
+    .landing-footer {
+      background: #fffefb;
+      border-top: 1px solid #c5c0b1;
+      padding: 28px 64px;
+      flex: 0 0 auto;
+    }
+
+    .landing-footer-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px 24px;
+    }
+
+    .landing-footer-brand {
+      font-weight: 700;
+      font-size: 15px;
+      color: #201515;
+    }
+
+    .landing-footer-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 24px;
+    }
+
+    .landing-footer-links button {
+      appearance: none;
+      border: none;
+      background: none;
+      padding: 0;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      color: #605d52;
+      cursor: pointer;
+      transition: color 0.15s ease;
+    }
+
+    .landing-footer-links button:hover {
+      color: #ff4f00;
+    }
+
+    .landing-footer-copyright {
+      font-size: 12px;
+      color: #939084;
+    }
+
+    /* ---- Legal modal content (About / Terms / Privacy) ---- */
+
+    .legal-updated {
+      font-size: 12px;
+      color: #939084;
+      margin: -8px 0 16px;
+    }
+
+    .legal-section-title {
+      font-weight: 700;
+      font-size: 14px;
+      color: #201515;
+      margin-bottom: 6px;
+    }
+
     @media (max-width: 900px) {
       .landing-split { grid-template-columns: 1fr; }
       .landing-panel { padding: 48px 24px; min-height: 420px; }
@@ -3698,6 +4145,8 @@
       .about-step { border-right: none; border-bottom: 1px solid #c5c0b1; padding: 0 0 24px; }
       .about-step + .about-step { padding-left: 0; padding-top: 24px; }
       .about-step:last-child { border-bottom: none; }
+      .landing-footer { padding: 24px; }
+      .landing-footer-inner { flex-direction: column; align-items: flex-start; }
     }
 
     /* ---- Loading transition (shown while a CSV is being parsed) ---- */
@@ -4872,7 +5321,7 @@
 
     .workspace {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr 8px 1fr;
       height: 100%;
       min-height: 0;
     }
@@ -4880,15 +5329,77 @@
     .left-pane {
       display: flex;
       flex-direction: column;
-      border-right: 1px solid #c5c0b1;
       min-width: 0;
       min-height: 0;
     }
 
+    /* ---- Drag-to-resize dividers (SQL editor / results, left pane /
+       AI assistant). Plain mouse events, same approach as the
+       drag-to-connect relationships feature. ---- */
+
+    .pane-resizer {
+      flex: none;
+      position: relative;
+      z-index: 5;
+    }
+
+    .pane-resizer::after {
+      content: '';
+      position: absolute;
+      background: #c5c0b1;
+      transition: background 0.15s;
+    }
+
+    .pane-resizer:hover::after,
+    .pane-resizer.is-dragging::after {
+      background: #ff4f00;
+    }
+
+    .pane-resizer-h {
+      height: 8px;
+      width: 100%;
+      cursor: row-resize;
+    }
+
+    .pane-resizer-h::after {
+      top: 50%;
+      left: 24px;
+      right: 24px;
+      height: 1px;
+      transform: translateY(-50%);
+    }
+
+    .pane-resizer-v {
+      width: 8px;
+      height: 100%;
+      cursor: col-resize;
+    }
+
+    .pane-resizer-v::after {
+      left: 50%;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      transform: translateX(-50%);
+    }
+
+    body.resizing-row,
+    body.resizing-row * {
+      cursor: row-resize !important;
+      user-select: none !important;
+    }
+
+    body.resizing-col,
+    body.resizing-col * {
+      cursor: col-resize !important;
+      user-select: none !important;
+    }
+
     .editor-section {
-      padding: 24px;
-      border-bottom: 1px solid #c5c0b1;
+      padding: 24px 24px 16px;
       flex: 0 0 auto;
+      overflow-y: auto;
+      min-height: 0;
     }
 
     .editor-label {
@@ -4900,8 +5411,10 @@
 
     .editor-label-row {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
       justify-content: space-between;
+      gap: 4px 12px;
       margin-bottom: 12px;
     }
 
@@ -4962,8 +5475,16 @@
     .editor-actions {
       margin-top: 1rem;
       display: flex;
+      flex-wrap: wrap;
       justify-content: space-between;
       align-items: center;
+      gap: 10px;
+    }
+
+    .run-btn,
+    .save-query-btn,
+    .load-query-btn {
+      white-space: nowrap;
     }
 
     .run-btn {
@@ -5043,12 +5564,25 @@
 
     .results-section {
       flex: 1;
-      padding: 24px;
+      padding: 16px 24px 24px;
       overflow: hidden;
       background: #fffefb;
       display: flex;
       flex-direction: column;
       min-height: 0;
+    }
+
+    .results-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .table-view-toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
     }
 
     .results-scroll-top {
@@ -5362,9 +5896,15 @@
 
     .ai-header {
       display: flex;
+      flex-wrap: wrap;
       justify-content: space-between;
       align-items: center;
+      gap: 8px 12px;
       margin-bottom: 12px;
+    }
+
+    .ai-header .section-label {
+      white-space: nowrap;
     }
 
     .section-label {
@@ -5607,8 +6147,15 @@
       }
 
       .left-pane {
-        border-right: none;
         border-bottom: 1px solid #c5c0b1;
+      }
+
+      /* Below the breakpoint the workspace grid stacks into exactly the 2
+         rows above (left-pane, preview-pane) — this resizer would become a
+         stray 3rd grid item and break that, so it's hidden here. The JS
+         drag handlers also refuse to start below this width. */
+      .pane-resizer-v {
+        display: none;
       }
 
       .upload-area .upload-wrapper {
@@ -5660,7 +6207,13 @@
         <button class="modal-close" onclick="closePremiumPanel()">&times;</button>
       </div>
       <div class="modal-section">
-        <p class="help-text">Multi-table workspaces, table renaming, cross-table AI queries, and relationship detection: everything in the Multi-Table Workspaces spec.</p>
+        <ul class="premium-feature-list">
+          <li>Multi-table workspaces — up to 10 tables in one workspace</li>
+          <li>Table renaming — give a table a cleaner name than its raw filename</li>
+          <li>Cross-table AI queries — the assistant writes joins across your tables</li>
+          <li>Relationship detection — auto-suggested foreign keys you confirm yourself</li>
+          <li>Dashboard — a home base listing every workspace you've saved to the cloud</li>
+        </ul>
         <p class="premium-onetime-note">&#10003; <strong>$9.99, paid once.</strong> Not a subscription, so there's nothing to cancel later.</p>
       </div>
       <div class="modal-section">
@@ -5723,11 +6276,11 @@
       </div>
       <button class="cloud-add-btn" onclick="closeCloudPanel(); document.getElementById('file-upload').click();">+ Add More Data</button>
       <div class="modal-section">
-        <div class="modal-subhead">Saved Workspaces</div>
+        <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#128193;</span> Saved Workspaces</div>
         <div id="cloud-datasets-list" class="cloud-list"></div>
       </div>
       <div class="modal-section">
-        <div class="modal-subhead">Saved Chat Sessions</div>
+        <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#128172;</span> Saved Chat Sessions</div>
         <div id="cloud-sessions-list" class="cloud-list"></div>
       </div>
     </div>
@@ -5740,28 +6293,60 @@
         <button class="modal-close" onclick="closeHelpPanel()">&times;</button>
       </div>
       <div class="modal-section">
-        <div class="modal-subhead">The basics</div>
+        <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#128190;</span> The basics</div>
         <p class="help-text">Upload a CSV and it loads into a real SQLite database running entirely in this browser tab. Nothing is sent to a server unless you sign in and choose to save it.</p>
       </div>
       <div class="modal-section">
-        <div class="modal-subhead">Table names</div>
+        <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#9999;</span> Table names</div>
         <p class="help-text">Each CSV loads into a table named after its file (click the pencil on a table chip to rename it). Write queries as <code>SELECT * FROM table_name ...</code>. The chip bar above the tabs always shows the current names.</p>
       </div>
       <div class="modal-section">
-        <div class="modal-subhead">Table View vs. Query Results</div>
-        <p class="help-text"><strong>Table View</strong> always shows the full contents of whichever table is selected in the chip bar. <strong>Query Results</strong> only shows the output of the last query you ran.</p>
+        <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#128279;</span> Multi-table workspaces &amp; relationships</div>
+        <p class="help-text"><strong>+ Add table</strong> builds a multi-table workspace (up to 10 tables) that the AI can join across. Open the <strong>Relationships</strong> tab to see auto-suggested foreign keys — matched by column name, shown dashed and grey — and confirm the real ones, or drag between two columns to connect them manually and pick a cardinality (1:1, 1:M, M:M, etc.). Only confirmed relationships (solid blue) are shared with the AI as join hints.</p>
       </div>
       <div class="modal-section">
-        <div class="modal-subhead">Uploading again</div>
-        <p class="help-text"><strong>Upload CSV</strong> starts a brand-new workspace and replaces everything currently loaded. <strong>+ Add table</strong> adds more files to the workspace you already have open, up to 10 tables. Save anything important first if you're signed in.</p>
+        <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#128202;</span> Table View vs. Query Results</div>
+        <p class="help-text"><strong>Table View</strong> always shows the full contents of whichever table is selected in the chip bar. <strong>Query Results</strong> only shows the output of the last query you ran. Both get a <strong>Download CSV</strong> button once there's data on screen — it exports exactly what's visible, including any active filter, search, or sort.</p>
       </div>
       <div class="modal-section">
-        <div class="modal-subhead">The AI assistant</div>
-        <p class="help-text">It only suggests SQL, it never runs a query for you. Click <strong>Use Query</strong> on any suggestion to drop it into the editor, then hit Run.</p>
+        <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#128260;</span> Uploading again</div>
+        <p class="help-text"><strong>Upload CSV</strong> starts a brand-new workspace and replaces everything currently loaded. <strong>+ Add table</strong> adds more files to the workspace you already have open instead. Save anything important first if you're signed in.</p>
       </div>
       <div class="modal-section">
-        <div class="modal-subhead">Saving queries</div>
+        <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#129302;</span> The AI assistant: SQL vs. General</div>
+        <p class="help-text">Switch modes anytime with the <strong>SQL / General</strong> toggle above the chat. <strong>SQL Mode</strong> only ever replies with a runnable query — click <strong>Use Query</strong> to drop it into the editor, then hit Run. <strong>General Mode</strong> answers in plain English instead, with no query generated (so no Use Query button, just the copy icon). Either way, an off-topic question gets a plain, honest answer instead of a made-up query. With more than one table loaded, use the <strong>AI focus</strong> dropdown to hint which table(s) an ambiguous question should default to — a question that clearly needs a join still works regardless of focus. Click <strong>&#8617; Reply</strong> under any answer to ask a follow-up with that answer quoted as context.</p>
+      </div>
+      <div class="modal-section">
+        <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#9881;</span> On/off toggles</div>
+        <div class="help-toggle-grid">
+          <div class="help-toggle-card">
+            <div class="help-toggle-name">AI Assistant <span class="help-toggle-onoff">ON / OFF</span></div>
+            <div class="help-toggle-desc">Top right of the AI panel. ON lets you chat with the assistant; OFF disables the chat box. Needs a CSV loaded first.</div>
+          </div>
+          <div class="help-toggle-card">
+            <div class="help-toggle-name">Output Mode <span class="help-toggle-onoff">SQL / General</span></div>
+            <div class="help-toggle-desc">Also above the chat. Switching only changes the <em>next</em> reply — your conversation so far stays exactly as it was.</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-section">
+        <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#128190;</span> Saving queries</div>
         <p class="help-text"><strong>Save Query</strong> and <strong>Load Query</strong> keep a personal list of queries for the current file, stored in this browser. They don't sync across devices.</p>
+      </div>
+      <div class="modal-section">
+        <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#9729;</span> Saved workspaces &amp; chat sessions</div>
+        <p class="help-text">Signed in on Normal Mode? <strong>Save to cloud</strong> and <strong>Save session</strong> (in the AI panel) store the current workspace and chat history to your account. Open <strong>Load Sessions</strong>, top right, to reopen anything you've saved, from any device. Lite Mode never touches the cloud — nothing here happens unless you sign in and click Save.</p>
+      </div>
+      <div class="modal-section">
+        <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#9733;</span> Premium features</div>
+        <ul class="premium-feature-list">
+          <li>Multi-table workspaces — up to 10 tables in one workspace, instead of one</li>
+          <li>Table renaming — give a table a cleaner name than its raw filename</li>
+          <li>Cross-table AI queries — the assistant writes joins across your tables</li>
+          <li>Relationship detection — auto-suggested foreign keys, confirmable in the Relationships tab</li>
+          <li>Dashboard — a home base listing every workspace you've saved to the cloud</li>
+        </ul>
+        <p class="premium-onetime-note">&#10003; <strong>$9.99, paid once.</strong> Not a subscription — nothing to cancel later.</p>
       </div>
     </div>
   </div>
@@ -5946,6 +6531,18 @@
         </div>
       </div>
     </section>
+
+    <footer class="landing-footer">
+      <div class="landing-footer-inner">
+        <div class="landing-footer-brand">Synth</div>
+        <nav class="landing-footer-links">
+          <button type="button" onclick="openAboutModal()">About</button>
+          <button type="button" onclick="openTermsModal()">Terms of Service</button>
+          <button type="button" onclick="openPrivacyModal()">Privacy Policy</button>
+        </nav>
+        <div class="landing-footer-copyright">&copy; 2026 Synth. All rights reserved.</div>
+      </div>
+    </footer>
   </div>
 
   <div id="loading-overlay" class="loading-overlay" hidden>
@@ -6001,8 +6598,13 @@
               </div>
             </div>
 
+            <div class="pane-resizer pane-resizer-h" id="editor-results-resizer" title="Drag to resize"></div>
+
             <div class="results-section">
-              <div class="section-label">Query Results</div>
+              <div class="results-header">
+                <div class="section-label">Query Results</div>
+                <button class="save-btn" id="export-results-csv-btn" hidden onclick="exportResultsCSV('results')">Download CSV</button>
+              </div>
               <div id="error"></div>
               <div id="results-scroll-top" class="results-scroll-top">
                 <div id="results-scroll-top-inner"></div>
@@ -6013,10 +6615,18 @@
             </div>
           </div>
 
+          <div class="pane-resizer pane-resizer-v" id="workspace-resizer" title="Drag to resize"></div>
+
           <div class="preview-pane">
             <div class="ai-header">
               <div class="section-label">AI SQL Assistant</div>
               <div class="ai-header-actions">
+                <div class="output-mode-toggle" role="tablist" aria-label="Output mode">
+                  <button type="button" class="output-mode-btn is-active" id="output-mode-sql-btn"
+                          onclick="selectOutputMode('sql')" role="tab" aria-selected="true" disabled>SQL</button>
+                  <button type="button" class="output-mode-btn" id="output-mode-general-btn"
+                          onclick="selectOutputMode('general')" role="tab" aria-selected="false" disabled>General</button>
+                </div>
                 <button id="save-session-btn" class="save-btn" hidden onclick="saveCurrentSession()">Save session</button>
                 <button id="clear-session-btn" class="clear-session-btn" onclick="clearChatSession()">Clear Session</button>
                 <label class="toggle-switch">
@@ -6059,7 +6669,10 @@
         <div class="table-view-panel">
           <div class="table-view-toolbar">
             <input type="text" id="table-search" placeholder="Search all columns...">
-            <div id="table-view-meta"></div>
+            <div class="table-view-toolbar-right">
+              <div id="table-view-meta"></div>
+              <button class="save-btn" id="export-tableview-csv-btn" hidden onclick="exportResultsCSV('tableview')">Download CSV</button>
+            </div>
           </div>
           <div id="table-view-scroll-top" class="results-scroll-top">
             <div id="table-view-scroll-top-inner"></div>
@@ -6129,6 +6742,123 @@
       <div class="modal-actions">
         <button class="modal-cancel-btn" onclick="closeSwitchWorkspaceModal()">Cancel</button>
         <button class="modal-save-btn premium-cta-btn" onclick="confirmSwitchWorkspace()">Open anyway</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="about-modal" class="modal-overlay" hidden>
+    <div class="modal">
+      <div class="modal-header">
+        <div class="section-label">About Synth</div>
+        <button class="modal-close" onclick="closeAboutModal()">&times;</button>
+      </div>
+      <div class="modal-section">
+        <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#128202;</span> What Synth is</div>
+        <p class="help-text">Synth is a browser-based tool for querying any CSV with real SQL or plain-English questions. Upload a file and it loads into an actual SQLite database running in your browser tab — no server-side database, no waiting on uploads.</p>
+      </div>
+      <div class="modal-section">
+        <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#128274;</span> Local-first, by default</div>
+        <p class="help-text">Lite Mode never touches a server — your file, your query, your browser, nothing else. Sign in with Normal Mode only if you want workspaces and chat sessions saved to the cloud so you can pick them up from another device.</p>
+      </div>
+      <div class="modal-section">
+        <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#129302;</span> SQL or plain English</div>
+        <p class="help-text">Write SQL yourself, or ask the built-in AI assistant. Switch anytime between SQL Mode (get a runnable query back) and General Mode (get a plain-English answer instead).</p>
+      </div>
+      <div class="modal-section">
+        <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#9733;</span> Premium</div>
+        <p class="help-text">A one-time $9.99 purchase unlocks multi-table workspaces, table renaming, cross-table AI joins, relationship detection, and the Dashboard. No subscription, nothing to cancel.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="terms-modal" class="modal-overlay" hidden>
+    <div class="modal">
+      <div class="modal-header">
+        <div class="section-label">Terms of Service</div>
+        <button class="modal-close" onclick="closeTermsModal()">&times;</button>
+      </div>
+      <div class="legal-updated">Last updated: September 12, 2026</div>
+      <div class="modal-section">
+        <div class="legal-section-title">1. Acceptance of terms</div>
+        <p class="help-text">By using Synth, you agree to these Terms. If you don't agree, don't use the service.</p>
+      </div>
+      <div class="modal-section">
+        <div class="legal-section-title">2. The service</div>
+        <p class="help-text">Synth lets you upload a CSV file, query it with SQL or an AI assistant, and optionally save your work to the cloud. Lite Mode requires no account and stores nothing outside your browser. Normal Mode requires a magic-link sign-in and can save workspaces and chat sessions to your account.</p>
+      </div>
+      <div class="modal-section">
+        <div class="legal-section-title">3. Premium purchases</div>
+        <p class="help-text">Premium is a one-time, non-recurring purchase that unlocks additional features (multi-table workspaces, table renaming, cross-table AI queries, relationship detection, and the Dashboard). Payments are processed by Stripe; we never see or store your card details. Purchases are non-refundable except where required by law.</p>
+      </div>
+      <div class="modal-section">
+        <div class="legal-section-title">4. The AI assistant</div>
+        <p class="help-text">SQL and answers generated by the AI assistant may be incorrect or incomplete. You're responsible for reviewing any query before running it and for verifying any answer before relying on it. The assistant is not professional, financial, or legal advice.</p>
+      </div>
+      <div class="modal-section">
+        <div class="legal-section-title">5. Acceptable use</div>
+        <p class="help-text">Don't upload data you don't have the right to use, don't use Synth to violate any law, and don't attempt to disrupt, reverse-engineer, or abuse the service or its infrastructure.</p>
+      </div>
+      <div class="modal-section">
+        <div class="legal-section-title">6. Your data</div>
+        <p class="help-text">You retain ownership of any data you upload. If you save data to the cloud, you grant us a limited license to store and process it solely to provide the service back to you. You can delete saved workspaces and sessions at any time from the Dashboard or Load Sessions panel.</p>
+      </div>
+      <div class="modal-section">
+        <div class="legal-section-title">7. Disclaimers &amp; limitation of liability</div>
+        <p class="help-text">Synth is provided "as is," without warranties of any kind. To the fullest extent permitted by law, we aren't liable for indirect, incidental, or consequential damages arising from your use of the service, including decisions made from AI-generated queries or answers.</p>
+      </div>
+      <div class="modal-section">
+        <div class="legal-section-title">8. Changes to these terms</div>
+        <p class="help-text">We may update these Terms from time to time. Continuing to use Synth after a change means you accept the updated Terms.</p>
+      </div>
+      <div class="modal-section">
+        <div class="legal-section-title">9. Contact</div>
+        <p class="help-text">Questions about these Terms? Reach us at <strong>support@example.com</strong>.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="privacy-modal" class="modal-overlay" hidden>
+    <div class="modal">
+      <div class="modal-header">
+        <div class="section-label">Privacy Policy</div>
+        <button class="modal-close" onclick="closePrivacyModal()">&times;</button>
+      </div>
+      <div class="legal-updated">Last updated: September 12, 2026</div>
+      <div class="modal-section">
+        <div class="legal-section-title">What we collect</div>
+        <p class="help-text">In Lite Mode: nothing. In Normal Mode: the email address you sign in with, plus any workspace (CSV data and table structure) or chat session you explicitly choose to save to the cloud.</p>
+      </div>
+      <div class="modal-section">
+        <div class="legal-section-title">How your data is processed</div>
+        <p class="help-text">Your CSV is parsed into a real SQLite database running entirely inside your browser tab, using WebAssembly. It never leaves your device unless you sign in and click Save — Lite Mode never contacts our servers at all.</p>
+      </div>
+      <div class="modal-section">
+        <div class="legal-section-title">The AI assistant &amp; third-party processing</div>
+        <p class="help-text">When you ask the AI assistant a question, that question plus your table's schema (column names and types only — never your actual row data) is sent to our AI provider to generate a response. If you paste real data into your own message, that text is sent as part of the request.</p>
+      </div>
+      <div class="modal-section">
+        <div class="legal-section-title">Payments</div>
+        <p class="help-text">Premium purchases are handled directly by Stripe. We receive confirmation that a payment succeeded, but never see or store your card number.</p>
+      </div>
+      <div class="modal-section">
+        <div class="legal-section-title">Cookies &amp; local storage</div>
+        <p class="help-text">Saved queries, your SQL/General mode preference, and your Lite/Normal mode choice are stored in your browser's local storage, on your device only. Signed-in sessions use a standard authentication cookie/token. We don't use third-party ad-tracking cookies.</p>
+      </div>
+      <div class="modal-section">
+        <div class="legal-section-title">Your choices &amp; data deletion</div>
+        <p class="help-text">You can delete any saved workspace or chat session yourself from the Dashboard or Load Sessions panel. To delete your account entirely, contact us and we'll remove your data.</p>
+      </div>
+      <div class="modal-section">
+        <div class="legal-section-title">Children's privacy</div>
+        <p class="help-text">Synth isn't directed at children under 13, and we don't knowingly collect data from them.</p>
+      </div>
+      <div class="modal-section">
+        <div class="legal-section-title">Changes to this policy</div>
+        <p class="help-text">We may update this Privacy Policy from time to time. Material changes will be reflected by updating the date above.</p>
+      </div>
+      <div class="modal-section">
+        <div class="legal-section-title">Contact</div>
+        <p class="help-text">Questions about this policy, or want your data deleted? Reach us at <strong>support@example.com</strong>.</p>
       </div>
     </div>
   </div>
