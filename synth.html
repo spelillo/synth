@@ -461,6 +461,13 @@
     // meant switching Lite -> Normal never re-locked the upload button.
     let normalModeConfirmed = false;
 
+    window.toggleLandingModeInfo = function() {
+      const btn = document.getElementById('landing-mode-info-btn');
+      const wrap = document.getElementById('landing-mode-compare-wrap');
+      const isOpen = wrap.classList.toggle('is-open');
+      btn.setAttribute('aria-expanded', isOpen);
+    };
+
     window.selectLandingMode = function(mode) {
       landingMode = mode;
       document.getElementById('landing-mode-lite-btn').classList.toggle('is-active', mode === 'lite');
@@ -2605,10 +2612,20 @@
       flex: 0 0 auto;
     }
 
+    .header-logo-link {
+      display: block;
+      line-height: 0;
+    }
+
     .header-logo {
       height: 40px;
       width: auto;
       display: block;
+      transition: opacity 0.15s ease;
+    }
+
+    .header-logo-link:hover .header-logo {
+      opacity: 0.8;
     }
 
     .header-right {
@@ -3080,9 +3097,17 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 10px;
+      gap: 12px;
       padding: 28px 24px 20px;
       background: #fffefb;
+    }
+
+    .landing-mode-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
     }
 
     .landing-mode-toggle {
@@ -3091,6 +3116,65 @@
       border: 1px solid #201515;
       border-radius: 9999px;
       background: #fffefb;
+    }
+
+    .landing-mode-info-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      appearance: none;
+      border: 1px solid transparent;
+      background: transparent;
+      color: #605d52;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 8px 14px;
+      border-radius: 9999px;
+      cursor: pointer;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+
+    .landing-mode-info-btn:hover {
+      background: #f8f4f0;
+      color: #201515;
+    }
+
+    .landing-mode-info-btn[aria-expanded="true"] {
+      color: #201515;
+      background: #f8f4f0;
+    }
+
+    .landing-mode-info-chevron {
+      transition: transform 0.2s ease;
+      flex-shrink: 0;
+    }
+
+    .landing-mode-info-btn[aria-expanded="true"] .landing-mode-info-chevron {
+      transform: rotate(180deg);
+    }
+
+    .landing-mode-compare-wrap {
+      display: grid;
+      grid-template-rows: 0fr;
+      width: 100%;
+      transition: grid-template-rows 0.25s ease;
+    }
+
+    .landing-mode-compare-wrap.is-open {
+      grid-template-rows: 1fr;
+    }
+
+    .landing-mode-compare-inner {
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .landing-mode-compare-wrap,
+      .landing-mode-info-chevron {
+        transition: none;
+      }
     }
 
     .landing-mode-btn {
@@ -5100,7 +5184,9 @@
 </head>
 <body>
   <div class="header">
-    <img src="synth-cream-orangediscs.png" alt="Synth" class="header-logo">
+    <a href="/" class="header-logo-link" title="Back to home">
+      <img src="synth-cream-orangediscs.png" alt="Synth" class="header-logo">
+    </a>
     <div class="header-right">
       <div class="auth-area">
         <button id="go-premium-btn" class="auth-btn auth-btn-premium" onclick="openPremiumPanel()">Go Premium</button>
@@ -5298,30 +5384,43 @@
 
   <div id="landing-view">
     <div class="landing-mode-bar">
-      <div class="landing-mode-toggle" role="tablist" aria-label="Choose how to start">
-        <button type="button" class="landing-mode-btn is-active" id="landing-mode-lite-btn" onclick="selectLandingMode('lite')" role="tab" aria-selected="true">Lite Mode</button>
-        <button type="button" class="landing-mode-btn" id="landing-mode-normal-btn" onclick="selectLandingMode('normal')" role="tab" aria-selected="false">Normal Mode</button>
+      <div class="landing-mode-row">
+        <div class="landing-mode-toggle" role="tablist" aria-label="Choose how to start">
+          <button type="button" class="landing-mode-btn is-active" id="landing-mode-lite-btn" onclick="selectLandingMode('lite')" role="tab" aria-selected="true">Lite Mode</button>
+          <button type="button" class="landing-mode-btn" id="landing-mode-normal-btn" onclick="selectLandingMode('normal')" role="tab" aria-selected="false">Normal Mode</button>
+        </div>
+        <button type="button" class="landing-mode-info-btn" id="landing-mode-info-btn" onclick="toggleLandingModeInfo()" aria-expanded="false" aria-controls="landing-mode-compare-wrap">
+          More info
+          <svg class="landing-mode-info-chevron" width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
       </div>
-      <div class="landing-mode-compare active-lite" id="landing-mode-compare">
-        <div class="lmc-row lmc-row-head">
-          <div class="lmc-cell lmc-cell-label"></div>
-          <div class="lmc-cell lmc-cell-lite">Lite Mode</div>
-          <div class="lmc-cell lmc-cell-normal">Normal Mode</div>
-        </div>
-        <div class="lmc-row">
-          <div class="lmc-cell lmc-cell-label">Account</div>
-          <div class="lmc-cell lmc-cell-lite" data-mode-label="Lite Mode: ">No account needed</div>
-          <div class="lmc-cell lmc-cell-normal" data-mode-label="Normal Mode: ">Create an account to save your history</div>
-        </div>
-        <div class="lmc-row">
-          <div class="lmc-cell lmc-cell-label">Session storage</div>
-          <div class="lmc-cell lmc-cell-lite" data-mode-label="Lite Mode: ">Nothing stored beyond this browser session</div>
-          <div class="lmc-cell lmc-cell-normal" data-mode-label="Normal Mode: ">Save datasets and chat sessions across browser sessions and devices</div>
-        </div>
-        <div class="lmc-row">
-          <div class="lmc-cell lmc-cell-label">Data security</div>
-          <div class="lmc-cell lmc-cell-lite" data-mode-label="Lite Mode: ">Nothing touches our cloud or database. Safety first.</div>
-          <div class="lmc-cell lmc-cell-normal" data-mode-label="Normal Mode: ">Saved data is stored securely in the cloud. AI conversations stay private and are never shared publicly.</div>
+
+      <div class="landing-mode-compare-wrap" id="landing-mode-compare-wrap">
+        <div class="landing-mode-compare-inner">
+          <div class="landing-mode-compare active-lite" id="landing-mode-compare">
+            <div class="lmc-row lmc-row-head">
+              <div class="lmc-cell lmc-cell-label"></div>
+              <div class="lmc-cell lmc-cell-lite">Lite Mode</div>
+              <div class="lmc-cell lmc-cell-normal">Normal Mode</div>
+            </div>
+            <div class="lmc-row">
+              <div class="lmc-cell lmc-cell-label">Account</div>
+              <div class="lmc-cell lmc-cell-lite" data-mode-label="Lite Mode: ">No account needed</div>
+              <div class="lmc-cell lmc-cell-normal" data-mode-label="Normal Mode: ">Create an account to save your history</div>
+            </div>
+            <div class="lmc-row">
+              <div class="lmc-cell lmc-cell-label">Session storage</div>
+              <div class="lmc-cell lmc-cell-lite" data-mode-label="Lite Mode: ">Nothing stored beyond this browser session</div>
+              <div class="lmc-cell lmc-cell-normal" data-mode-label="Normal Mode: ">Save datasets and chat sessions across browser sessions and devices</div>
+            </div>
+            <div class="lmc-row">
+              <div class="lmc-cell lmc-cell-label">Data security</div>
+              <div class="lmc-cell lmc-cell-lite" data-mode-label="Lite Mode: ">Nothing touches our cloud or database. Safety first.</div>
+              <div class="lmc-cell lmc-cell-normal" data-mode-label="Normal Mode: ">Saved data is stored securely in the cloud. AI conversations stay private and are never shared publicly.</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
