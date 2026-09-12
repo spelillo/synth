@@ -2,6 +2,18 @@
 
 This is the single source of truth for what's left before Premium checkout can go live. Synth had no existing Stripe code, so this was a from-scratch integration (Scenario B) using an embedded Checkout Form (Stripe-hosted iframe via `initCheckoutFormSdk`), not a redirect-based Checkout.
 
+## Checkout reconfigured (Scenario A update)
+
+The checkout was re-configured in Stripe's Checkout Studio and re-synced against the existing `stripe.checkout.sessions.create(...)` call in [api/create-checkout-session.js](api/create-checkout-session.js) (Scenario A — an existing call was found, so only its parameters were updated, not the surrounding code):
+
+- **Added** `phone_number_collection: { enabled: false }` and `automatic_tax: { enabled: false }` — newly present in the Checkout Studio config, weren't set before.
+- **`payment_method_collection`** (Checkout Studio value: `"if_required"`) was intentionally **not** added — it's only valid in `mode: "subscription"`, and this checkout stays `mode: "payment"` (a one-time charge).
+- **API version** bumped to `2026-03-25.dahlia; custom_checkout_payment_form_preview=v1` in both [api/create-checkout-session.js](api/create-checkout-session.js) and [api/stripe-webhook.js](api/stripe-webhook.js), per the new integration instructions (was `2026-08-26.dahlia; ...`).
+- **`mode: "payment"`** and **`line_items`** (the real `price_1UEAIYRqXDpXXBnZ1F8tb0r7`) were left untouched — Checkout Studio treats these as placeholders to be replaced only when missing/placeholder-like, and this app already has real, correct values here.
+- **Judgment call — `return_url` and `client_reference_id` were kept**, even though neither appears in Checkout Studio's field list. Both predate this reconfiguration and are load-bearing: `return_url` is required for a `payment`-mode Checkout Session's `confirm()` to work (some payment methods redirect away and back — 3D Secure, wallets); `client_reference_id` is how the webhook knows which Supabase user to grant premium to. Removing either would silently break checkout or premium-granting, and neither is a Checkout Studio "appearance/behavior" knob — they're integration-specific wiring outside that config's scope, so they were left alone rather than deleted per a literal reading of "remove parameters absent from the field intents."
+
+Part 2 (client-side) required no changes — [synth.html](synth.html) already loads `stripe.js` from the `dahlia` build, initializes with `betas: ['custom_checkout_payment_form_1']`, posts to an endpoint that returns `{ client_secret }` as JSON, and wires `initCheckoutFormSdk` → `createForm` → `mount` → `loadActions` → `confirm` exactly per spec.
+
 ## Status: live and working in test mode
 
 Checkout is fully deployed and verified at `https://vercel-nine-zeta-17.vercel.app` — real Stripe keys, a real Price, a real webhook endpoint, all wired up. Nothing left in "Values to Replace."
@@ -35,15 +47,15 @@ These parameters were configured in Checkout Studio and are already set correctl
 
 | Parameter | Value |
 |-----------|-------|
-| `mode` | `"payment"` — a one-time charge. If premium should actually renew, change this to `"subscription"` and re-add `payment_method_collection: "always"` (only valid in subscription mode). |
+| `mode` | `"payment"` — a one-time charge. If premium should actually renew, change this to `"subscription"` and re-add `payment_method_collection: "if_required"` (only valid in subscription mode). |
 | `ui_mode` | `"form"` (Stripe SDK `^22.6.2` is ≥ 21.0.0, so `"form"` is correct — see `package.json`) |
 | `billing_address_collection` | `"auto"` |
+| `phone_number_collection` | `{ enabled: false }` |
+| `automatic_tax` | `{ enabled: false }` |
 | `submit_type` | `"auto"` |
 | `integration_identifier` | `"custom_embedded_web_0002"` |
 
-The Stripe SDK is pinned to API version `2026-08-26.dahlia; custom_checkout_payment_form_preview=v1` (required for the embedded Checkout Form beta) in both [api/create-checkout-session.js](api/create-checkout-session.js) and [api/stripe-webhook.js](api/stripe-webhook.js).
-
-Note: the original generic integration template also included `phone_number_collection: {enabled: false}`, `automatic_tax: {enabled: false}`, and (in subscription mode) `payment_method_collection: "always"`. Your actual Checkout Studio configuration doesn't include the first two at all, so they were removed rather than guessed at.
+The Stripe SDK is pinned to API version `2026-03-25.dahlia; custom_checkout_payment_form_preview=v1` (required for the embedded Checkout Form beta) in both [api/create-checkout-session.js](api/create-checkout-session.js) and [api/stripe-webhook.js](api/stripe-webhook.js).
 
 ## Setup and Next Steps
 

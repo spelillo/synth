@@ -10,7 +10,7 @@ import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: '2026-08-26.dahlia; custom_checkout_payment_form_preview=v1',
+  apiVersion: '2026-03-25.dahlia; custom_checkout_payment_form_preview=v1',
 });
 
 const supabaseAdmin = (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY)

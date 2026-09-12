@@ -13,7 +13,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   // Required for the embedded Checkout Form (initCheckoutFormSdk) used in
   // synth.html — do not change without also updating the client. Pulled
   // directly from the checkout configured in Stripe's Checkout Studio.
-  apiVersion: '2026-08-26.dahlia; custom_checkout_payment_form_preview=v1',
+  apiVersion: '2026-03-25.dahlia; custom_checkout_payment_form_preview=v1',
 });
 
 export default async function handler(req, res) {
@@ -48,7 +48,7 @@ export default async function handler(req, res) {
     // Parameters below match the checkout configured in Stripe's Checkout
     // Studio exactly (mode: "payment" — a one-time charge, not a
     // subscription). If premium should actually renew, change `mode` to
-    // "subscription" here and re-add `payment_method_collection: "always"`
+    // "subscription" here and re-add `payment_method_collection: "if_required"`
     // — it's only valid in subscription mode.
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
@@ -60,6 +60,8 @@ export default async function handler(req, res) {
       // Synth Premium — $9.99 one-time (price_1UEAIYRqXDpXXBnZ1F8tb0r7, test mode)
       line_items: [{ price: 'price_1UEAIYRqXDpXXBnZ1F8tb0r7', quantity: 1 }],
       billing_address_collection: 'auto',
+      phone_number_collection: { enabled: false },
+      automatic_tax: { enabled: false },
       submit_type: 'auto',
       integration_identifier: 'custom_embedded_web_0002',
     });

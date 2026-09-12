@@ -3,7 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Synth</title>
+  <title>Synth: Query any CSV with SQL or plain English</title>
+  <meta name="description" content="Upload a CSV and query it with real SQL or plain-English AI questions. It runs as a local SQLite database right in your browser tab. No sign-in required to try it.">
+  <meta property="og:title" content="Synth: Query any CSV with SQL or plain English">
+  <meta property="og:description" content="Upload a CSV and query it with real SQL or plain-English AI questions. It runs as a local SQLite database right in your browser tab.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="synth-cream-orangediscs.png">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" href="synthfavicon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -155,22 +162,21 @@
 
     function handleAuthChange(session) {
       currentUser = session?.user || null;
-      const signedOutEl = document.getElementById('auth-signed-out');
-      const signedInEl = document.getElementById('auth-signed-in');
       const signInBtn = document.getElementById('sign-in-btn');
 
       if (currentUser) {
         signInBtn.textContent = currentUser.email;
-        signedOutEl.hidden = true;
-        signedInEl.hidden = false;
+        signInBtn.title = 'Account settings';
+        // Signed in — the dropdown only ever holds the signed-out sign-in
+        // form, so there's nothing for it to show now. Clicking the email
+        // goes straight to Settings instead (see toggleAuthPanel).
+        document.getElementById('auth-panel').hidden = true;
         document.getElementById('my-projects-btn').hidden = false;
-        document.getElementById('auth-user-email').textContent = currentUser.email;
         confirmLandingSignIn(currentUser.email);
         refreshPremiumStatus();
       } else {
         signInBtn.textContent = 'Sign in';
-        signedOutEl.hidden = false;
-        signedInEl.hidden = true;
+        signInBtn.title = '';
         document.getElementById('my-projects-btn').hidden = true;
         isPremium = false;
         updatePremiumUI();
@@ -211,6 +217,11 @@
     window.openSettingsPanel = function() {
       if (!currentUser) return;
       document.getElementById('settings-email').textContent = currentUser.email;
+      const memberSinceEl = document.getElementById('settings-member-since');
+      const joined = currentUser.created_at ? new Date(currentUser.created_at) : null;
+      memberSinceEl.textContent = joined
+        ? `Member since ${joined.toLocaleDateString(undefined, { year: 'numeric', month: 'long' })}`
+        : '';
       renderSettingsPremiumRow();
       document.getElementById('settings-modal').hidden = false;
     };
@@ -223,8 +234,11 @@
       const row = document.getElementById('settings-premium-row');
       if (!row) return;
       row.innerHTML = isPremium
-        ? `<span class="workspace-badge">Premium</span> <button class="auth-btn" style="margin-left:10px" onclick="openCancelPremiumModal()">Cancel Premium</button>`
-        : `<span class="help-text" style="margin:0">Free — <button class="auth-btn auth-btn-premium" style="display:inline-block;padding:4px 12px;font-size:13px" onclick="closeSettingsPanel(); openPremiumPanel();">Go Premium</button></span>`;
+        ? `<span class="workspace-badge">Premium</span>
+           <p class="help-text" style="margin:8px 0">Multi-table workspaces, table renaming, cross-table AI queries, and relationship detection. It's a one-time purchase, so nothing renews and there's nothing to cancel on Stripe's side.</p>
+           <button class="auth-btn" onclick="openCancelPremiumModal()">Cancel Premium</button>`
+        : `<p class="help-text" style="margin:0 0 10px">Free plan: single-table workspaces. Upgrade for multi-table workspaces, table renaming, cross-table AI queries, and relationship detection.</p>
+           <button class="auth-btn auth-btn-premium" onclick="closeSettingsPanel(); openPremiumPanel();">Go Premium ($9.99 once)</button>`;
     }
 
     window.openCancelPremiumModal = function() {
@@ -263,6 +277,12 @@
     }
 
     window.toggleAuthPanel = function() {
+      // Signed in: the header button is the user's email, and there's
+      // nothing left for the dropdown to show — go straight to Settings.
+      if (currentUser) {
+        openSettingsPanel();
+        return;
+      }
       if (!sb) {
         alert('Cloud sync is not configured yet. Set SUPABASE_URL / SUPABASE_ANON_KEY in synth.html.');
         return;
@@ -337,7 +357,7 @@
         return;
       }
 
-      msgEl.innerHTML = `Check your email for a sign-in link. This page unlocks itself the moment you click it — on this device or any other — or <a href="#" onclick="landingRecheckSession(); return false;">check again</a> once you have.`;
+      msgEl.innerHTML = `Check your email for a sign-in link. This page unlocks itself the moment you click it, on this device or any other, or <a href="#" onclick="landingRecheckSession(); return false;">check again</a> once you have.`;
       showLandingPending();
       watchLandingGate(landingGateId);
     };
@@ -393,7 +413,7 @@
       const { data: { session } } = await sb.auth.getSession();
       handleAuthChange(session);
       if (!session) {
-        msgEl.textContent = 'Still waiting — click the link in your email (any device), then check again.';
+        msgEl.textContent = 'Still waiting. Click the link in your email on any device, then check again.';
       }
     };
 
@@ -414,7 +434,7 @@
       const emailInput = document.getElementById('landing-email');
       if (emailInput && !emailInput.value.trim()) emailInput.value = email;
 
-      showLandingConnected(`Connected — signed in as ${email}.`);
+      showLandingConnected(`Connected. Signed in as ${email}.`);
     }
 
     function confirmLandingGateConfirmed() {
@@ -423,7 +443,7 @@
       normalModeConfirmed = true;
       stopWatchingLandingGate();
       unlockLandingUpload();
-      showLandingConnected('Connected — the link was clicked.');
+      showLandingConnected('Connected. The link was clicked.');
     }
 
     function showLandingConnected(text) {
@@ -752,7 +772,7 @@
       }
 
       if (!workspaces || !workspaces.length) {
-        body.innerHTML = '<div class="empty">No saved workspaces yet — upload a CSV, then hit "Save to cloud" to see it here.</div>';
+        body.innerHTML = '<div class="empty">No saved workspaces yet. Upload a CSV, then hit "Save to cloud" to see it here.</div>';
         return;
       }
 
@@ -953,7 +973,7 @@
       const statusEl = document.getElementById('premium-checkout-status');
 
       if (!stripeClient) {
-        statusEl.textContent = 'Checkout isn\'t configured yet — set a real Stripe publishable key (see STRIPE_INTEGRATION_TODO.md).';
+        statusEl.textContent = 'Checkout isn\'t configured yet. Set a real Stripe publishable key (see STRIPE_INTEGRATION_TODO.md).';
         return;
       }
 
@@ -1537,7 +1557,7 @@
         }
 
         if (files.length > room) {
-          statusEl.textContent = `Added ${loaded.length} table(s) — ${files.length - room} skipped, workspace cap is ${MAX_TABLES_PER_WORKSPACE} tables`;
+          statusEl.textContent = `Added ${loaded.length} table(s), ${files.length - room} skipped (workspace cap is ${MAX_TABLES_PER_WORKSPACE} tables)`;
         } else {
           statusEl.textContent = `Added ${loaded.map(t => t.name).join(', ')}`;
         }
@@ -1660,7 +1680,7 @@
 
       if (collision) {
         const statusEl = document.getElementById('file-info');
-        statusEl.textContent = `"${proposedName}" was already taken — renamed to "${finalName}"`;
+        statusEl.textContent = `"${proposedName}" was already taken, renamed to "${finalName}"`;
       }
 
       renderTableChips();
@@ -1823,7 +1843,7 @@
     function renderRelationshipList() {
       const list = document.getElementById('relationship-list');
       if (!relationships.length) {
-        list.innerHTML = '<div class="empty">No relationships yet — suggestions appear here once you have 2+ tables with matching id columns.</div>';
+        list.innerHTML = '<div class="empty">No relationships yet. Suggestions appear here once you have 2+ tables with matching id columns.</div>';
         return;
       }
       list.innerHTML = relationships.map(r => `
@@ -2001,7 +2021,7 @@
           tableSchema = perTable.map(t => t.text).join('\n\n');
 
           const greeting = tables.length > 1
-            ? `I can help you write SQL across all ${tables.length} tables in this workspace: ${tables.map(t => t.name).join(', ')}.\n\nAsk me anything, including questions that span multiple tables — I'll write the join.`
+            ? `I can help you write SQL across all ${tables.length} tables in this workspace: ${tables.map(t => t.name).join(', ')}.\n\nAsk me anything, including questions that span multiple tables. I'll write the join.`
             : `I can help you write SQL queries for your data. I know your table has these columns:\n\n${perTable[0].columns.map(c => c.name).join(', ')}\n\nAsk me anything like "show me rows where X > 100" or "group by category and count".`;
 
           chatMessages.innerHTML = `<div class="chat-message assistant">${greeting}</div>`;
@@ -2696,12 +2716,13 @@
       min-width: 260px;
       box-shadow: 0 4px 16px rgba(32, 21, 21, 0.12);
       z-index: 20;
-    }
-
-    #auth-signed-out {
       display: flex;
       flex-direction: column;
       gap: 8px;
+    }
+
+    .auth-panel[hidden] {
+      display: none;
     }
 
     #auth-email {
@@ -2722,37 +2743,6 @@
     .auth-message {
       font-size: 13px;
       color: #939084;
-    }
-
-    #auth-signed-in {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      align-items: stretch;
-    }
-
-    #auth-signed-in[hidden],
-    #auth-signed-out[hidden] {
-      display: none;
-    }
-
-    .auth-user-email {
-      font-size: 14px;
-      font-weight: 600;
-      color: #201515;
-      word-break: break-all;
-      background: none;
-      border: none;
-      padding: 0;
-      font-family: inherit;
-      cursor: pointer;
-      text-decoration: underline;
-      text-decoration-color: transparent;
-      transition: text-decoration-color 0.15s;
-    }
-
-    .auth-user-email:hover {
-      text-decoration-color: #201515;
     }
 
     .auth-btn-premium.is-premium-active {
@@ -2878,6 +2868,26 @@
 
     .modal-section {
       margin-bottom: 20px;
+    }
+
+    .modal-section-signout {
+      margin-bottom: 0;
+      padding-top: 4px;
+      border-top: 1px solid #ece7de;
+    }
+
+    .settings-member-since {
+      color: #939084;
+      margin-top: 2px;
+    }
+
+    .premium-onetime-note {
+      background: #f3faff;
+      border: 1px solid #b9dbf5;
+      border-radius: 8px;
+      padding: 10px 12px;
+      color: #0b4a78;
+      margin: 10px 0 0;
     }
 
     .modal-subhead {
@@ -5189,20 +5199,14 @@
     </a>
     <div class="header-right">
       <div class="auth-area">
-        <button id="go-premium-btn" class="auth-btn auth-btn-premium" onclick="openPremiumPanel()">Go Premium</button>
+        <button id="go-premium-btn" class="auth-btn auth-btn-premium" onclick="openPremiumPanel()" title="$9.99 once, not a subscription">Go Premium</button>
         <button id="dashboard-nav-btn" class="auth-btn auth-btn-premium" onclick="openDashboard()" hidden>Dashboard</button>
         <button id="sign-in-btn" class="auth-btn" onclick="toggleAuthPanel()">Sign in</button>
         <button id="my-projects-btn" class="auth-btn auth-btn-primary" onclick="openCloudPanel()" hidden>Load Sessions</button>
         <div id="auth-panel" class="auth-panel" hidden>
-          <div id="auth-signed-out">
-            <input type="email" id="auth-email" placeholder="you@example.com">
-            <button class="auth-btn auth-btn-primary" onclick="sendMagicLink()">Send magic link</button>
-            <div id="auth-message" class="auth-message"></div>
-          </div>
-          <div id="auth-signed-in" hidden>
-            <button type="button" id="auth-user-email" class="auth-user-email" onclick="openSettingsPanel()" title="Account settings"></button>
-            <button class="auth-btn" onclick="signOutUser()">Sign out</button>
-          </div>
+          <input type="email" id="auth-email" placeholder="you@example.com">
+          <button class="auth-btn auth-btn-primary" onclick="sendMagicLink()">Send magic link</button>
+          <div id="auth-message" class="auth-message"></div>
         </div>
       </div>
       <div id="status">Initializing...</div>
@@ -5210,7 +5214,7 @@
   </div>
 
   <div id="premium-success-banner" class="premium-success-banner" hidden>
-    <span>&#10003; Payment successful — thanks for going Premium.</span>
+    <span>&#10003; Payment successful. Thanks for going Premium.</span>
     <button onclick="dismissPremiumSuccessBanner()" aria-label="Dismiss">&times;</button>
   </div>
 
@@ -5221,7 +5225,8 @@
         <button class="modal-close" onclick="closePremiumPanel()">&times;</button>
       </div>
       <div class="modal-section">
-        <p class="help-text">Multi-table workspaces, table renaming, cross-table AI queries, and relationship detection — all the features from the Multi-Table Workspaces spec.</p>
+        <p class="help-text">Multi-table workspaces, table renaming, cross-table AI queries, and relationship detection: everything in the Multi-Table Workspaces spec.</p>
+        <p class="premium-onetime-note">&#10003; <strong>$9.99, paid once.</strong> Not a subscription, so there's nothing to cancel later.</p>
       </div>
       <div class="modal-section">
         <div id="premium-checkout-status" class="help-text"></div>
@@ -5234,7 +5239,7 @@
     <div class="modal modal-small">
       <div class="delete-warning-icon premium-icon">★</div>
       <div class="delete-warning-title">Sign in to go Premium</div>
-      <div class="delete-warning-body">Premium is tied to your account, so we need you signed in first — it only takes a magic link.</div>
+      <div class="delete-warning-body">Premium is tied to your account, so you'll need to sign in first. It only takes a magic link.</div>
       <div class="modal-actions">
         <button class="modal-cancel-btn" onclick="closePremiumSigninModal()">Cancel</button>
         <button class="modal-save-btn premium-cta-btn" onclick="signInThenGoPremium()">Sign in</button>
@@ -5251,10 +5256,14 @@
       <div class="modal-section">
         <label class="field-label">Signed in as</label>
         <div id="settings-email" class="help-text"></div>
+        <div id="settings-member-since" class="help-text settings-member-since"></div>
       </div>
       <div class="modal-section">
         <label class="field-label">Plan</label>
         <div id="settings-premium-row"></div>
+      </div>
+      <div class="modal-section modal-section-signout">
+        <button class="auth-btn" onclick="signOutUser()">Sign out</button>
       </div>
     </div>
   </div>
@@ -5301,7 +5310,7 @@
       </div>
       <div class="modal-section">
         <div class="modal-subhead">Table names</div>
-        <p class="help-text">Each CSV loads into a table named after its file (click the pencil on a table chip to rename it). Write queries as <code>SELECT * FROM table_name ...</code> — the chip bar above the tabs always shows the current names.</p>
+        <p class="help-text">Each CSV loads into a table named after its file (click the pencil on a table chip to rename it). Write queries as <code>SELECT * FROM table_name ...</code>. The chip bar above the tabs always shows the current names.</p>
       </div>
       <div class="modal-section">
         <div class="modal-subhead">Table View vs. Query Results</div>
@@ -5404,6 +5413,11 @@
               <div class="lmc-cell lmc-cell-label"></div>
               <div class="lmc-cell lmc-cell-lite">Lite Mode</div>
               <div class="lmc-cell lmc-cell-normal">Normal Mode</div>
+            </div>
+            <div class="lmc-row">
+              <div class="lmc-cell lmc-cell-label">Use case</div>
+              <div class="lmc-cell lmc-cell-lite" data-mode-label="Lite Mode: ">A quick, one-time query session</div>
+              <div class="lmc-cell lmc-cell-normal" data-mode-label="Normal Mode: ">A dataset you'll come back to, with saved sessions and queries</div>
             </div>
             <div class="lmc-row">
               <div class="lmc-cell lmc-cell-label">Account</div>
@@ -5553,7 +5567,7 @@
             <div id="chat-table-focus-row" class="chat-table-focus-row" hidden>
               Focused table:
               <select id="chat-table-focus" onchange="setActiveTable(this.value)"></select>
-              <span>— ambiguous questions default here; the AI can still join other tables</span>
+              <span>Ambiguous questions default here; the AI can still join other tables</span>
             </div>
             <div id="chat-container">
               <div id="chat-messages">
@@ -5590,7 +5604,7 @@
       <div id="tab-relationships" class="tab-panel">
         <div class="erd-panel">
           <div class="erd-intro">
-            <p class="help-text">Synth guesses foreign keys by matching column names like <code>customer_id</code> to another table's <code>id</code>. Suggested relationships are dashed and grey until you confirm them — confirmed ones turn solid blue and are the only ones the AI is told about explicitly.</p>
+            <p class="help-text">Synth guesses foreign keys by matching column names like <code>customer_id</code> to another table's <code>id</code>. Suggested relationships are dashed and grey until you confirm them. Confirmed ones turn solid blue, and only confirmed relationships are shared with the AI.</p>
           </div>
           <div id="erd-canvas" class="erd-canvas"></div>
           <div class="erd-list-section">
@@ -5630,7 +5644,7 @@
     <div class="modal modal-small">
       <div class="delete-warning-icon">⚠</div>
       <div class="delete-warning-title">Delete <span id="delete-workspace-name"></span>?</div>
-      <div class="delete-warning-body">This permanently deletes its tables, saved chat sessions, and cloud files. This can't be undone.</div>
+      <div class="delete-warning-body">This deletes its tables, saved chat sessions, and cloud files, and can't be undone.</div>
       <div class="modal-actions">
         <button class="modal-cancel-btn" onclick="closeDeleteWorkspaceModal()">Cancel</button>
         <button class="modal-confirm-delete-btn" onclick="confirmDeleteWorkspace()">Delete workspace</button>
