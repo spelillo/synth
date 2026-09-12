@@ -1383,7 +1383,7 @@
         statusEl.classList.remove('error');
         statusEl.classList.add('loaded');
 
-        document.getElementById('query-input').value = `SELECT * FROM "${activeTableName}" LIMIT 100`;
+        document.getElementById('query-input').value = `SELECT * FROM ${activeTableName} LIMIT 100`;
 
         updateCloudButtons();
         renderTableChips();
@@ -1581,7 +1581,7 @@
         statusEl.classList.remove('error');
         statusEl.classList.add('loaded');
 
-        document.getElementById('query-input').value = `SELECT * FROM "${activeTableName}" LIMIT 100`;
+        document.getElementById('query-input').value = `SELECT * FROM ${activeTableName} LIMIT 100`;
 
         csvLoaded = true;
         currentCSVFile = files[0];
@@ -1747,7 +1747,7 @@
     window.setActiveTable = function(name) {
       if (!tables.some(t => t.name === name)) return;
       activeTableName = name;
-      document.getElementById('query-input').value = `SELECT * FROM "${name}" LIMIT 100`;
+      document.getElementById('query-input').value = `SELECT * FROM ${name} LIMIT 100`;
       renderTableChips();
       renderTableView();
       resetQueryInputView();
@@ -1811,7 +1811,7 @@
       recomputeRelationships();
       populateManualFkTableSelects();
       if (activeTableName === finalName) {
-        document.getElementById('query-input').value = `SELECT * FROM "${finalName}" LIMIT 100`;
+        document.getElementById('query-input').value = `SELECT * FROM ${finalName} LIMIT 100`;
         resetQueryInputView();
       }
     }
@@ -2276,7 +2276,7 @@
         if (outputMode === 'general') {
           return `You are a data analyst assistant. The user has loaded a CSV file into a SQLite database. Here is the schema:\n\n${tableSchema}\n\n${GENERAL_MODE_RULES}`;
         }
-        return `You are a SQL query assistant. The user has loaded a CSV file into a SQLite database. Here is the schema:\n\n${tableSchema}\n\nYour job is to:\n1. ONLY respond with SQL queries that work on this exact table\n2. Use the table name "${activeTableName}"\n3. Format SQL queries in markdown code blocks with \`\`\`sql\n4. Keep explanations brief\n5. Never suggest anything other than SQL queries\n6. ${SQL_OFFTOPIC_RULE}\n7. CRITICAL: Use proper SQL syntax - ensure spaces between all keywords\n8. Use single quotes for string literals (e.g., 'value' not "value")\n9. For not-equals use <> or != (both work in SQLite)\n10. Column names are case-sensitive - match them exactly from the schema\n11. All SQL must be valid SQLite syntax\n\nBe concise, practical, and syntactically perfect.`;
+        return `You are a SQL query assistant. The user has loaded a CSV file into a SQLite database. Here is the schema:\n\n${tableSchema}\n\nYour job is to:\n1. ONLY respond with SQL queries that work on this exact table\n2. Use the table name ${activeTableName} exactly as written, with no surrounding quotes — table names in this database never need quoting. Column names only need double quotes if they contain a space or special character (e.g. "First Name")\n3. Format SQL queries in markdown code blocks with \`\`\`sql\n4. Keep explanations brief\n5. Never suggest anything other than SQL queries\n6. ${SQL_OFFTOPIC_RULE}\n7. CRITICAL: Use proper SQL syntax - ensure spaces between all keywords\n8. Use single quotes for string literals (e.g., 'value' not "value")\n9. For not-equals use <> or != (both work in SQLite)\n10. Column names are case-sensitive - match them exactly from the schema\n11. All SQL must be valid SQLite syntax\n\nBe concise, practical, and syntactically perfect.`;
       }
 
       const focusList = [...focusedTableNames].filter(name => tables.some(t => t.name === name));
@@ -2289,7 +2289,7 @@
         return `You are a data analyst assistant. The user has loaded multiple related tables into one SQLite database. Here is the schema for every table in the workspace:\n\n${tableSchema}\n${focusNote}${relationshipNote}\n${GENERAL_MODE_RULES}`;
       }
 
-      return `You are a SQL query assistant. The user has loaded multiple related tables into one SQLite database. Here is the schema for every table in the workspace:\n\n${tableSchema}\n${focusNote}${relationshipNote}\nYour job is to:\n1. ONLY respond with SQL queries that work on these exact tables\n2. Use the correct table name(s) from the schema above — never invent a table\n3. Several tables may share column names (id, name, status, etc.) — always qualify column names with a table alias once more than one table is involved, and pick the specific table's column the question actually refers to\n4. If a question requires data from more than one table, write a proper JOIN using the relationships implied by matching id columns (e.g. orders.customer_id -> customers.id)\n5. Format SQL queries in markdown code blocks with \`\`\`sql\n6. Keep explanations brief\n7. Never suggest anything other than SQL queries\n8. ${SQL_OFFTOPIC_RULE}\n9. CRITICAL: Use proper SQL syntax - ensure spaces between all keywords\n10. Use single quotes for string literals (e.g., 'value' not "value")\n11. Column names are case-sensitive - match them exactly from the schema\n12. All SQL must be valid SQLite syntax\n\nBe concise, practical, and syntactically perfect.`;
+      return `You are a SQL query assistant. The user has loaded multiple related tables into one SQLite database. Here is the schema for every table in the workspace:\n\n${tableSchema}\n${focusNote}${relationshipNote}\nYour job is to:\n1. ONLY respond with SQL queries that work on these exact tables\n2. Use the correct table name(s) from the schema above exactly as written, with no surrounding quotes — table names in this database never need quoting, and you should never invent a table\n3. Several tables may share column names (id, name, status, etc.) — always qualify column names with a table alias once more than one table is involved, and pick the specific table's column the question actually refers to\n4. If a question requires data from more than one table, write a proper JOIN using the relationships implied by matching id columns (e.g. orders.customer_id -> customers.id)\n5. Format SQL queries in markdown code blocks with \`\`\`sql\n6. Keep explanations brief\n7. Never suggest anything other than SQL queries\n8. ${SQL_OFFTOPIC_RULE}\n9. CRITICAL: Use proper SQL syntax - ensure spaces between all keywords\n10. Use single quotes for string literals (e.g., 'value' not "value")\n11. Column names are case-sensitive - match them exactly from the schema\n12. All SQL must be valid SQLite syntax\n\nBe concise, practical, and syntactically perfect.`;
     }
 
     // Updates state + toggle button UI + persists the preference. No other
@@ -2607,6 +2607,51 @@
       });
     }
 
+    // Inline markdown-lite for a single (already HTML-escaped) line: bold
+    // and inline code get their own accent colors — see .chat-em /
+    // .chat-inline-code — instead of showing up as literal ** or ` marks.
+    function renderInlineFormatting(line) {
+      line = line.replace(/\*\*([^*]+)\*\*/g, '<strong class="chat-em">$1</strong>');
+      line = line.replace(/`([^`]+)`/g, '<code class="chat-inline-code">$1</code>');
+      return line;
+    }
+
+    // Groups consecutive "- "/"* "/"1. " lines into real, indented <ul>/<ol>
+    // lists (with colored markers) instead of leaving the raw bullet
+    // characters as plain text — everything else keeps the old
+    // newline-to-<br> behavior. Expects text already HTML-escaped.
+    function renderProse(escapedText) {
+      const lines = escapedText.split('\n');
+      const htmlParts = [];
+      let listBuffer = null; // { type: 'ul' | 'ol', items: [] }
+
+      const flushList = () => {
+        if (!listBuffer) return;
+        const tag = listBuffer.type;
+        htmlParts.push(`<${tag} class="chat-list">${listBuffer.items.map(item => `<li>${item}</li>`).join('')}</${tag}>`);
+        listBuffer = null;
+      };
+
+      lines.forEach(line => {
+        const bulletMatch = line.match(/^\s*[-*•]\s+(.*)$/);
+        const numberedMatch = !bulletMatch && line.match(/^\s*\d+[.)]\s+(.*)$/);
+
+        if (bulletMatch) {
+          if (!listBuffer || listBuffer.type !== 'ul') { flushList(); listBuffer = { type: 'ul', items: [] }; }
+          listBuffer.items.push(renderInlineFormatting(bulletMatch[1]));
+        } else if (numberedMatch) {
+          if (!listBuffer || listBuffer.type !== 'ol') { flushList(); listBuffer = { type: 'ol', items: [] }; }
+          listBuffer.items.push(renderInlineFormatting(numberedMatch[1]));
+        } else {
+          flushList();
+          htmlParts.push(line.trim() === '' ? '<br>' : renderInlineFormatting(line) + '<br>');
+        }
+      });
+      flushList();
+
+      return htmlParts.join('');
+    }
+
     function formatMessage(text) {
       const msgId = 'msg-' + Math.random().toString(36).substr(2, 9);
 
@@ -2619,14 +2664,24 @@
         return `__SQL_BLOCK_${id}__`;
       });
 
-      // Replace regular code blocks
+      // Extract regular code blocks the same way — rendered further down,
+      // after the prose in between has been escaped and formatted.
+      const codeBlocks = [];
       text = text.replace(/```\n([\s\S]*?)```/g, (match, code) => {
         const id = 'code-' + Math.random().toString(36).substr(2, 9);
-        return `<pre id="${id}"><code>${code.trim()}</code></pre>`;
+        codeBlocks.push({ id, code: code.trim() });
+        return `__CODE_BLOCK_${id}__`;
       });
 
-      // Replace newlines with <br> in non-code text
-      text = text.replace(/\n/g, '<br>');
+      // Everything left is prose. Escape it first — this is model output,
+      // not markup we wrote — then layer bold/inline-code/list formatting
+      // on top of the now-safe text.
+      text = renderProse(escapeHtml(text));
+
+      codeBlocks.forEach(({ id, code }) => {
+        const escaped = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        text = text.replace(`__CODE_BLOCK_${id}__`, `<pre id="${id}"><code>${escaped}</code></pre>`);
+      });
 
       // Now replace SQL block placeholders with formatted HTML
       sqlBlocks.forEach(({ id, code }) => {
@@ -5916,6 +5971,39 @@
     .sql-tok-comment {
       color: #9a958a;
       font-style: italic;
+    }
+
+    /* Chat prose formatting — same dark assistant-bubble background as the
+       SQL tokens above, given its own small palette so **bold**/`code`/
+       lists read as actual formatting instead of literal markdown
+       characters. */
+    .chat-em {
+      color: #f5c451;
+      font-weight: 700;
+    }
+
+    .chat-inline-code {
+      font-family: 'JetBrains Mono', 'SF Mono', 'Monaco', 'Consolas', monospace;
+      font-size: 0.9em;
+      background: rgba(255, 254, 251, 0.12);
+      color: #8fd19e;
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+
+    .chat-list {
+      margin: 4px 0;
+      padding-left: 1.4em;
+    }
+
+    .chat-list li {
+      margin: 2px 0;
+      line-height: 1.5;
+    }
+
+    .chat-list li::marker {
+      color: #6cb6f5;
+      font-weight: 700;
     }
 
     .use-query-btn {
