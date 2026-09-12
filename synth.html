@@ -205,9 +205,10 @@
     }
 
     function updatePremiumUI() {
-      const goPremiumBtn = document.getElementById('go-premium-btn');
-      goPremiumBtn.textContent = isPremium ? 'Premium ✓' : 'Go Premium';
-      goPremiumBtn.classList.toggle('is-premium-active', isPremium);
+      // The header used to grow a redundant "Premium ✓" badge once
+      // you'd upgraded, duplicating what the Settings popup (behind the
+      // email button) already shows. Once premium, just hide it instead.
+      document.getElementById('go-premium-btn').hidden = isPremium;
       document.getElementById('dashboard-nav-btn').hidden = !isPremium;
       renderSettingsPremiumRow();
     }
@@ -691,29 +692,43 @@
       dsList.innerHTML = 'Loading...';
       sessList.innerHTML = 'Loading...';
 
-      const { data: workspaces, error: dsError } = await sb
-        .from('workspaces').select('*, datasets(id, row_count)').order('updated_at', { ascending: false });
-      dsList.innerHTML = (!dsError && workspaces && workspaces.length)
-        ? workspaces.map(w => {
-            const tableCount = w.datasets.length;
-            const totalRows = w.datasets.reduce((sum, d) => sum + (d.row_count || 0), 0);
-            return `
-          <div class="cloud-item">
-            <span>${escapeHtml(w.name)} <span class="cloud-meta">(${tableCount} table${tableCount === 1 ? '' : 's'}, ${totalRows.toLocaleString()} rows, updated ${new Date(w.updated_at).toLocaleDateString()})</span></span>
-            <button class="cloud-load-btn" onclick="loadCloudWorkspace('${w.id}')">Load</button>
-          </div>`;
-          }).join('')
-        : '<div class="empty">No saved workspaces yet.</div>';
+      try {
+        const { data: workspaces, error: dsError } = await sb
+          .from('workspaces').select('*, datasets(id, row_count)').order('updated_at', { ascending: false });
+        if (dsError) throw dsError;
+        dsList.innerHTML = (workspaces && workspaces.length)
+          ? workspaces.map(w => {
+              const tableCount = w.datasets.length;
+              const totalRows = w.datasets.reduce((sum, d) => sum + (d.row_count || 0), 0);
+              return `
+            <div class="cloud-item">
+              <span>${escapeHtml(w.name)} <span class="cloud-meta">(${tableCount} table${tableCount === 1 ? '' : 's'}, ${totalRows.toLocaleString()} rows, updated ${new Date(w.updated_at).toLocaleDateString()})</span></span>
+              <button class="cloud-load-btn" onclick="loadCloudWorkspace('${w.id}')">Load</button>
+            </div>`;
+            }).join('')
+          : '<div class="empty">No saved workspaces yet.</div>';
+      } catch (err) {
+        // A failed request used to fall through to the same "no saved
+        // workspaces" empty state as a genuinely empty list, hiding real
+        // errors (a bad connection, an expired session) behind what looked
+        // like an account with nothing saved.
+        dsList.innerHTML = `<div class="empty">Couldn't load workspaces: ${escapeHtml(err.message)}</div>`;
+      }
 
-      const { data: sessions, error: sessError } = await sb
-        .from('chat_sessions').select('*').order('created_at', { ascending: false });
-      sessList.innerHTML = (!sessError && sessions && sessions.length)
-        ? sessions.map(s => `
-          <div class="cloud-item">
-            <span>${escapeHtml(s.title)} <span class="cloud-meta">(${new Date(s.created_at).toLocaleDateString()})</span></span>
-            <button class="cloud-load-btn" onclick="loadCloudSession('${s.id}')">Load</button>
-          </div>`).join('')
-        : '<div class="empty">No saved sessions yet.</div>';
+      try {
+        const { data: sessions, error: sessError } = await sb
+          .from('chat_sessions').select('*').order('created_at', { ascending: false });
+        if (sessError) throw sessError;
+        sessList.innerHTML = (sessions && sessions.length)
+          ? sessions.map(s => `
+            <div class="cloud-item">
+              <span>${escapeHtml(s.title)} <span class="cloud-meta">(${new Date(s.created_at).toLocaleDateString()})</span></span>
+              <button class="cloud-load-btn" onclick="loadCloudSession('${s.id}')">Load</button>
+            </div>`).join('')
+          : '<div class="empty">No saved sessions yet.</div>';
+      } catch (err) {
+        sessList.innerHTML = `<div class="empty">Couldn't load sessions: ${escapeHtml(err.message)}</div>`;
+      }
     };
 
     window.closeCloudPanel = function() {
@@ -761,10 +776,18 @@
       const body = document.getElementById('dashboard-body');
       body.innerHTML = '<div class="empty">Loading your workspaces...</div>';
 
-      const { data: workspaces, error } = await sb
-        .from('workspaces')
-        .select('*, datasets(id, table_name, row_count), chat_sessions(id, title, created_at)')
-        .order('updated_at', { ascending: false });
+      let workspaces, error;
+      try {
+        ({ data: workspaces, error } = await sb
+          .from('workspaces')
+          .select('*, datasets(id, table_name, row_count), chat_sessions(id, title, created_at)')
+          .order('updated_at', { ascending: false }));
+      } catch (err) {
+        // Belt and suspenders: a rejected fetch (network failure, blocked
+        // request) throws instead of resolving with {error}, and without
+        // this the loading message above would just sit there forever.
+        error = err;
+      }
 
       if (error) {
         body.innerHTML = `<div class="empty">Failed to load workspaces: ${escapeHtml(error.message)}</div>`;
@@ -1405,7 +1428,26 @@
 
     // ---- CSV parsing (shared by fresh uploads and "+ Add table") ----
 
+    // Catches the most common upload mistake early: an Excel/Word/zip file
+    // saved or renamed with a .csv extension. Those are binary (zip-based)
+    // under the hood, so reading them as text produces garbage that used to
+    // reach the SQL layer and fail there with a cryptic "unrecognized
+    // token" error instead of a message that explains what's wrong.
+    function looksLikeNonCsvFile(text) {
+      if (text.startsWith('PK')) return 'a zip-based file (like Excel .xlsx or Word .docx)';
+      if (text.startsWith('ÐÏà') || text.charCodeAt(0) === 0xFFFD) return 'a binary file (like an older .xls)';
+      const sample = text.slice(0, 1000);
+      const controlChars = (sample.match(/[\x00-\x08\x0E-\x1F]/g) || []).length;
+      if (sample.length > 0 && controlChars / sample.length > 0.05) return 'a binary file, not text';
+      return null;
+    }
+
     function parseCSVText(text) {
+      const nonCsvReason = looksLikeNonCsvFile(text);
+      if (nonCsvReason) {
+        throw new Error(`This doesn't look like a CSV. It looks like ${nonCsvReason}. Export or save it as CSV, then try again.`);
+      }
+
       const lines = text.split('\n').filter(line => line.trim());
       if (lines.length === 0) {
         throw new Error('Empty CSV file');
@@ -1526,6 +1568,16 @@
         statusEl.textContent = `Error: ${err.message}`;
         statusEl.classList.add('error');
         console.error(err);
+
+        // On a first upload from the landing page, app-view (and file-info
+        // inside it) is still hidden at this point — revealApp() only runs
+        // on success. Without this, the error above is real but invisible,
+        // and the upload just looks like it silently did nothing.
+        if (document.getElementById('app-view').hidden) {
+          const sub = document.getElementById('landing-upload-sub');
+          sub.textContent = err.message;
+          sub.classList.add('error');
+        }
       }
     };
 
@@ -2745,16 +2797,6 @@
       color: #939084;
     }
 
-    .auth-btn-premium.is-premium-active {
-      background: #dceefb;
-      border-color: #489fdf;
-      color: #0b4a78;
-    }
-
-    .auth-btn-premium.is-premium-active:hover {
-      background: #cbe6fa;
-    }
-
     .save-btn {
       background: none;
       border: 1px solid #201515;
@@ -3029,6 +3071,7 @@
 
     .landing-panel-auth .landing-panel-sub { color: #c5c0b1; }
     .landing-panel-upload .landing-panel-sub { color: #605d52; }
+    .landing-panel-upload .landing-panel-sub.error { color: #ff8a5c; }
 
     .landing-auth-form {
       display: flex;
