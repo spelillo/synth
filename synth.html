@@ -579,6 +579,14 @@
       if (!sb) return;
       await sb.auth.signOut();
       document.getElementById('auth-panel').hidden = true;
+      closeSettingsPanel();
+      // Sign out is only reachable from Settings, which can be opened from
+      // either the app or the Dashboard — hide both and land back on the
+      // hero page instead of leaving a signed-out header over stale data.
+      document.getElementById('app-view').hidden = true;
+      document.getElementById('dashboard-view').hidden = true;
+      document.getElementById('landing-view').hidden = false;
+      selectLandingMode('lite');
     };
 
     // Serializes a live table's current rows back into CSV text, so saving
