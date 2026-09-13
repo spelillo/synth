@@ -276,12 +276,31 @@
       updatePremiumUI();
     };
 
+    // Whether the in-browser workspace (tables + relationships) exactly
+    // matches what's last saved to the cloud — drives the "Save to cloud"
+    // button's real sync status instead of it always saying the same thing
+    // whether or not there's actually anything new to save.
+    let workspaceSynced = false;
+
+    function markWorkspaceDirty() {
+      workspaceSynced = false;
+      updateCloudButtons();
+    }
+
+    function markWorkspaceSynced() {
+      workspaceSynced = true;
+      updateCloudButtons();
+    }
+
     function updateCloudButtons() {
       const saveCsvBtn = document.getElementById('save-csv-btn');
       saveCsvBtn.hidden = !(currentUser && tables.length > 0);
       if (!saveCsvBtn.hidden) {
         saveCsvBtn.disabled = false;
         saveCsvBtn.title = '';
+        saveCsvBtn.classList.toggle('save-btn-synced', workspaceSynced);
+        saveCsvBtn.classList.toggle('save-btn-dirty', !workspaceSynced);
+        saveCsvBtn.textContent = workspaceSynced ? 'Synced to Cloud' : 'Click save to save changes to cloud';
       }
       document.getElementById('save-session-btn').hidden = !(currentUser && chatHistory.length > 0);
     }
@@ -649,10 +668,10 @@
 
         currentWorkspaceId = workspaceId;
         currentWorkspaceName = workspaceName;
-        btn.textContent = 'Saved ✓';
+        markWorkspaceSynced();
       } catch (err) {
         alert('Failed to save workspace: ' + err.message);
-        btn.textContent = 'Save to cloud';
+        updateCloudButtons();
       } finally {
         btn.disabled = false;
       }
@@ -777,6 +796,10 @@
       document.getElementById('dashboard-view').hidden = true;
       if (dashboardPreviousView === 'app') {
         document.getElementById('app-view').hidden = false;
+        // A rename in the Dashboard (of whichever workspace is currently
+        // open here) only touches currentWorkspaceName in memory — refresh
+        // so the toolbar's workspace switcher pill picks it up too.
+        renderTableChips();
       } else {
         document.getElementById('landing-view').hidden = false;
       }
@@ -1129,7 +1152,13 @@
       }
     }
 
+    // Saved queries are keyed per-workspace so Save Query still works after
+    // loading a workspace from the cloud, where there's no local File
+    // object (currentCSVFile is null — see loadCloudWorkspace) but there is
+    // a stable currentWorkspaceId. Falls back to the local file's name for
+    // a CSV that's never been saved to the cloud.
     function currentCSVKey() {
+      if (currentWorkspaceId) return `ws:${currentWorkspaceId}`;
       return currentCSVFile ? currentCSVFile.name : null;
     }
 
@@ -1158,7 +1187,7 @@
 
     window.submitSaveQuery = function() {
       const key = currentCSVKey();
-      if (!key) return;
+      if (!key) { alert('Could not save this query — no CSV or workspace is loaded.'); return; }
 
       const titleInput = document.getElementById('save-query-title-input');
       const sqlInput = document.getElementById('save-query-sql-input');
@@ -1385,7 +1414,7 @@
 
         document.getElementById('query-input').value = `SELECT * FROM ${activeTableName} LIMIT 100`;
 
-        updateCloudButtons();
+        markWorkspaceSynced();
         renderTableChips();
         recomputeRelationships();
         populateManualFkTableSelects();
@@ -1587,7 +1616,7 @@
         currentCSVFile = files[0];
         currentWorkspaceId = null;
         currentWorkspaceName = null;
-        updateCloudButtons();
+        markWorkspaceDirty();
         renderTableChips();
         rejectedRelationshipKeys = new Set();
         relationships = [];
@@ -1656,7 +1685,7 @@
         statusEl.classList.add('loaded');
 
         activeTableName = loaded[loaded.length - 1].name;
-        updateCloudButtons();
+        markWorkspaceDirty();
         renderTableChips();
         recomputeRelationships();
         populateManualFkTableSelects();
@@ -1676,24 +1705,42 @@
 
     // ---- Table chip bar + AI focus selector (two views of `activeTableName`) ----
 
+    // Same fallback chain saveCurrentCSV() uses to name a never-saved
+    // workspace, reused here so the switcher pill shows something sensible
+    // even before the workspace has a real, explicitly-saved name.
+    function getWorkspaceDisplayName() {
+      return currentWorkspaceName || (tables[0] && tables[0].fileName) || 'Untitled workspace';
+    }
+
+    function updateWorkspaceSwitcher() {
+      const el = document.getElementById('workspace-switcher');
+      const label = document.getElementById('workspace-switcher-label');
+      if (tables.length <= 1) {
+        el.hidden = true;
+        closeWorkspaceSwitcher();
+        return;
+      }
+      el.hidden = false;
+      label.textContent = `${getWorkspaceDisplayName()}, ${tables.length} tables`;
+    }
+
     function renderTableChips() {
       const bar = document.getElementById('table-chip-bar');
       const addBtn = document.getElementById('add-table-btn');
-      const badge = document.getElementById('workspace-badge');
       const focusRow = document.getElementById('chat-table-focus-row');
+
+      updateWorkspaceSwitcher();
 
       if (!tables.length) {
         bar.hidden = true;
         bar.innerHTML = '';
         addBtn.hidden = true;
-        badge.hidden = true;
         focusRow.hidden = true;
         return;
       }
 
       addBtn.hidden = tables.length >= MAX_TABLES_PER_WORKSPACE;
       addBtn.title = addBtn.hidden ? `Workspace cap reached (${MAX_TABLES_PER_WORKSPACE} tables)` : '';
-      badge.hidden = tables.length <= 1;
 
       bar.hidden = false;
       bar.innerHTML = tables.map(t => `
@@ -1738,6 +1785,37 @@
       panel.hidden = !willOpen;
       btn.setAttribute('aria-expanded', String(willOpen));
     };
+
+    // ---- Workspace switcher: the toolbar pill showing "<name>, N tables",
+    // whose only real action is jumping to the Dashboard to open a
+    // different one. ----
+
+    window.toggleWorkspaceSwitcher = function() {
+      const panel = document.getElementById('workspace-switcher-panel');
+      const btn = document.getElementById('workspace-switcher-btn');
+      const willOpen = panel.hidden;
+      panel.hidden = !willOpen;
+      btn.setAttribute('aria-expanded', String(willOpen));
+    };
+
+    function closeWorkspaceSwitcher() {
+      const panel = document.getElementById('workspace-switcher-panel');
+      const btn = document.getElementById('workspace-switcher-btn');
+      panel.hidden = true;
+      btn.setAttribute('aria-expanded', 'false');
+    }
+
+    window.changeWorkspace = function() {
+      closeWorkspaceSwitcher();
+      openDashboard();
+    };
+
+    document.addEventListener('click', (e) => {
+      const switcher = document.getElementById('workspace-switcher');
+      if (switcher && !switcher.hidden && !switcher.contains(e.target)) {
+        closeWorkspaceSwitcher();
+      }
+    });
 
     window.handleChipClick = function(event, name) {
       if (event.target.closest('.chip-rename') || event.target.isContentEditable) return;
@@ -1810,6 +1888,7 @@
       updateAIState();
       recomputeRelationships();
       populateManualFkTableSelects();
+      markWorkspaceDirty();
       if (activeTableName === finalName) {
         document.getElementById('query-input').value = `SELECT * FROM ${finalName} LIMIT 100`;
         resetQueryInputView();
@@ -1914,6 +1993,7 @@
       renderERD();
       renderRelationshipList();
       updateAIState();
+      markWorkspaceDirty();
     };
 
     window.removeRelationship = function(id) {
@@ -1924,6 +2004,7 @@
       renderERD();
       renderRelationshipList();
       updateAIState();
+      markWorkspaceDirty();
     };
 
     window.addManualRelationship = function() {
@@ -1983,6 +2064,7 @@
       renderERD();
       renderRelationshipList();
       updateAIState();
+      markWorkspaceDirty();
     };
 
     // ---- Drag-to-connect: mousedown on a column row, drag to another,
@@ -2803,6 +2885,11 @@
       try {
         const result = db.exec(query);
 
+        // A query that isn't a read (INSERT/UPDATE/DELETE/etc.) changes
+        // the data sql.js holds in-browser, which the cloud copy — if
+        // any — now no longer matches.
+        if (!/^\s*(SELECT|PRAGMA|EXPLAIN|WITH)\b/i.test(query)) markWorkspaceDirty();
+
         if (result.length === 0) {
           resultsEl.innerHTML = '<div class="empty">No results</div>';
           viewStates.results.columns = [];
@@ -3239,6 +3326,16 @@
       display: flex;
       align-items: center;
       gap: 10px;
+    }
+
+    /* An orange divider before every visible auth button except the first
+       one currently shown — :not([hidden]) makes this react correctly to
+       which of Go Premium/Dashboard, Sign in/email, and Load Sessions are
+       actually visible at once, without any JS bookkeeping. */
+    .auth-area > .auth-btn:not([hidden]) ~ .auth-btn:not([hidden]) {
+      margin-left: 4px;
+      padding-left: 20px;
+      border-left: 2px solid #ff4f00;
     }
 
     .auth-btn {
@@ -4363,7 +4460,6 @@
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
-      margin-left: auto;
       transition: background 0.15s, border-color 0.15s, color 0.15s;
     }
 
@@ -4729,6 +4825,9 @@
     }
 
     .add-table-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
       background: #fffefb;
       color: #201515;
       border: 1px solid #c5c0b1;
@@ -4737,6 +4836,138 @@
     .add-table-btn:hover {
       border-color: #489fdf;
       color: #0b4a78;
+    }
+
+    /* ---- Workspace switcher pill: same glossy premium-blue treatment as
+       .auth-btn-premium, sized as a compact dropdown pill and placed first
+       in the toolbar so which workspace you're in is the most obvious
+       thing there, not an afterthought badge. ---- */
+
+    .workspace-switcher {
+      position: relative;
+      flex: none;
+    }
+
+    .workspace-switcher[hidden] {
+      display: none;
+    }
+
+    .workspace-switcher-btn {
+      position: relative;
+      overflow: hidden;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: inherit;
+      font-size: 13.5px;
+      font-weight: 700;
+      color: #fffefb;
+      background: linear-gradient(180deg, #8ecdf7 0%, #489fdf 50%, #2b6fb0 100%);
+      border: 1px solid #2b6fb0;
+      border-radius: 9999px;
+      padding: 7px 14px;
+      cursor: pointer;
+      text-shadow: 0 1px 1px rgba(11, 74, 120, 0.35);
+      box-shadow:
+        0 2px 6px rgba(43, 111, 176, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.6),
+        inset 0 -2px 4px rgba(20, 60, 100, 0.35);
+      transition: box-shadow 0.15s, transform 0.1s;
+    }
+
+    .workspace-switcher-btn::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0.12) 45%, rgba(255, 255, 255, 0) 60%);
+      pointer-events: none;
+    }
+
+    .workspace-switcher-btn:hover {
+      transform: translateY(-1px);
+      box-shadow:
+        0 4px 10px rgba(43, 111, 176, 0.45),
+        inset 0 1px 0 rgba(255, 255, 255, 0.7),
+        inset 0 -2px 4px rgba(20, 60, 100, 0.4);
+    }
+
+    .workspace-switcher-chevron {
+      position: relative;
+      flex-shrink: 0;
+      transition: transform 0.15s;
+    }
+
+    .workspace-switcher-btn[aria-expanded="true"] .workspace-switcher-chevron {
+      transform: rotate(180deg);
+    }
+
+    .workspace-switcher-panel {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      background: #fffefb;
+      border: 1px solid #c5c0b1;
+      border-radius: 10px;
+      padding: 6px;
+      min-width: 180px;
+      box-shadow: 0 4px 16px rgba(32, 21, 21, 0.12);
+      z-index: 20;
+    }
+
+    .workspace-switcher-panel[hidden] {
+      display: none;
+    }
+
+    .workspace-switcher-panel button {
+      display: block;
+      width: 100%;
+      text-align: left;
+      background: none;
+      border: none;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      color: #201515;
+      padding: 8px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .workspace-switcher-panel button:hover {
+      background: #f8f4f0;
+    }
+
+    .upload-wrapper-right {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-left: auto;
+    }
+
+    /* Cloud sync status — .save-btn's own border/color/background need a
+       compound selector to win: .save-btn is declared later in the sheet
+       (see its base rule) and would otherwise override these at equal
+       specificity, the same issue .premium-cta-btn had. */
+    .save-btn.save-btn-synced {
+      border-color: #1e6b45;
+      color: #1e6b45;
+      background: linear-gradient(180deg, #eafff3 0%, #d3f5e2 100%);
+    }
+
+    .save-btn.save-btn-synced:hover:not(:disabled) {
+      background: linear-gradient(180deg, #d9fbe8 0%, #c2ecd4 100%);
+      color: #1e6b45;
+    }
+
+    .save-btn.save-btn-dirty {
+      border-color: #a66a00;
+      color: #7a4e00;
+      background: linear-gradient(180deg, #fff8e6 0%, #ffedb8 100%);
+    }
+
+    .save-btn.save-btn-dirty:hover:not(:disabled) {
+      background: linear-gradient(180deg, #fff2cf 0%, #ffe38f 100%);
+      color: #7a4e00;
     }
 
     #file-upload-add {
@@ -6368,7 +6599,7 @@
     <div class="header-right">
       <div class="auth-area">
         <button id="go-premium-btn" class="auth-btn auth-btn-premium" onclick="openPremiumPanel()" title="$9.99 once, not a subscription">Go Premium</button>
-        <button id="dashboard-nav-btn" class="auth-btn auth-btn-premium" onclick="openDashboard()" hidden>Dashboard</button>
+        <button id="dashboard-nav-btn" class="auth-btn auth-btn-premium" onclick="openDashboard()" hidden>Go to Dashboard</button>
         <button id="sign-in-btn" class="auth-btn" onclick="toggleAuthPanel()">Sign in</button>
         <button id="my-projects-btn" class="auth-btn auth-btn-primary" onclick="openCloudPanel()" hidden>Load Sessions</button>
         <div id="auth-panel" class="auth-panel" hidden>
@@ -6488,11 +6719,11 @@
       </div>
       <div class="modal-section">
         <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#128279;</span> Multi-table workspaces &amp; relationships</div>
-        <p class="help-text"><strong>+ Add table</strong> builds a multi-table workspace (up to 10 tables) that the AI can join across. Open the <strong>Relationships</strong> tab to see auto-suggested foreign keys — matched by column name, shown dashed and grey — and confirm the real ones, or drag between two columns to connect them manually and pick a cardinality (1:1, 1:M, M:M, etc.). Only confirmed relationships (solid blue) are shared with the AI as join hints.</p>
+        <p class="help-text"><strong>+ Add table</strong> builds a multi-table workspace (up to 10 tables) that the AI can join across. Open the <strong>Relationships</strong> tab to see auto-suggested foreign keys, shown dashed and grey and matched by column name. Confirm the real ones, or drag between two columns to connect them manually and pick a cardinality (1:1, 1:M, M:M, etc.). Only confirmed relationships, shown solid blue, are shared with the AI as join hints.</p>
       </div>
       <div class="modal-section">
         <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#128202;</span> Table View vs. Query Results</div>
-        <p class="help-text"><strong>Table View</strong> always shows the full contents of whichever table is selected in the chip bar. <strong>Query Results</strong> only shows the output of the last query you ran. Both get a <strong>Download CSV</strong> button once there's data on screen — it exports exactly what's visible, including any active filter, search, or sort.</p>
+        <p class="help-text"><strong>Table View</strong> always shows the full contents of whichever table is selected in the chip bar. <strong>Query Results</strong> only shows the output of the last query you ran. Both get a <strong>Download CSV</strong> button once there's data on screen, and it exports exactly what's visible, including any active filter, search, or sort.</p>
       </div>
       <div class="modal-section">
         <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#128260;</span> Uploading again</div>
@@ -6500,7 +6731,7 @@
       </div>
       <div class="modal-section">
         <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#129302;</span> The AI assistant: SQL vs. General</div>
-        <p class="help-text">Switch modes anytime with the <strong>SQL / General</strong> toggle above the chat. <strong>SQL Mode</strong> only ever replies with a runnable query — click <strong>Use Query</strong> to drop it into the editor, then hit Run. <strong>General Mode</strong> answers in plain English instead, with no query generated (so no Use Query button, just the copy icon). Either way, an off-topic question gets a plain, honest answer instead of a made-up query. With more than one table loaded, use the <strong>AI focus</strong> dropdown to hint which table(s) an ambiguous question should default to — a question that clearly needs a join still works regardless of focus. Click <strong>&#8617; Reply</strong> under any answer to ask a follow-up with that answer quoted as context.</p>
+        <p class="help-text">Switch modes anytime with the <strong>SQL / General</strong> toggle above the chat. <strong>SQL Mode</strong> only ever replies with a runnable query. Click <strong>Use Query</strong> to drop it into the editor, then hit Run. <strong>General Mode</strong> answers in plain English instead, with no query generated, so there's no Use Query button, just the copy icon. Either way, an off-topic question gets a plain answer instead of a made-up query. With more than one table loaded, use the <strong>AI focus</strong> dropdown to hint which table(s) an ambiguous question should default to. A question that clearly needs a join still works regardless of focus. Click <strong>&#8617; Reply</strong> under any answer to ask a follow-up with that answer quoted as context.</p>
       </div>
       <div class="modal-section">
         <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#9881;</span> On/off toggles</div>
@@ -6511,7 +6742,7 @@
           </div>
           <div class="help-toggle-card">
             <div class="help-toggle-name">Output Mode <span class="help-toggle-onoff">SQL / General</span></div>
-            <div class="help-toggle-desc">Also above the chat. Switching only changes the <em>next</em> reply — your conversation so far stays exactly as it was.</div>
+            <div class="help-toggle-desc">Also above the chat. Switching only changes the <em>next</em> reply. Your conversation so far stays exactly as it was.</div>
           </div>
         </div>
       </div>
@@ -6521,18 +6752,18 @@
       </div>
       <div class="modal-section">
         <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#9729;</span> Saved workspaces &amp; chat sessions</div>
-        <p class="help-text">Signed in on Normal Mode? <strong>Save to cloud</strong> and <strong>Save session</strong> (in the AI panel) store the current workspace and chat history to your account. Open <strong>Load Sessions</strong>, top right, to reopen anything you've saved, from any device. Lite Mode never touches the cloud — nothing here happens unless you sign in and click Save.</p>
+        <p class="help-text">If you're signed in on Normal Mode, <strong>Save to cloud</strong> and <strong>Save session</strong> (in the AI panel) store the current workspace and chat history to your account. Open <strong>Load Sessions</strong>, top right, to reopen anything you've saved, from any device. Lite Mode never touches the cloud, so nothing here happens unless you sign in and click Save.</p>
       </div>
       <div class="modal-section">
         <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#9733;</span> Premium features</div>
         <ul class="premium-feature-list">
-          <li>Multi-table workspaces — up to 10 tables in one workspace, instead of one</li>
-          <li>Table renaming — give a table a cleaner name than its raw filename</li>
-          <li>Cross-table AI queries — the assistant writes joins across your tables</li>
-          <li>Relationship detection — auto-suggested foreign keys, confirmable in the Relationships tab</li>
-          <li>Dashboard — a home base listing every workspace you've saved to the cloud</li>
+          <li>Multi-table workspaces: up to 10 tables in one workspace instead of one</li>
+          <li>Table renaming: give a table a cleaner name than its raw filename</li>
+          <li>Cross-table AI queries: the assistant writes joins across your tables</li>
+          <li>Relationship detection: auto-suggested foreign keys you can confirm in the Relationships tab</li>
+          <li>Dashboard: a home base listing every workspace you've saved to the cloud</li>
         </ul>
-        <p class="premium-onetime-note">&#10003; <strong>$9.99, paid once.</strong> Not a subscription — nothing to cancel later.</p>
+        <p class="premium-onetime-note">&#10003; <strong>$9.99, paid once.</strong> Not a subscription, so there's nothing to cancel later.</p>
       </div>
     </div>
   </div>
@@ -6742,12 +6973,29 @@
   <div id="app-view" hidden>
     <div class="upload-area">
       <div class="upload-wrapper">
-        <label for="file-upload" class="upload-btn">Upload CSV</label>
-        <button id="add-table-btn" class="upload-btn add-table-btn" hidden onclick="document.getElementById('file-upload-add').click()">+ Add table</button>
+        <div class="workspace-switcher" id="workspace-switcher" hidden>
+          <button type="button" class="workspace-switcher-btn" id="workspace-switcher-btn" onclick="toggleWorkspaceSwitcher()" aria-haspopup="true" aria-expanded="false">
+            <span id="workspace-switcher-label">Workspace</span>
+            <svg class="workspace-switcher-chevron" width="10" height="7" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <div class="workspace-switcher-panel" id="workspace-switcher-panel" hidden>
+            <button type="button" onclick="changeWorkspace()">Change workspace</button>
+          </div>
+        </div>
+        <button id="add-table-btn" class="upload-btn add-table-btn" onclick="document.getElementById('file-upload-add').click()">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <rect x="1.5" y="1.5" width="13" height="13" rx="1.5" stroke="currentColor" stroke-width="1.3"/>
+            <path d="M1.5 6H14.5M1.5 10.5H14.5M6 1.5V14.5M10.5 1.5V14.5" stroke="currentColor" stroke-width="1.3"/>
+          </svg>
+          + Add table
+        </button>
         <div id="file-info">No file selected</div>
-        <span id="workspace-badge" class="workspace-badge" hidden>Workspace</span>
-        <button id="save-csv-btn" class="save-btn" hidden onclick="saveCurrentCSV()">Save to cloud</button>
-        <button class="help-btn" onclick="openHelpPanel()" title="How this works" aria-label="How this works">?</button>
+        <div class="upload-wrapper-right">
+          <button id="save-csv-btn" class="save-btn" hidden onclick="saveCurrentCSV()">Save to cloud</button>
+          <button class="help-btn" onclick="openHelpPanel()" title="How this works" aria-label="How this works">?</button>
+        </div>
       </div>
     </div>
 
