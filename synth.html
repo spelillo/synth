@@ -1748,6 +1748,7 @@
           <span class="chip-name" data-table="${t.name}">${t.name}</span>
           <span class="chip-rows">${t.rowCount.toLocaleString()}</span>
           <button class="chip-rename" title="Rename table" onclick="startRenameChip(event, '${t.name}')">✎</button>
+          ${tables.length > 1 ? `<button class="chip-delete" title="Delete table" onclick="requestDeleteTable(event, '${t.name}')">&times;</button>` : ''}
         </div>
       `).join('');
 
@@ -1818,7 +1819,7 @@
     });
 
     window.handleChipClick = function(event, name) {
-      if (event.target.closest('.chip-rename') || event.target.isContentEditable) return;
+      if (event.target.closest('.chip-rename') || event.target.closest('.chip-delete') || event.target.isContentEditable) return;
       setActiveTable(name);
     };
 
@@ -1894,6 +1895,52 @@
         resetQueryInputView();
       }
     }
+
+    // ---- Delete table (chip's X button) ----
+    // Only shown when there's more than one table (see renderTableChips),
+    // so there's always at least one table left after a delete — no need
+    // to handle emptying the workspace back to zero tables here.
+
+    let tablePendingDelete = null;
+
+    window.requestDeleteTable = function(event, name) {
+      event.stopPropagation();
+      tablePendingDelete = name;
+      document.getElementById('delete-table-name').textContent = `"${name}"`;
+      document.getElementById('delete-table-modal').hidden = false;
+    };
+
+    window.closeDeleteTableModal = function() {
+      tablePendingDelete = null;
+      document.getElementById('delete-table-modal').hidden = true;
+    };
+
+    window.confirmDeleteTableSubmit = function() {
+      const name = tablePendingDelete;
+      tablePendingDelete = null;
+      document.getElementById('delete-table-modal').hidden = true;
+      if (!name || !tables.some(t => t.name === name)) return;
+
+      db.run(`DROP TABLE "${name}"`);
+      tables = tables.filter(t => t.name !== name);
+      focusedTableNames.delete(name);
+      relationships = relationships.filter(r => r.fromTable !== name && r.toTable !== name);
+
+      if (activeTableName === name) {
+        activeTableName = tables.length ? tables[0].name : null;
+        if (activeTableName) {
+          document.getElementById('query-input').value = `SELECT * FROM ${activeTableName} LIMIT 100`;
+          resetQueryInputView();
+        }
+      }
+
+      renderTableChips();
+      renderTableView();
+      recomputeRelationships();
+      populateManualFkTableSelects();
+      updateAIState();
+      markWorkspaceDirty();
+    };
 
     // ---- Heuristic foreign-key matching + ERD (Relationships tab) ----
     // Relationships are metadata only: they inform the AI's system prompt
@@ -5050,6 +5097,21 @@
       color: #0b4a78;
     }
 
+    .table-chip .chip-delete {
+      border: none;
+      background: none;
+      cursor: pointer;
+      font-size: 15px;
+      font-weight: 700;
+      color: #939084;
+      padding: 2px 4px;
+      line-height: 1;
+    }
+
+    .table-chip .chip-delete:hover {
+      color: #dc2626;
+    }
+
     .chat-table-focus-row {
       display: flex;
       align-items: center;
@@ -6816,6 +6878,18 @@
       <div class="modal-actions">
         <button class="modal-cancel-btn" onclick="closeDeleteQueryModal()">Cancel</button>
         <button class="modal-confirm-delete-btn" onclick="confirmDeleteQuerySubmit()">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="delete-table-modal" class="modal-overlay" hidden>
+    <div class="modal modal-small">
+      <div class="delete-warning-icon">⚠</div>
+      <div class="delete-warning-title">Delete <span id="delete-table-name"></span>?</div>
+      <div class="delete-warning-body">This can't be undone.</div>
+      <div class="modal-actions">
+        <button class="modal-cancel-btn" onclick="closeDeleteTableModal()">Cancel</button>
+        <button class="modal-confirm-delete-btn" onclick="confirmDeleteTableSubmit()">Delete</button>
       </div>
     </div>
   </div>
