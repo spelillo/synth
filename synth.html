@@ -191,6 +191,7 @@
         updatePremiumUI();
       }
       updateCloudButtons();
+      updateAIState();
     }
 
     // ---- Premium status (profiles.is_premium) ----
@@ -586,6 +587,22 @@
       document.getElementById('app-view').hidden = true;
       document.getElementById('dashboard-view').hidden = true;
       document.getElementById('landing-view').hidden = false;
+
+      // The header/view swap above only hides stale data, it doesn't
+      // discard it — on a shared device the previous account's CSVs and
+      // chat history would still be sitting in memory. Reset the same way
+      // loading a fresh workspace already does (see loadCloudWorkspace).
+      db = new SQL.Database();
+      tables = [];
+      activeTableName = null;
+      focusedTableNames = new Set();
+      chatHistory = [];
+      currentCSVFile = null;
+      currentWorkspaceId = null;
+      currentWorkspaceName = null;
+      csvLoaded = false;
+      aiEnabled = false;
+
       selectLandingMode('lite');
     };
 
@@ -1068,9 +1085,15 @@
       }
 
       try {
+        // The server verifies this bearer token and uses the account it
+        // belongs to — it no longer trusts the userId in the body alone.
+        const { data: { session } } = await sb.auth.getSession();
         const clientSecretPromise = fetch('/api/create-checkout-session', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token || ''}`
+          },
           body: JSON.stringify({ userId: currentUser.id }),
         })
           .then(async (response) => {
@@ -1549,7 +1572,41 @@
         return values;
       }).filter(row => row.some(val => val));
 
-      return { headers, rows };
+      return { headers, rows: normalizeThousandsSeparators(rows) };
+    }
+
+    // A column full of values like "1,200" keeps the thousands separator as
+    // part of the stored text, which silently breaks numeric handling
+    // everywhere downstream — SQLite's CAST("1,200" AS INTEGER) reads only
+    // the leading digit run (1), and the client-side column sort's
+    // parseFloat() does the same. Strip the separator once, here, for any
+    // column where every non-empty value is a plain or comma-grouped
+    // number (a real column mixes both, e.g. "450" and "1,200" together —
+    // requiring literally every value to contain a comma would miss that),
+    // so every consumer (hand-written SQL, the AI assistant's generated
+    // SQL, sort) sees a plain number instead of hitting that trap
+    // independently.
+    const NUMBER_RE = /^-?\d{1,3}(,\d{3})*(\.\d+)?$/;
+
+    function normalizeThousandsSeparators(rows) {
+      if (!rows.length) return rows;
+      const columnCount = rows[0].length;
+      const qualifies = Array.from({ length: columnCount }, (_, colIndex) => {
+        let sawComma = false;
+        for (const row of rows) {
+          const val = row[colIndex];
+          if (!val) continue;
+          if (!NUMBER_RE.test(val)) return false;
+          if (val.includes(',')) sawComma = true;
+        }
+        return sawComma;
+      });
+
+      if (!qualifies.some(Boolean)) return rows;
+
+      return rows.map(row => row.map((val, colIndex) =>
+        qualifies[colIndex] && val ? val.replace(/,/g, '') : val
+      ));
     }
 
     // Loads one file into the shared `db` as a new table and returns its
@@ -1753,7 +1810,7 @@
       bar.hidden = false;
       bar.innerHTML = tables.map(t => `
         <div class="table-chip${t.name === activeTableName ? ' active' : ''}" data-table="${t.name}" onclick="handleChipClick(event, '${t.name}')">
-          <span class="chip-name" data-table="${t.name}">${t.name}</span>
+          <span class="chip-name" data-table="${t.name}">${escapeHtml(t.name)}</span>
           <span class="chip-rows">${t.rowCount.toLocaleString()}</span>
           <button class="chip-rename" title="Rename table" onclick="startRenameChip(event, '${t.name}')">✎</button>
           ${tables.length > 1 ? `<button class="chip-delete" title="Delete table" onclick="requestDeleteTable(event, '${t.name}')">&times;</button>` : ''}
@@ -1772,7 +1829,7 @@
       panel.innerHTML = tables.map(t => `
         <label class="focus-option">
           <input type="checkbox" value="${t.name}" ${focusedTableNames.has(t.name) ? 'checked' : ''} onchange="toggleFocusTable('${t.name}', this.checked)">
-          ${t.name}
+          ${escapeHtml(t.name)}
         </label>
       `).join('');
 
@@ -2220,7 +2277,7 @@
       const tableSel = document.getElementById(`manual-fk-${side}-table`);
       const colSel = document.getElementById(`manual-fk-${side}-col`);
       const t = tables.find(x => x.name === tableSel.value);
-      colSel.innerHTML = (t ? t.columns : []).map(c => `<option value="${c}">${c}</option>`).join('');
+      colSel.innerHTML = (t ? t.columns : []).map(c => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`).join('');
     };
 
     function populateManualFkTableSelects() {
@@ -2413,7 +2470,7 @@
         if (outputMode === 'general') {
           return `You are a data analyst assistant. The user has loaded a CSV file into a SQLite database. Here is the schema:\n\n${tableSchema}\n\n${GENERAL_MODE_RULES}`;
         }
-        return `You are a SQL query assistant. The user has loaded a CSV file into a SQLite database. Here is the schema:\n\n${tableSchema}\n\nYour job is to:\n1. ONLY respond with SQL queries that work on this exact table\n2. Use the table name ${activeTableName} exactly as written, with no surrounding quotes — table names in this database never need quoting. Column names only need double quotes if they contain a space or special character (e.g. "First Name")\n3. Format SQL queries in markdown code blocks with \`\`\`sql\n4. Keep explanations brief\n5. Never suggest anything other than SQL queries\n6. ${SQL_OFFTOPIC_RULE}\n7. CRITICAL: Use proper SQL syntax - ensure spaces between all keywords\n8. Use single quotes for string literals (e.g., 'value' not "value")\n9. For not-equals use <> or != (both work in SQLite)\n10. Column names are case-sensitive - match them exactly from the schema\n11. All SQL must be valid SQLite syntax\n\nBe concise, practical, and syntactically perfect.`;
+        return `You are a SQL query assistant. The user has loaded a CSV file into a SQLite database. Here is the schema:\n\n${tableSchema}\n\nYour job is to:\n1. ONLY respond with SQL queries that work on this exact table\n2. Use the table name ${activeTableName} exactly as written, with no surrounding quotes — table names in this database never need quoting. Column names only need double quotes if they contain a space or special character (e.g. "First Name")\n3. Format SQL queries in markdown code blocks with \`\`\`sql\n4. Keep explanations brief\n5. Never suggest anything other than SQL queries\n6. ${SQL_OFFTOPIC_RULE}\n7. CRITICAL: Use proper SQL syntax - ensure spaces between all keywords\n8. Use single quotes for string literals (e.g., 'value' not "value")\n9. For not-equals use <> or != (both work in SQLite)\n10. Column names are case-sensitive - match them exactly from the schema\n11. All SQL must be valid SQLite syntax\n12. Every column is stored as TEXT regardless of what it looks like. Before CAST()ing a column to a number (for ORDER BY, comparisons, math), wrap it in REPLACE(column, ',', '') in case it has thousands-separator commas (e.g. "1,200"), since CAST alone reads only the leading digit run and silently returns the wrong value\n\nBe concise, practical, and syntactically perfect.`;
       }
 
       const focusList = [...focusedTableNames].filter(name => tables.some(t => t.name === name));
@@ -2426,7 +2483,7 @@
         return `You are a data analyst assistant. The user has loaded multiple related tables into one SQLite database. Here is the schema for every table in the workspace:\n\n${tableSchema}\n${focusNote}${relationshipNote}\n${GENERAL_MODE_RULES}`;
       }
 
-      return `You are a SQL query assistant. The user has loaded multiple related tables into one SQLite database. Here is the schema for every table in the workspace:\n\n${tableSchema}\n${focusNote}${relationshipNote}\nYour job is to:\n1. ONLY respond with SQL queries that work on these exact tables\n2. Use the correct table name(s) from the schema above exactly as written, with no surrounding quotes — table names in this database never need quoting, and you should never invent a table\n3. Several tables may share column names (id, name, status, etc.) — always qualify column names with a table alias once more than one table is involved, and pick the specific table's column the question actually refers to\n4. If a question requires data from more than one table, write a proper JOIN using the relationships implied by matching id columns (e.g. orders.customer_id -> customers.id)\n5. Format SQL queries in markdown code blocks with \`\`\`sql\n6. Keep explanations brief\n7. Never suggest anything other than SQL queries\n8. ${SQL_OFFTOPIC_RULE}\n9. CRITICAL: Use proper SQL syntax - ensure spaces between all keywords\n10. Use single quotes for string literals (e.g., 'value' not "value")\n11. Column names are case-sensitive - match them exactly from the schema\n12. All SQL must be valid SQLite syntax\n\nBe concise, practical, and syntactically perfect.`;
+      return `You are a SQL query assistant. The user has loaded multiple related tables into one SQLite database. Here is the schema for every table in the workspace:\n\n${tableSchema}\n${focusNote}${relationshipNote}\nYour job is to:\n1. ONLY respond with SQL queries that work on these exact tables\n2. Use the correct table name(s) from the schema above exactly as written, with no surrounding quotes — table names in this database never need quoting, and you should never invent a table\n3. Several tables may share column names (id, name, status, etc.) — always qualify column names with a table alias once more than one table is involved, and pick the specific table's column the question actually refers to\n4. If a question requires data from more than one table, write a proper JOIN using the relationships implied by matching id columns (e.g. orders.customer_id -> customers.id)\n5. Format SQL queries in markdown code blocks with \`\`\`sql\n6. Keep explanations brief\n7. Never suggest anything other than SQL queries\n8. ${SQL_OFFTOPIC_RULE}\n9. CRITICAL: Use proper SQL syntax - ensure spaces between all keywords\n10. Use single quotes for string literals (e.g., 'value' not "value")\n11. Column names are case-sensitive - match them exactly from the schema\n12. All SQL must be valid SQLite syntax\n13. Every column is stored as TEXT regardless of what it looks like. Before CAST()ing a column to a number (for ORDER BY, comparisons, math), wrap it in REPLACE(column, ',', '') in case it has thousands-separator commas (e.g. "1,200"), since CAST alone reads only the leading digit run and silently returns the wrong value\n\nBe concise, practical, and syntactically perfect.`;
     }
 
     // Updates state + toggle button UI + persists the preference. No other
@@ -2472,6 +2529,16 @@
         outputModeGeneralBtn.disabled = !csvLoaded;
       }
 
+      // /api/chat now requires a signed-in session (it spends the site's
+      // own Groq budget, so it can no longer be left open to anyone).
+      // Keep the toggle itself off and disabled until sign-in, rather than
+      // letting someone flip it on and hit a confusing error on message 1.
+      toggle.disabled = !currentUser;
+      if (!currentUser && aiEnabled) {
+        aiEnabled = false;
+        toggle.checked = false;
+      }
+
       if (aiEnabled && csvLoaded) {
         toggleLabel.textContent = 'ON';
 
@@ -2501,7 +2568,9 @@
         chatInput.disabled = true;
         chatSend.disabled = true;
 
-        if (!csvLoaded) {
+        if (!currentUser) {
+          chatMessages.innerHTML = '<div class="empty ai-disabled-msg">Sign in to use the AI assistant. It now requires an account so the shared AI budget can\'t be used anonymously.</div>';
+        } else if (!csvLoaded) {
           chatMessages.innerHTML = '<div class="empty ai-disabled-msg">Upload a CSV first, then toggle AI ON to ask questions.</div>';
         } else {
           chatMessages.innerHTML = '<div class="empty ai-disabled-msg">AI assistant is disabled. Toggle it ON to ask SQL questions.</div>';
@@ -2664,10 +2733,19 @@
         }
         apiMessages.push({ role: 'user', content: message });
 
+        // /api/chat requires a signed-in session — it spends the site's own
+        // Groq budget, so it checks this bearer token server-side rather
+        // than trusting anything the client claims.
+        const { data: { session } } = sb ? await sb.auth.getSession() : { data: { session: null } };
+        if (!session) {
+          throw new Error('Please sign in to use the AI assistant.');
+        }
+
         const response = await fetch(CHAT_ENDPOINT, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
           },
           body: JSON.stringify({
             model: 'openai/gpt-oss-120b',
@@ -2676,6 +2754,9 @@
           })
         });
 
+        if (response.status === 401) {
+          throw new Error('Your session expired. Sign in again to keep using the AI assistant.');
+        }
         if (!response.ok) {
           const errorText = await response.text();
           throw new Error(`API returned ${response.status}: ${errorText}`);
@@ -3021,7 +3102,7 @@
         if (searchInput) searchInput.value = '';
       }
 
-      updateTable(targetId, stateKey);
+      updateTable(targetId, stateKey, { forceFullRender: true });
     }
 
     // Applies a view's active per-column filters, search box, and sort to
@@ -3080,12 +3161,16 @@
       return rows;
     }
 
-    function updateTable(targetId, stateKey) {
-      const target = document.getElementById(targetId);
-      const state = viewStates[stateKey];
-      const filteredRows = getVisibleRows(stateKey);
+    // Escapes a value for use inside a double-quoted HTML attribute.
+    // escapeHtml() alone is only safe for text-node content — it doesn't
+    // touch `"`, so a filter value containing one could otherwise break out
+    // of the value="..." attribute below.
+    function escapeAttr(str) {
+      return escapeHtml(str).replace(/"/g, '&quot;');
+    }
 
-      let html = '<table><thead><tr>';
+    function renderTableHeadHtml(state, stateKey) {
+      let html = '<thead><tr>';
       state.columns.forEach((col, index) => {
         const sortIcon = state.sort.column === index
           ? (state.sort.direction === 'asc' ? '▲' : '▼')
@@ -3095,29 +3180,69 @@
         html += `<th>
           <div class="th-content">
             <div class="th-label" onclick="sortColumn('${stateKey}', ${index})">
-              ${col}
+              ${escapeHtml(col)}
               <span class="sort-icon ${sortClass}">${sortIcon}</span>
             </div>
           </div>
           <input type="text" class="column-filter" placeholder="Filter..."
                  onkeyup="filterColumn('${stateKey}', ${index}, this.value)"
-                 value="${state.filter[index] || ''}">
+                 value="${escapeAttr(state.filter[index] || '')}">
         </th>`;
       });
-      html += '</tr></thead><tbody>';
+      html += '</tr></thead>';
+      return html;
+    }
 
+    function renderTableBodyHtml(filteredRows) {
+      let html = '<tbody>';
       filteredRows.forEach(row => {
         html += '<tr>';
         row.forEach(val => {
-          html += `<td>${val !== null && val !== undefined ? val : '<span class="null">NULL</span>'}</td>`;
+          html += `<td>${val !== null && val !== undefined ? escapeHtml(String(val)) : '<span class="null">NULL</span>'}</td>`;
         });
         html += '</tr>';
       });
+      html += '</tbody>';
+      return html;
+    }
 
-      html += '</tbody></table>';
-      html += `<div class="row-count">${filteredRows.length.toLocaleString()} of ${state.rows.length.toLocaleString()} rows</div>`;
+    // Re-renders a results/table-view grid. On a genuinely new result set
+    // (forceFullRender, or the column list itself changed) it rebuilds the
+    // whole <table>. Otherwise — a filter keystroke or a sort click — it
+    // only replaces <tbody> and patches the sort icons in place, leaving the
+    // <thead> filter <input> elements untouched so they don't lose focus.
+    // (They used to get destroyed and recreated on every keystroke, which
+    // meant typing a second filter character required re-clicking the box.)
+    function updateTable(targetId, stateKey, { forceFullRender = false } = {}) {
+      const target = document.getElementById(targetId);
+      const state = viewStates[stateKey];
+      const filteredRows = getVisibleRows(stateKey);
 
-      target.innerHTML = html;
+      const table = target.querySelector('table');
+      const columnsKey = state.columns.join('');
+      const structureChanged = forceFullRender || !table || target.dataset.columnsKey !== columnsKey;
+
+      if (structureChanged) {
+        target.innerHTML = `<table>${renderTableHeadHtml(state, stateKey)}${renderTableBodyHtml(filteredRows)}</table>
+          <div class="row-count"></div>`;
+        target.dataset.columnsKey = columnsKey;
+      } else {
+        const ths = table.querySelectorAll('thead th');
+        state.columns.forEach((col, index) => {
+          const icon = ths[index]?.querySelector('.sort-icon');
+          if (!icon) return;
+          const active = state.sort.column === index;
+          icon.textContent = active ? (state.sort.direction === 'asc' ? '▲' : '▼') : '⇅';
+          icon.classList.toggle('active', active);
+        });
+        table.querySelector('tbody').outerHTML = renderTableBodyHtml(filteredRows);
+      }
+
+      const rowCountEl = target.querySelector('.row-count');
+      if (rowCountEl) {
+        rowCountEl.textContent = `${filteredRows.length.toLocaleString()} of ${state.rows.length.toLocaleString()} rows`;
+      }
+
       syncTopScrollbar(targetId, state.scrollBarId, state.scrollInnerId);
 
       if (stateKey === 'tableview') {
@@ -3314,6 +3439,68 @@
         runQuery();
       }
     });
+
+    // ---- Dismissing modals: Escape and backdrop click ----
+    // Every .modal-overlay only ever closed via its own explicit close
+    // button. Escape and clicking outside the card now work everywhere too,
+    // routed through each modal's own close function (not just hiding the
+    // overlay) so whatever cleanup that function does — resetting
+    // editingQueryId, tablePendingDelete, etc. — still runs.
+    const MODAL_CLOSE_FN = {
+      'about-modal': 'closeAboutModal',
+      'terms-modal': 'closeTermsModal',
+      'privacy-modal': 'closePrivacyModal',
+      'premium-modal': 'closePremiumPanel',
+      'premium-signin-modal': 'closePremiumSigninModal',
+      'settings-modal': 'closeSettingsPanel',
+      'cancel-premium-modal': 'closeCancelPremiumModal',
+      'cloud-modal': 'closeCloudPanel',
+      'help-modal': 'closeHelpPanel',
+      'save-query-modal': 'closeSaveQueryModal',
+      'load-query-modal': 'closeLoadQueryModal',
+      'delete-query-modal': 'closeDeleteQueryModal',
+      'delete-table-modal': 'closeDeleteTableModal',
+      'relationship-type-modal': 'closeRelationshipTypeModal',
+      'delete-workspace-modal': 'closeDeleteWorkspaceModal',
+      'switch-workspace-modal': 'closeSwitchWorkspaceModal',
+    };
+
+    function closeModalOverlay(overlay) {
+      const closeFn = MODAL_CLOSE_FN[overlay.id];
+      if (closeFn && typeof window[closeFn] === 'function') window[closeFn]();
+      else overlay.hidden = true;
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      const openModal = document.querySelector('.modal-overlay:not([hidden])');
+      if (openModal) {
+        closeModalOverlay(openModal);
+        return;
+      }
+      const authPanel = document.getElementById('auth-panel');
+      if (authPanel && !authPanel.hidden) authPanel.hidden = true;
+    });
+
+    // Delegated from document (not attached per-element) since this script
+    // runs in <head>, before the modal markup in <body> exists yet — a
+    // querySelectorAll('.modal-overlay') here would find nothing to attach
+    // to. Delegation only needs `document` to exist, which it already does.
+    document.addEventListener('click', (e) => {
+      if (e.target.classList?.contains('modal-overlay') && !e.target.hidden) {
+        closeModalOverlay(e.target);
+      }
+    });
+
+    // The sign-in dropdown isn't a .modal-overlay (no backdrop) — close it
+    // on any click outside the panel and its own toggle button.
+    document.addEventListener('click', (e) => {
+      const authPanel = document.getElementById('auth-panel');
+      const signInBtn = document.getElementById('sign-in-btn');
+      if (!authPanel || authPanel.hidden) return;
+      if (authPanel.contains(e.target) || signInBtn?.contains(e.target)) return;
+      authPanel.hidden = true;
+    });
   </script>
   <style>
     * {
@@ -3393,6 +3580,19 @@
       border-left: 2px solid #ff4f00;
     }
 
+    /* .auth-btn labels ("Go Premium", "Sign in") stay on one line even
+       here (see white-space: nowrap above) — at this width the fix is
+       tighter padding/type, not letting them wrap to two lines. */
+    @media (max-width: 420px) {
+      .auth-btn {
+        padding: 7px 12px;
+        font-size: 13px;
+      }
+      .auth-area > .auth-btn:not([hidden]) ~ .auth-btn:not([hidden]) {
+        padding-left: 12px;
+      }
+    }
+
     .auth-btn {
       background: #fffefb;
       border: 1px solid #201515;
@@ -3404,6 +3604,7 @@
       font-weight: 700;
       letter-spacing: 0.144px;
       cursor: pointer;
+      white-space: nowrap;
       transition: background 0.15s, border-color 0.15s;
     }
 
@@ -7331,7 +7532,7 @@
       </div>
       <div class="modal-section">
         <div class="legal-section-title">9. Contact</div>
-        <p class="help-text">Questions about these Terms? Reach us at <strong>support@example.com</strong>.</p>
+        <p class="help-text">Questions about these Terms? Reach us at <strong>spelillo11@gmail.com</strong>.</p>
       </div>
     </div>
   </div>
@@ -7377,7 +7578,7 @@
       </div>
       <div class="modal-section">
         <div class="legal-section-title">Contact</div>
-        <p class="help-text">Questions about this policy, or want your data deleted? Reach us at <strong>support@example.com</strong>.</p>
+        <p class="help-text">Questions about this policy, or want your data deleted? Reach us at <strong>spelillo11@gmail.com</strong>.</p>
       </div>
     </div>
   </div>

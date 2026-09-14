@@ -8,6 +8,7 @@
 // into this file.
 
 import Stripe from 'stripe';
+import { getVerifiedUserId } from './_supabaseAuth.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   // Required for the embedded Checkout Form (initCheckoutFormSdk) used in
@@ -27,12 +28,13 @@ export default async function handler(req, res) {
     return;
   }
 
-  // The client only shows "Go Premium" when signed in, but that's just UI —
-  // enforce it here too, since client_reference_id is how the webhook knows
-  // which Supabase user to grant premium to. No userId, no session.
-  const userId = req.body?.userId;
+  // The client only shows "Go Premium" when signed in, but that's just UI.
+  // client_reference_id is how the webhook knows which Supabase user to
+  // grant premium to, so it has to come from a verified session, not a
+  // client-supplied field a request could claim to be anyone's id.
+  const userId = await getVerifiedUserId(req);
   if (!userId) {
-    res.status(400).json({ error: { message: 'Sign in required before checkout' } });
+    res.status(401).json({ error: { message: 'Sign in required before checkout' } });
     return;
   }
 

@@ -5,9 +5,25 @@
 // (Project Settings -> Environment Variables). Never commit a real
 // key into this file.
 
+import { getVerifiedUserId } from './_supabaseAuth.js';
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: { message: 'Method not allowed' } });
+    return;
+  }
+
+  // This forwards to a metered third-party API paid for by the site, so it
+  // can no longer be left open to anyone who finds the URL — only a
+  // signed-in Synth user can use it.
+  const userId = await getVerifiedUserId(req);
+  if (!userId) {
+    res.status(401).json({ error: { message: 'Sign in required to use the AI assistant' } });
+    return;
+  }
+
+  if (!Array.isArray(req.body?.messages)) {
+    res.status(400).json({ error: { message: 'Request body must include a messages array' } });
     return;
   }
 

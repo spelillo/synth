@@ -38,15 +38,22 @@ export default async function handler(req, res) {
     return;
   }
 
+  const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!endpointSecret) {
+    // Never fall back to parsing the body unverified — that would let
+    // anyone POST a fake checkout.session.completed and grant themselves
+    // premium. A misconfigured secret should fail loudly, not silently.
+    console.error('STRIPE_WEBHOOK_SECRET is not configured — refusing to process webhook');
+    res.status(500).json({ error: { message: 'Webhook not configured' } });
+    return;
+  }
+
   const rawBody = await readRawBody(req);
   const signature = req.headers['stripe-signature'];
-  const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
   let event;
   try {
-    event = endpointSecret
-      ? stripe.webhooks.constructEvent(rawBody, signature, endpointSecret)
-      : JSON.parse(rawBody.toString());
+    event = stripe.webhooks.constructEvent(rawBody, signature, endpointSecret);
   } catch (err) {
     console.error('Webhook signature verification failed.', err.message);
     res.status(400).json({ error: { message: `Webhook Error: ${err.message}` } });
