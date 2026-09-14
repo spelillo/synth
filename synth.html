@@ -2754,6 +2754,10 @@
           })
         });
 
+        if (response.status === 429) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(body?.error?.message || "You've used today's AI messages. Try again later.");
+        }
         if (response.status === 401) {
           throw new Error('Your session expired. Sign in again to keep using the AI assistant.');
         }
@@ -6899,6 +6903,7 @@
           <li>Multi-table workspaces — up to 10 tables in one workspace</li>
           <li>Table renaming — give a table a cleaner name than its raw filename</li>
           <li>Cross-table AI queries — the assistant writes joins across your tables</li>
+          <li>More AI usage — 5x the daily limit on a free account</li>
           <li>Relationship detection — auto-suggested foreign keys you confirm yourself</li>
           <li>Dashboard — a home base listing every workspace you've saved to the cloud</li>
         </ul>
@@ -7031,6 +7036,7 @@
           <li>Multi-table workspaces: up to 10 tables in one workspace instead of one</li>
           <li>Table renaming: give a table a cleaner name than its raw filename</li>
           <li>Cross-table AI queries: the assistant writes joins across your tables</li>
+          <li>More AI usage: 5x the daily limit on a free account</li>
           <li>Relationship detection: auto-suggested foreign keys you can confirm in the Relationships tab</li>
           <li>Dashboard: a home base listing every workspace you've saved to the cloud</li>
         </ul>

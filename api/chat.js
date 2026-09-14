@@ -6,6 +6,7 @@
 // key into this file.
 
 import { getVerifiedUserId } from './_supabaseAuth.js';
+import { checkAndRecordAiUsage } from './_aiRateLimit.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -19,6 +20,14 @@ export default async function handler(req, res) {
   const userId = await getVerifiedUserId(req);
   if (!userId) {
     res.status(401).json({ error: { message: 'Sign in required to use the AI assistant' } });
+    return;
+  }
+
+  // Per-account limit, split by tier — see AI_RATE_LIMIT_SPEC.md. A signed-in
+  // account still can't loop this endpoint indefinitely.
+  const usage = await checkAndRecordAiUsage(userId);
+  if (!usage.allowed) {
+    res.status(429).json({ error: { message: usage.message } });
     return;
   }
 
