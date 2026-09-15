@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Synth: Query any CSV with SQL or plain English</title>
-  <meta name="description" content="Upload a CSV and query it with real SQL or plain-English AI questions. It runs as a local SQLite database right in your browser tab. No sign-in required to try it.">
-  <meta property="og:title" content="Synth: Query any CSV with SQL or plain English">
-  <meta property="og:description" content="Upload a CSV and query it with real SQL or plain-English AI questions. It runs as a local SQLite database right in your browser tab.">
+  <title>Synth: Instantly query any CSV file with SQL</title>
+  <meta name="description" content="Instantly query any CSV file with SQL, or ask in plain English. It runs as a local SQLite database right in your browser tab. No sign-in required to try it.">
+  <meta property="og:title" content="Synth: Instantly query any CSV file with SQL">
+  <meta property="og:description" content="Instantly query any CSV file with SQL, or ask in plain English. It runs as a local SQLite database right in your browser tab.">
   <meta property="og:type" content="website">
   <meta property="og:image" content="synth-cream-orangediscs.png">
   <meta name="twitter:card" content="summary">
@@ -183,6 +183,7 @@
         document.getElementById('my-projects-btn').hidden = false;
         confirmLandingSignIn(currentUser.email);
         refreshPremiumStatus();
+        resumePendingSaveQuery();
       } else {
         signInBtn.textContent = 'Sign in';
         signInBtn.title = '';
@@ -219,9 +220,60 @@
       // you'd upgraded, duplicating what the Settings popup (behind the
       // email button) already shows. Once premium, just hide it instead.
       document.getElementById('go-premium-btn').hidden = isPremium;
-      document.getElementById('dashboard-nav-btn').hidden = !isPremium;
+      document.getElementById('dashboard-nav-btn').hidden = !currentUser;
       renderSettingsPremiumRow();
     }
+
+    // ---- Tier gating (Lite -> Normal -> Premium) ----
+    // Single source of truth for "can this account do X" so individual
+    // features don't each grow their own ad hoc currentUser/isPremium check.
+
+    const TIER_RANK = { lite: 0, normal: 1, premium: 2 };
+
+    function getUserTier() {
+      if (!currentUser) return 'lite';
+      return isPremium ? 'premium' : 'normal';
+    }
+
+    const FEATURE_MIN_TIER = {
+      saveQuery: 'normal',
+      dashboard: 'normal',
+      multiCsv: 'premium',
+      tableRename: 'premium',
+      crossTableAI: 'premium',
+      largeCsv: 'premium',
+    };
+
+    function canUseFeature(featureKey) {
+      return TIER_RANK[getUserTier()] >= TIER_RANK[FEATURE_MIN_TIER[featureKey]];
+    }
+
+    // Guards a feature: returns true and does nothing if the account's tier
+    // already clears it, otherwise opens the right prompt (sign-in for the
+    // Lite->Normal boundary, upgrade for the Normal->Premium boundary) and
+    // returns false so the caller can bail out.
+    function requireFeature(featureKey) {
+      if (canUseFeature(featureKey)) return true;
+      if (FEATURE_MIN_TIER[featureKey] === 'normal' && getUserTier() === 'lite') {
+        openSigninRequiredModal();
+      } else {
+        openPremiumPanel();
+      }
+      return false;
+    }
+
+    window.openSigninRequiredModal = function() {
+      document.getElementById('signin-required-modal').hidden = false;
+    };
+
+    window.closeSigninRequiredModal = function() {
+      document.getElementById('signin-required-modal').hidden = true;
+    };
+
+    window.signInFromRequiredModal = function() {
+      document.getElementById('signin-required-modal').hidden = true;
+      toggleAuthPanel();
+    };
 
     // ---- Account settings (Settings modal, opened via the email button) ----
 
@@ -246,9 +298,9 @@
       if (!row) return;
       row.innerHTML = isPremium
         ? `<span class="workspace-badge">Premium</span>
-           <p class="help-text" style="margin:8px 0">Multi-table workspaces, table renaming, cross-table AI queries, and relationship detection. It's a one-time purchase, so nothing renews and there's nothing to cancel on Stripe's side.</p>
+           <p class="help-text" style="margin:8px 0">Multi-table workspaces, table renaming, cross-table AI queries, relationship detection, and CSVs up to 500,000 rows. It's a one-time purchase, so nothing renews and there's nothing to cancel on Stripe's side.</p>
            <button class="auth-btn" onclick="openCancelPremiumModal()">Cancel Premium</button>`
-        : `<p class="help-text" style="margin:0 0 10px">Free plan: single-table workspaces. Upgrade for multi-table workspaces, table renaming, cross-table AI queries, and relationship detection.</p>
+        : `<p class="help-text" style="margin:0 0 10px">Free plan: single-table workspaces, up to 50,000 rows. Upgrade for multi-table workspaces, table renaming, cross-table AI queries, relationship detection, and CSVs up to 500,000 rows.</p>
            <button class="auth-btn auth-btn-premium" onclick="closeSettingsPanel(); openPremiumPanel();">Go Premium ($9.99 once)</button>`;
     }
 
@@ -809,7 +861,7 @@
     }
 
     window.openDashboard = async function() {
-      if (!currentUser || !isPremium) return;
+      if (!requireFeature('dashboard')) return;
       dashboardPreviousView = document.getElementById('landing-view').hidden ? 'app' : 'landing';
       document.getElementById('landing-view').hidden = true;
       document.getElementById('app-view').hidden = true;
@@ -1216,7 +1268,40 @@
       editingQueryId = null;
     };
 
+    // Lite Mode can still open and fill out Save Query — it's only gated
+    // at the moment of actually saving, so nothing gets thrown away. The
+    // in-progress form is captured here and restored by
+    // resumePendingSaveQuery() once handleAuthChange sees a session.
+    let pendingSaveQueryDraft = null;
+
+    function resumePendingSaveQuery() {
+      const draft = pendingSaveQueryDraft;
+      if (!draft) return;
+      pendingSaveQueryDraft = null;
+      document.getElementById('signin-required-modal').hidden = true;
+      editingQueryId = draft.editingQueryId;
+      document.getElementById('save-query-modal-title').textContent = draft.modalTitle;
+      document.getElementById('save-query-title-input').value = draft.title;
+      document.getElementById('save-query-sql-input').value = draft.sql;
+      document.getElementById('save-query-desc-input').value = draft.description;
+      document.getElementById('save-query-desc-count').textContent = String(draft.description.length);
+      document.getElementById('save-query-modal').hidden = false;
+    }
+
     window.submitSaveQuery = function() {
+      if (!canUseFeature('saveQuery')) {
+        pendingSaveQueryDraft = {
+          editingQueryId,
+          modalTitle: document.getElementById('save-query-modal-title').textContent,
+          title: document.getElementById('save-query-title-input').value,
+          sql: document.getElementById('save-query-sql-input').value,
+          description: document.getElementById('save-query-desc-input').value,
+        };
+        document.getElementById('save-query-modal').hidden = true;
+        openSigninRequiredModal();
+        return;
+      }
+
       const key = currentCSVKey();
       if (!key) { alert('Could not save this query — no CSV or workspace is loaded.'); return; }
 
@@ -1540,7 +1625,7 @@
       return null;
     }
 
-    function parseCSVText(text) {
+    async function parseCSVText(text) {
       const nonCsvReason = looksLikeNonCsvFile(text);
       if (nonCsvReason) {
         throw new Error(`This doesn't look like a CSV. It looks like ${nonCsvReason}. Export or save it as CSV, then try again.`);
@@ -1552,27 +1637,39 @@
       }
 
       const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-      const rows = lines.slice(1).map(line => {
-        const values = [];
-        let current = '';
-        let inQuotes = false;
 
-        for (let i = 0; i < line.length; i++) {
-          const char = line[i];
-          if (char === '"') {
-            inQuotes = !inQuotes;
-          } else if (char === ',' && !inQuotes) {
-            values.push(current.trim().replace(/^"|"$/g, ''));
-            current = '';
-          } else {
-            current += char;
+      // Parsed in chunks, yielding to the browser between them, so a large
+      // file doesn't block the main thread for one long uninterrupted
+      // stretch — previously this ran as a single synchronous pass over
+      // every line, which is part of why a 100k+ row CSV made the tab feel
+      // hung rather than just busy.
+      const rows = [];
+      for (let start = 1; start < lines.length; start += CSV_CHUNK_SIZE) {
+        const end = Math.min(start + CSV_CHUNK_SIZE, lines.length);
+        for (let i = start; i < end; i++) {
+          const line = lines[i];
+          const values = [];
+          let current = '';
+          let inQuotes = false;
+
+          for (let c = 0; c < line.length; c++) {
+            const char = line[c];
+            if (char === '"') {
+              inQuotes = !inQuotes;
+            } else if (char === ',' && !inQuotes) {
+              values.push(current.trim().replace(/^"|"$/g, ''));
+              current = '';
+            } else {
+              current += char;
+            }
           }
+          values.push(current.trim().replace(/^"|"$/g, ''));
+          if (values.some(val => val)) rows.push(values);
         }
-        values.push(current.trim().replace(/^"|"$/g, ''));
-        return values;
-      }).filter(row => row.some(val => val));
+        if (end < lines.length) await yieldToUI();
+      }
 
-      return { headers, rows: normalizeThousandsSeparators(rows) };
+      return { headers, rows: await normalizeThousandsSeparators(rows) };
     }
 
     // A column full of values like "1,200" keeps the thousands separator as
@@ -1588,47 +1685,75 @@
     // independently.
     const NUMBER_RE = /^-?\d{1,3}(,\d{3})*(\.\d+)?$/;
 
-    function normalizeThousandsSeparators(rows) {
+    async function normalizeThousandsSeparators(rows) {
       if (!rows.length) return rows;
       const columnCount = rows[0].length;
-      const qualifies = Array.from({ length: columnCount }, (_, colIndex) => {
-        let sawComma = false;
-        for (const row of rows) {
-          const val = row[colIndex];
-          if (!val) continue;
-          if (!NUMBER_RE.test(val)) return false;
-          if (val.includes(',')) sawComma = true;
+      const qualifies = new Array(columnCount).fill(true);
+      const sawComma = new Array(columnCount).fill(false);
+
+      for (let start = 0; start < rows.length; start += CSV_CHUNK_SIZE) {
+        const end = Math.min(start + CSV_CHUNK_SIZE, rows.length);
+        for (let i = start; i < end; i++) {
+          const row = rows[i];
+          for (let colIndex = 0; colIndex < columnCount; colIndex++) {
+            if (!qualifies[colIndex]) continue;
+            const val = row[colIndex];
+            if (!val) continue;
+            if (!NUMBER_RE.test(val)) { qualifies[colIndex] = false; continue; }
+            if (val.includes(',')) sawComma[colIndex] = true;
+          }
         }
-        return sawComma;
-      });
+        if (end < rows.length) await yieldToUI();
+      }
 
-      if (!qualifies.some(Boolean)) return rows;
+      const finalQualifies = qualifies.map((q, i) => q && sawComma[i]);
+      if (!finalQualifies.some(Boolean)) return rows;
 
-      return rows.map(row => row.map((val, colIndex) =>
-        qualifies[colIndex] && val ? val.replace(/,/g, '') : val
-      ));
+      for (let start = 0; start < rows.length; start += CSV_CHUNK_SIZE) {
+        const end = Math.min(start + CSV_CHUNK_SIZE, rows.length);
+        for (let i = start; i < end; i++) {
+          const row = rows[i];
+          for (let colIndex = 0; colIndex < columnCount; colIndex++) {
+            if (finalQualifies[colIndex] && row[colIndex]) {
+              row[colIndex] = row[colIndex].replace(/,/g, '');
+            }
+          }
+        }
+        if (end < rows.length) await yieldToUI();
+      }
+
+      return rows;
     }
 
     // Loads one file into the shared `db` as a new table and returns its
-    // metadata. Assumes `db` already exists — callers create it first.
-    function loadFileAsTable(file, headers, rows, proposedName) {
+    // metadata. Assumes `db` already exists — callers create it first. The
+    // insert loop is wrapped in one transaction (previously implicit
+    // per-statement commits) and yields between chunks, same reasoning as
+    // parseCSVText above.
+    async function loadFileAsTable(file, headers, rows, proposedName) {
       const name = uniqueTableName(proposedName);
 
       const columnDefs = headers.map(h => `"${h}" TEXT`).join(', ');
       db.run(`CREATE TABLE "${name}" (${columnDefs})`);
 
+      db.run('BEGIN TRANSACTION');
       const stmt = db.prepare(`INSERT INTO "${name}" VALUES (${headers.map(() => '?').join(', ')})`);
-      rows.forEach(row => {
-        if (row.length === headers.length) {
-          stmt.run(row);
-        } else if (row.length < headers.length) {
-          const paddedRow = [...row, ...Array(headers.length - row.length).fill('')];
-          stmt.run(paddedRow);
-        } else {
-          stmt.run(row.slice(0, headers.length));
+      for (let start = 0; start < rows.length; start += CSV_CHUNK_SIZE) {
+        const end = Math.min(start + CSV_CHUNK_SIZE, rows.length);
+        for (let i = start; i < end; i++) {
+          const row = rows[i];
+          if (row.length === headers.length) {
+            stmt.run(row);
+          } else if (row.length < headers.length) {
+            stmt.run([...row, ...Array(headers.length - row.length).fill('')]);
+          } else {
+            stmt.run(row.slice(0, headers.length));
+          }
         }
-      });
+        if (end < rows.length) await yieldToUI();
+      }
       stmt.free();
+      db.run('COMMIT');
 
       const meta = { name, fileName: file.name, rowCount: rows.length, columns: headers };
       tables.push(meta);
@@ -1636,6 +1761,38 @@
     }
 
     const MAX_TABLES_PER_WORKSPACE = 10;
+    const CSV_ROW_CAP_STANDARD = 50000;
+    const CSV_ROW_CAP_PREMIUM = 500000;
+
+    function maxTablesForTier() {
+      return canUseFeature('multiCsv') ? MAX_TABLES_PER_WORKSPACE : 1;
+    }
+
+    function csvRowCapForTier() {
+      return canUseFeature('largeCsv') ? CSV_ROW_CAP_PREMIUM : CSV_ROW_CAP_STANDARD;
+    }
+
+    // Throws a friendly error (caught by uploadCSV/addTablesCSV's existing
+    // try/catch, which already surfaces err.message in the status line) if
+    // this file is over the account's row cap. Also pops the relevant gate
+    // modal so a blocked upload is a clear moment, not just status text.
+    function assertRowCapOrThrow(rowCount) {
+      const cap = csvRowCapForTier();
+      if (rowCount <= cap) return;
+      if (!canUseFeature('largeCsv')) {
+        openPremiumPanel();
+        throw new Error(`This file has ${rowCount.toLocaleString()} rows, over the ${cap.toLocaleString()}-row limit for free accounts. Upgrade to Premium for files up to ${CSV_ROW_CAP_PREMIUM.toLocaleString()} rows.`);
+      }
+      throw new Error(`This file has ${rowCount.toLocaleString()} rows, over the maximum supported size (${cap.toLocaleString()} rows).`);
+    }
+
+    // Yields to the browser's event loop so a large parse/insert doesn't
+    // block it for one long uninterrupted stretch — keeps the loading
+    // overlay animating and the tab responsive instead of appearing hung.
+    function yieldToUI() {
+      return new Promise(resolve => setTimeout(resolve, 0));
+    }
+    const CSV_CHUNK_SIZE = 5000;
 
     function formatFileSize(file) {
       const sizeKB = (file.size / 1024).toFixed(1);
@@ -1657,11 +1814,15 @@
         tables = [];
         activeTableName = null;
 
+        const effectiveMax = maxTablesForTier();
+        if (files.length > 1 && !canUseFeature('multiCsv')) requireFeature('multiCsv');
+
         let loaded = [];
-        for (const file of files.slice(0, MAX_TABLES_PER_WORKSPACE)) {
+        for (const file of files.slice(0, effectiveMax)) {
           const text = await file.text();
-          const { headers, rows } = parseCSVText(text);
-          loaded.push(loadFileAsTable(file, headers, rows, slugifyTableName(file.name)));
+          const { headers, rows } = await parseCSVText(text);
+          assertRowCapOrThrow(rows.length);
+          loaded.push(await loadFileAsTable(file, headers, rows, slugifyTableName(file.name)));
         }
 
         activeTableName = loaded[0].name;
@@ -1669,6 +1830,9 @@
 
         if (loaded.length === 1) {
           statusEl.textContent = `${loaded[0].fileName} (${formatFileSize(files[0])}, ${loaded[0].rowCount.toLocaleString()} rows) → table "${loaded[0].name}"`;
+          if (files.length > 1 && effectiveMax === 1) {
+            statusEl.textContent += ' — only this file was loaded (multiple CSVs per workspace is a Premium feature)';
+          }
         } else {
           statusEl.textContent = `${loaded.length} tables loaded`;
         }
@@ -1725,9 +1889,13 @@
       }
 
       const statusEl = document.getElementById('file-info');
-      const room = MAX_TABLES_PER_WORKSPACE - tables.length;
+
+      if (tables.length >= 1 && !requireFeature('multiCsv')) return;
+
+      const effectiveMax = maxTablesForTier();
+      const room = effectiveMax - tables.length;
       if (room <= 0) {
-        statusEl.textContent = `Error: this workspace already has ${MAX_TABLES_PER_WORKSPACE} tables, the maximum per workspace`;
+        statusEl.textContent = `Error: this workspace already has ${effectiveMax} table${effectiveMax === 1 ? '' : 's'}, the maximum per workspace${canUseFeature('multiCsv') ? '' : ' on your account'}`;
         statusEl.classList.add('error');
         return;
       }
@@ -1737,12 +1905,13 @@
         let loaded = [];
         for (const file of files.slice(0, room)) {
           const text = await file.text();
-          const { headers, rows } = parseCSVText(text);
-          loaded.push(loadFileAsTable(file, headers, rows, slugifyTableName(file.name)));
+          const { headers, rows } = await parseCSVText(text);
+          assertRowCapOrThrow(rows.length);
+          loaded.push(await loadFileAsTable(file, headers, rows, slugifyTableName(file.name)));
         }
 
         if (files.length > room) {
-          statusEl.textContent = `Added ${loaded.length} table(s), ${files.length - room} skipped (workspace cap is ${MAX_TABLES_PER_WORKSPACE} tables)`;
+          statusEl.textContent = `Added ${loaded.length} table(s), ${files.length - room} skipped (workspace cap is ${effectiveMax} table${effectiveMax === 1 ? '' : 's'})`;
         } else {
           statusEl.textContent = `Added ${loaded.map(t => t.name).join(', ')}`;
         }
@@ -1780,13 +1949,17 @@
     function updateWorkspaceSwitcher() {
       const el = document.getElementById('workspace-switcher');
       const label = document.getElementById('workspace-switcher-label');
-      if (tables.length <= 1) {
+      // Visibility is about whether there's a *current* workspace worth
+      // naming (signed in + something loaded) — NOT how many tables that
+      // workspace happens to have. How many workspaces are actually saved
+      // is a separate question, answered at click time in changeWorkspace().
+      if (!currentUser || !tables.length) {
         el.hidden = true;
         closeWorkspaceSwitcher();
         return;
       }
       el.hidden = false;
-      label.textContent = `${getWorkspaceDisplayName()}, ${tables.length} tables`;
+      label.textContent = `${getWorkspaceDisplayName()}, ${tables.length} table${tables.length === 1 ? '' : 's'}`;
     }
 
     function renderTableChips() {
@@ -1795,6 +1968,7 @@
       const focusRow = document.getElementById('chat-table-focus-row');
 
       updateWorkspaceSwitcher();
+      updateQuerySchemaPanel();
 
       if (!tables.length) {
         bar.hidden = true;
@@ -1805,7 +1979,9 @@
       }
 
       addBtn.hidden = tables.length >= MAX_TABLES_PER_WORKSPACE;
-      addBtn.title = addBtn.hidden ? `Workspace cap reached (${MAX_TABLES_PER_WORKSPACE} tables)` : '';
+      addBtn.title = addBtn.hidden
+        ? `Workspace cap reached (${MAX_TABLES_PER_WORKSPACE} tables)`
+        : (canUseFeature('multiCsv') ? '' : 'Multiple CSVs per workspace is a Premium feature');
 
       bar.hidden = false;
       bar.innerHTML = tables.map(t => `
@@ -1820,6 +1996,39 @@
       focusRow.hidden = tables.length <= 1;
       renderFocusDropdown();
     }
+
+    // ---- SQL editor schema panel: lets you see column names while writing
+    // a query without switching to the Table View tab. ----
+
+    function updateQuerySchemaPanel() {
+      const panel = document.getElementById('query-schema-panel');
+      const summary = document.getElementById('query-schema-summary');
+      const body = document.getElementById('query-schema-body');
+      if (!panel) return;
+
+      if (!tables.length) {
+        panel.hidden = true;
+        return;
+      }
+
+      panel.hidden = false;
+      summary.textContent = tables.length === 1
+        ? `Columns (${tables[0].columns.length})`
+        : `Columns — ${tables.length} tables`;
+
+      body.innerHTML = tables.map(t => `
+        <div class="query-schema-table-name">${escapeHtml(t.name)}</div>
+        <div class="query-schema-columns">${t.columns.map(c => `<span class="query-schema-col">${escapeHtml(c)}</span>`).join('')}</div>
+      `).join('');
+    }
+
+    window.toggleQuerySchemaPanel = function() {
+      const toggle = document.getElementById('query-schema-toggle');
+      const body = document.getElementById('query-schema-body');
+      const willOpen = body.hidden;
+      body.hidden = !willOpen;
+      toggle.setAttribute('aria-expanded', String(willOpen));
+    };
 
     function renderFocusDropdown() {
       const panel = document.getElementById('focus-dropdown-panel');
@@ -1871,10 +2080,37 @@
       btn.setAttribute('aria-expanded', 'false');
     }
 
-    window.changeWorkspace = function() {
+    window.changeWorkspace = async function() {
       closeWorkspaceSwitcher();
+      if (!currentUser) { openSigninRequiredModal(); return; }
+
+      let count = 0;
+      try {
+        const { count: c, error } = await sb
+          .from('workspaces')
+          .select('id', { count: 'exact', head: true });
+        if (!error) count = c || 0;
+      } catch (err) {
+        console.error('Failed to check saved workspace count:', err);
+      }
+
+      if (count <= 1) {
+        showWorkspaceNotice(count === 0
+          ? 'You haven’t saved any workspaces yet — use "Save to cloud" first.'
+          : 'This is your only workspace.');
+        return;
+      }
       openDashboard();
     };
+
+    window.closeWorkspaceNoticeModal = function() {
+      document.getElementById('workspace-notice-modal').hidden = true;
+    };
+
+    function showWorkspaceNotice(message) {
+      document.getElementById('workspace-notice-body').textContent = message;
+      document.getElementById('workspace-notice-modal').hidden = false;
+    }
 
     document.addEventListener('click', (e) => {
       const switcher = document.getElementById('workspace-switcher');
@@ -1899,6 +2135,7 @@
 
     window.startRenameChip = function(event, name) {
       event.stopPropagation();
+      if (!requireFeature('tableRename')) return;
       const bar = document.getElementById('table-chip-bar');
       const label = bar.querySelector(`.chip-name[data-table="${CSS.escape(name)}"]`);
       if (!label) return;
@@ -2466,11 +2703,20 @@
     const GENERAL_MODE_RULES = `You are a data analyst assistant. The user has loaded the schema above and wants plain-English answers, not SQL.\n1. Never write SQL or use \`\`\`sql code fences — describe things in words.\n2. Ground every answer in the actual schema/columns above; don't invent columns or guess at data you can't see.\n3. If the question needs an actual computed answer from the data itself (not just schema — "what's the average of X"), say plainly that you can't compute it without running a query, and suggest switching to SQL Mode to get the query for it.\n4. Keep answers concise — a few sentences, not an essay.`;
 
     function buildSystemPrompt() {
-      if (tables.length <= 1) {
+      // Cross-table AI is Premium. Most non-premium accounts never reach
+      // tables.length > 1 in the first place (gated at upload), but an
+      // account that already had 2+ tables saved before that gate existed
+      // can still load one — so this checks the tier directly rather than
+      // just table count, and falls back to a single-table prompt scoped
+      // to whichever table is active instead of exposing every schema.
+      const crossTableAllowed = tables.length > 1 && canUseFeature('crossTableAI');
+
+      if (!crossTableAllowed) {
+        const schemaText = tables.length <= 1 ? tableSchema : schemaTextFor(activeTableName).text;
         if (outputMode === 'general') {
-          return `You are a data analyst assistant. The user has loaded a CSV file into a SQLite database. Here is the schema:\n\n${tableSchema}\n\n${GENERAL_MODE_RULES}`;
+          return `You are a data analyst assistant. The user has loaded a CSV file into a SQLite database. Here is the schema:\n\n${schemaText}\n\n${GENERAL_MODE_RULES}`;
         }
-        return `You are a SQL query assistant. The user has loaded a CSV file into a SQLite database. Here is the schema:\n\n${tableSchema}\n\nYour job is to:\n1. ONLY respond with SQL queries that work on this exact table\n2. Use the table name ${activeTableName} exactly as written, with no surrounding quotes — table names in this database never need quoting. Column names only need double quotes if they contain a space or special character (e.g. "First Name")\n3. Format SQL queries in markdown code blocks with \`\`\`sql\n4. Keep explanations brief\n5. Never suggest anything other than SQL queries\n6. ${SQL_OFFTOPIC_RULE}\n7. CRITICAL: Use proper SQL syntax - ensure spaces between all keywords\n8. Use single quotes for string literals (e.g., 'value' not "value")\n9. For not-equals use <> or != (both work in SQLite)\n10. Column names are case-sensitive - match them exactly from the schema\n11. All SQL must be valid SQLite syntax\n12. Every column is stored as TEXT regardless of what it looks like. Before CAST()ing a column to a number (for ORDER BY, comparisons, math), wrap it in REPLACE(column, ',', '') in case it has thousands-separator commas (e.g. "1,200"), since CAST alone reads only the leading digit run and silently returns the wrong value\n\nBe concise, practical, and syntactically perfect.`;
+        return `You are a SQL query assistant. The user has loaded a CSV file into a SQLite database. Here is the schema:\n\n${schemaText}\n\nYour job is to:\n1. ONLY respond with SQL queries that work on this exact table\n2. Use the table name ${activeTableName} exactly as written, with no surrounding quotes — table names in this database never need quoting. Column names only need double quotes if they contain a space or special character (e.g. "First Name")\n3. Format SQL queries in markdown code blocks with \`\`\`sql\n4. Keep explanations brief\n5. Never suggest anything other than SQL queries\n6. ${SQL_OFFTOPIC_RULE}\n7. CRITICAL: Use proper SQL syntax - ensure spaces between all keywords\n8. Use single quotes for string literals (e.g., 'value' not "value")\n9. For not-equals use <> or != (both work in SQLite)\n10. Column names are case-sensitive - match them exactly from the schema\n11. All SQL must be valid SQLite syntax\n12. Every column is stored as TEXT regardless of what it looks like. Before CAST()ing a column to a number (for ORDER BY, comparisons, math), wrap it in REPLACE(column, ',', '') in case it has thousands-separator commas (e.g. "1,200"), since CAST alone reads only the leading digit run and silently returns the wrong value\n\nBe concise, practical, and syntactically perfect.`;
       }
 
       const focusList = [...focusedTableNames].filter(name => tables.some(t => t.name === name));
@@ -3072,9 +3318,11 @@
     // Each consumer gets its own state (columns/rows/sort/filter/search) keyed
     // by name, so sorting or filtering one table never touches the other.
 
+    const TABLE_PAGE_SIZE = 200;
+
     let viewStates = {
-      results: { columns: [], rows: [], sort: {}, filter: {}, search: '', scrollBarId: 'results-scroll-top', scrollInnerId: 'results-scroll-top-inner' },
-      tableview: { columns: [], rows: [], sort: {}, filter: {}, search: '', scrollBarId: 'table-view-scroll-top', scrollInnerId: 'table-view-scroll-top-inner' }
+      results: { columns: [], rows: [], sort: {}, filter: {}, search: '', page: 0, scrollBarId: 'results-scroll-top', scrollInnerId: 'results-scroll-top-inner' },
+      tableview: { columns: [], rows: [], sort: {}, filter: {}, search: '', page: 0, scrollBarId: 'table-view-scroll-top', scrollInnerId: 'table-view-scroll-top-inner' }
     };
 
     function setExportButtonVisible(stateKey, visible) {
@@ -3099,6 +3347,7 @@
       state.sort = {};
       state.filter = {};
       state.search = '';
+      state.page = 0;
       setExportButtonVisible(stateKey, true);
 
       if (stateKey === 'tableview') {
@@ -3222,13 +3471,19 @@
       const state = viewStates[stateKey];
       const filteredRows = getVisibleRows(stateKey);
 
+      const totalPages = Math.max(1, Math.ceil(filteredRows.length / TABLE_PAGE_SIZE));
+      state.page = Math.min(Math.max(state.page || 0, 0), totalPages - 1);
+      const pageStart = state.page * TABLE_PAGE_SIZE;
+      const pageRows = filteredRows.slice(pageStart, pageStart + TABLE_PAGE_SIZE);
+
       const table = target.querySelector('table');
       const columnsKey = state.columns.join('');
       const structureChanged = forceFullRender || !table || target.dataset.columnsKey !== columnsKey;
 
       if (structureChanged) {
-        target.innerHTML = `<table>${renderTableHeadHtml(state, stateKey)}${renderTableBodyHtml(filteredRows)}</table>
-          <div class="row-count"></div>`;
+        target.innerHTML = `<table>${renderTableHeadHtml(state, stateKey)}${renderTableBodyHtml(pageRows)}</table>
+          <div class="row-count"></div>
+          <div class="row-pagination"></div>`;
         target.dataset.columnsKey = columnsKey;
       } else {
         const ths = table.querySelectorAll('thead th');
@@ -3239,12 +3494,23 @@
           icon.textContent = active ? (state.sort.direction === 'asc' ? '▲' : '▼') : '⇅';
           icon.classList.toggle('active', active);
         });
-        table.querySelector('tbody').outerHTML = renderTableBodyHtml(filteredRows);
+        table.querySelector('tbody').outerHTML = renderTableBodyHtml(pageRows);
       }
 
       const rowCountEl = target.querySelector('.row-count');
       if (rowCountEl) {
-        rowCountEl.textContent = `${filteredRows.length.toLocaleString()} of ${state.rows.length.toLocaleString()} rows`;
+        rowCountEl.textContent = totalPages > 1
+          ? `${(pageStart + 1).toLocaleString()}–${Math.min(pageStart + TABLE_PAGE_SIZE, filteredRows.length).toLocaleString()} of ${filteredRows.length.toLocaleString()} rows (${state.rows.length.toLocaleString()} total)`
+          : `${filteredRows.length.toLocaleString()} of ${state.rows.length.toLocaleString()} rows`;
+      }
+
+      const paginationEl = target.querySelector('.row-pagination');
+      if (paginationEl) {
+        paginationEl.innerHTML = totalPages > 1 ? `
+          <button type="button" onclick="changeTablePage('${stateKey}', -1)" ${state.page === 0 ? 'disabled' : ''}>‹ Prev</button>
+          <span>Page ${state.page + 1} of ${totalPages.toLocaleString()}</span>
+          <button type="button" onclick="changeTablePage('${stateKey}', 1)" ${state.page >= totalPages - 1 ? 'disabled' : ''}>Next ›</button>
+        ` : '';
       }
 
       syncTopScrollbar(targetId, state.scrollBarId, state.scrollInnerId);
@@ -3254,6 +3520,12 @@
         if (meta) meta.textContent = `${state.columns.length.toLocaleString()} columns · ${state.rows.length.toLocaleString()} rows`;
       }
     }
+
+    window.changeTablePage = function(stateKey, delta) {
+      viewStates[stateKey].page += delta;
+      const targetId = stateKey === 'tableview' ? 'table-view-results' : 'results';
+      updateTable(targetId, stateKey);
+    };
 
     function syncTopScrollbar(targetId, topBarId, topInnerId) {
       const resultsEl = document.getElementById(targetId);
@@ -3289,18 +3561,21 @@
         state.sort.column = colIndex;
         state.sort.direction = 'asc';
       }
+      state.page = 0;
       const targetId = stateKey === 'tableview' ? 'table-view-results' : 'results';
       updateTable(targetId, stateKey);
     };
 
     window.filterColumn = function(stateKey, colIndex, value) {
       viewStates[stateKey].filter[colIndex] = value;
+      viewStates[stateKey].page = 0;
       const targetId = stateKey === 'tableview' ? 'table-view-results' : 'results';
       updateTable(targetId, stateKey);
     };
 
     window.tableSearch = function(value) {
       viewStates.tableview.search = value;
+      viewStates.tableview.page = 0;
       updateTable('table-view-results', 'tableview');
     };
 
@@ -3456,6 +3731,8 @@
       'privacy-modal': 'closePrivacyModal',
       'premium-modal': 'closePremiumPanel',
       'premium-signin-modal': 'closePremiumSigninModal',
+      'signin-required-modal': 'closeSigninRequiredModal',
+      'workspace-notice-modal': 'closeWorkspaceNoticeModal',
       'settings-modal': 'closeSettingsPanel',
       'cancel-premium-modal': 'closeCancelPremiumModal',
       'cloud-modal': 'closeCloudPanel',
@@ -6034,6 +6311,73 @@
       margin-bottom: 0;
     }
 
+    .query-schema-panel {
+      border: 1px solid #201515;
+      border-radius: 6px;
+      background: #fffefb;
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+
+    .query-schema-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      padding: 6px 10px;
+      border: none;
+      background: none;
+      font: inherit;
+      font-size: 12.5px;
+      color: #201515;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .query-schema-toggle:hover {
+      background: rgba(255, 79, 0, 0.06);
+    }
+
+    .query-schema-chevron {
+      transition: transform 0.15s ease;
+      opacity: 0.7;
+    }
+
+    .query-schema-toggle[aria-expanded="true"] .query-schema-chevron {
+      transform: rotate(180deg);
+    }
+
+    .query-schema-body {
+      padding: 2px 10px 10px;
+      border-top: 1px solid rgba(32, 21, 21, 0.12);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 160px;
+      overflow-y: auto;
+    }
+
+    .query-schema-table-name {
+      font-weight: 600;
+      font-size: 12px;
+      margin-top: 6px;
+    }
+
+    .query-schema-columns {
+      font-size: 12px;
+      color: #4a3d3d;
+      line-height: 1.6;
+      word-break: break-word;
+    }
+
+    .query-schema-col {
+      display: inline-block;
+      background: rgba(32, 21, 21, 0.06);
+      border-radius: 4px;
+      padding: 1px 6px;
+      margin: 0 4px 4px 0;
+    }
+
     .editor-wrapper {
       display: flex;
       min-height: 120px;
@@ -6759,6 +7103,39 @@
       font-weight: 600;
     }
 
+    .row-pagination {
+      margin-top: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      font-size: 13px;
+      color: #605d52;
+    }
+
+    .row-pagination:empty {
+      display: none;
+    }
+
+    .row-pagination button {
+      font: inherit;
+      font-size: 13px;
+      padding: 3px 10px;
+      border: 1px solid #201515;
+      border-radius: 4px;
+      background: #fffefb;
+      cursor: pointer;
+    }
+
+    .row-pagination button:hover:not(:disabled) {
+      background: rgba(255, 79, 0, 0.08);
+    }
+
+    .row-pagination button:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+
     /* ---- Table View tab ---- */
 
     .table-view-panel {
@@ -6905,7 +7282,7 @@
           <li>Cross-table AI queries — the assistant writes joins across your tables</li>
           <li>More AI usage — 5x the daily limit on a free account</li>
           <li>Relationship detection — auto-suggested foreign keys you confirm yourself</li>
-          <li>Dashboard — a home base listing every workspace you've saved to the cloud</li>
+          <li>Large files — load CSVs up to 500,000 rows instead of 50,000</li>
         </ul>
         <p class="premium-onetime-note">&#10003; <strong>$9.99, paid once.</strong> Not a subscription, so there's nothing to cancel later.</p>
       </div>
@@ -6924,6 +7301,29 @@
       <div class="modal-actions">
         <button class="modal-cancel-btn" onclick="closePremiumSigninModal()">Cancel</button>
         <button class="modal-save-btn premium-cta-btn" onclick="signInThenGoPremium()">Sign in</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="signin-required-modal" class="modal-overlay" hidden>
+    <div class="modal modal-small">
+      <div class="delete-warning-icon">✦</div>
+      <div class="delete-warning-title">Sign in to continue</div>
+      <div class="delete-warning-body">This is a free account feature. Sign in with a magic link — no Premium purchase needed.</div>
+      <div class="modal-actions">
+        <button class="modal-cancel-btn" onclick="closeSigninRequiredModal()">Cancel</button>
+        <button class="modal-save-btn" onclick="signInFromRequiredModal()">Sign in</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="workspace-notice-modal" class="modal-overlay" hidden>
+    <div class="modal modal-small">
+      <div class="delete-warning-icon">&#8505;</div>
+      <div class="delete-warning-title">Change workspace</div>
+      <div class="delete-warning-body" id="workspace-notice-body"></div>
+      <div class="modal-actions">
+        <button class="modal-save-btn" onclick="closeWorkspaceNoticeModal()">OK</button>
       </div>
     </div>
   </div>
@@ -6953,7 +7353,7 @@
     <div class="modal modal-small">
       <div class="delete-warning-icon">⚠</div>
       <div class="delete-warning-title">Cancel Premium?</div>
-      <div class="delete-warning-body">You'll lose access to multi-table workspaces, table renaming, cross-table AI queries, and relationship detection. This doesn't issue a refund.</div>
+      <div class="delete-warning-body">You'll lose access to multi-table workspaces, table renaming, cross-table AI queries, relationship detection, and CSVs over 50,000 rows. This doesn't issue a refund.</div>
       <div class="modal-actions">
         <button class="modal-cancel-btn" onclick="closeCancelPremiumModal()">Keep Premium</button>
         <button class="modal-confirm-delete-btn" onclick="confirmCancelPremium()">Cancel Premium</button>
@@ -7024,7 +7424,7 @@
       </div>
       <div class="modal-section">
         <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#128190;</span> Saving queries</div>
-        <p class="help-text"><strong>Save Query</strong> and <strong>Load Query</strong> keep a personal list of queries for the current file, stored in this browser. They don't sync across devices.</p>
+        <p class="help-text"><strong>Save Query</strong> and <strong>Load Query</strong> keep a personal list of queries for the current file, stored in this browser. They don't sync across devices. Saving a query requires a free account — Lite Mode can fill out the Save Query form, but signs you in before it actually saves.</p>
       </div>
       <div class="modal-section">
         <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#9729;</span> Saved workspaces &amp; chat sessions</div>
@@ -7038,7 +7438,7 @@
           <li>Cross-table AI queries: the assistant writes joins across your tables</li>
           <li>More AI usage: 5x the daily limit on a free account</li>
           <li>Relationship detection: auto-suggested foreign keys you can confirm in the Relationships tab</li>
-          <li>Dashboard: a home base listing every workspace you've saved to the cloud</li>
+          <li>Large files: load CSVs up to 500,000 rows instead of 50,000</li>
         </ul>
         <p class="premium-onetime-note">&#10003; <strong>$9.99, paid once.</strong> Not a subscription, so there's nothing to cancel later.</p>
       </div>
@@ -7305,6 +7705,13 @@
                 <div class="editor-label">SQL Query</div>
                 <div class="keyboard-hint">⌘ Enter or Ctrl Enter</div>
               </div>
+              <div class="query-schema-panel" id="query-schema-panel" hidden>
+                <button type="button" class="query-schema-toggle" id="query-schema-toggle" onclick="toggleQuerySchemaPanel()" aria-expanded="false">
+                  <span id="query-schema-summary">Columns</span>
+                  <span class="query-schema-chevron">▾</span>
+                </button>
+                <div class="query-schema-body" id="query-schema-body" hidden></div>
+              </div>
               <div class="editor-wrapper">
                 <div class="line-numbers" id="line-numbers">1</div>
                 <div class="query-input-stack">
@@ -7480,7 +7887,7 @@
       </div>
       <div class="modal-section">
         <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#128202;</span> What Synth is</div>
-        <p class="help-text">Synth is a browser-based tool for querying any CSV with real SQL or plain-English questions. Upload a file and it loads into an actual SQLite database running in your browser tab — no server-side database, no waiting on uploads.</p>
+        <p class="help-text">Synth instantly queries any CSV file with real SQL, or plain-English questions. Upload a file and it loads into an actual SQLite database running in your browser tab — no server-side database, no waiting on uploads.</p>
       </div>
       <div class="modal-section">
         <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#128274;</span> Local-first, by default</div>
@@ -7492,7 +7899,7 @@
       </div>
       <div class="modal-section">
         <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#9733;</span> Premium</div>
-        <p class="help-text">A one-time $9.99 purchase unlocks multi-table workspaces, table renaming, cross-table AI joins, relationship detection, and the Dashboard. No subscription, nothing to cancel.</p>
+        <p class="help-text">A one-time $9.99 purchase unlocks multi-table workspaces, table renaming, cross-table AI joins, relationship detection, and CSVs up to 500,000 rows. No subscription, nothing to cancel.</p>
       </div>
     </div>
   </div>
@@ -7514,7 +7921,7 @@
       </div>
       <div class="modal-section">
         <div class="legal-section-title">3. Premium purchases</div>
-        <p class="help-text">Premium is a one-time, non-recurring purchase that unlocks additional features (multi-table workspaces, table renaming, cross-table AI queries, relationship detection, and the Dashboard). Payments are processed by Stripe; we never see or store your card details. Purchases are non-refundable except where required by law.</p>
+        <p class="help-text">Premium is a one-time, non-recurring purchase that unlocks additional features (multi-table workspaces, table renaming, cross-table AI queries, relationship detection, and CSVs up to 500,000 rows). Payments are processed by Stripe; we never see or store your card details. Purchases are non-refundable except where required by law.</p>
       </div>
       <div class="modal-section">
         <div class="legal-section-title">4. The AI assistant</div>
