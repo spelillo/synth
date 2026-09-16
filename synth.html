@@ -2400,10 +2400,20 @@
           const path = `${currentUser.id}/${workspaceId}/${t.table_name}.csv`;
           const { error: upErr } = await sb.storage.from('csvs').upload(path, blob, { upsert: true, contentType: 'text/csv' });
           if (upErr) throw upErr;
+          // filename (not just storage_path) has to be unique per the
+          // pre-existing datasets_user_filename_unique constraint
+          // (supabase/migrations/20260910032656_dedupe_datasets_by_filename.sql
+          // — unique on (user_id, filename), not scoped per-workspace). Found
+          // live: loading the same template a second time always violated
+          // it, since every load used the same plain "students.csv" name.
+          // Suffixing with this workspace's id keeps the constraint's
+          // original purpose (dedupe a literal re-save of the same CSV)
+          // intact while guaranteeing a template load never collides with
+          // a prior one.
           const { error: dsErr } = await sb.from('datasets').insert({
             user_id: currentUser.id,
             workspace_id: workspaceId,
-            filename: `${t.table_name}.csv`,
+            filename: `${t.table_name}-${workspaceId}.csv`,
             table_name: t.table_name,
             storage_path: path,
             row_count: rows.length,

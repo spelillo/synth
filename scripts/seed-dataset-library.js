@@ -33,13 +33,16 @@ const TABLES = [
   { table_name: 'buildings', file: 'buildings.csv' },
 ];
 
-// Per SYNTH_ENTERPRISE_BUILD_INSTRUCTIONS.md Step 4.3 — matches the
-// original CSV column names exactly (spaces and all), since
-// dataset_library_relationships' from_column/to_column values are looked
-// up against the columns actually present after loading, not a slugified
-// version of them.
+// Column names here MUST match what synth.html's sanitizeColumnName()
+// actually produces when the CSV is loaded (`header.trim().replace(/\s+/g, '_')`
+// — every run of whitespace becomes one underscore), NOT the raw CSV
+// header text. Found live: the original version of this file used the raw
+// headers ("Staff ID" with a space), which silently failed to match the
+// real "Staff_ID" column — two of the three relationships ("College", a
+// single word, unaffected by the space-to-underscore rule) rendered fine
+// and masked the bug until a real end-to-end load was tested.
 const RELATIONSHIPS = [
-  { from_table: 'courses', from_column: 'Staff ID', to_table: 'staff', to_column: 'Staff ID' },
+  { from_table: 'courses', from_column: 'Staff_ID', to_table: 'staff', to_column: 'Staff_ID' },
   { from_table: 'students', from_column: 'College', to_table: 'staff', to_column: 'College' },
   { from_table: 'students', from_column: 'College', to_table: 'buildings', to_column: 'College' },
 ];
