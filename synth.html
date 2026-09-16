@@ -138,6 +138,17 @@
       return base;
     }
 
+    // A raw CSV header like "Student ID" is a valid *quoted* SQL identifier
+    // (Synth's own generated queries always quote it), but typing it
+    // unquoted in the query editor — "SELECT Student ID FROM ..." — parses
+    // as two separate identifiers and fails with "no such column: Student".
+    // Collapsing whitespace to underscores at load time means every column
+    // name is a bare, unquoted-safe token everywhere: the editor, the AI
+    // assistant's generated SQL, and hand-typed queries alike.
+    function sanitizeColumnName(header) {
+      return header.trim().replace(/\s+/g, '_');
+    }
+
     function uniqueTableName(base) {
       const existing = new Set(tables.map(t => t.name));
       if (!existing.has(base)) return base;
@@ -314,7 +325,13 @@
 
     window.signInFromRequiredModal = function() {
       document.getElementById('signin-required-modal').hidden = true;
-      toggleAuthPanel();
+      // Deferred: this click's event is still bubbling up to the document-
+      // level "close auth-panel on outside click" listener (see bottom of
+      // file). Opening the panel synchronously here means that same click
+      // immediately closes it again since e.target is this modal's button,
+      // not the panel or its toggle — waiting a tick lets the click finish
+      // propagating first.
+      setTimeout(toggleAuthPanel, 0);
     };
 
     // ---- Account settings (Settings modal, opened via the email button) ----
@@ -1250,7 +1267,9 @@
 
     window.signInThenGoPremium = function() {
       document.getElementById('premium-signin-modal').hidden = true;
-      toggleAuthPanel();
+      // Deferred for the same reason as signInFromRequiredModal above — see
+      // that comment.
+      setTimeout(toggleAuthPanel, 0);
     };
 
     async function startPremiumCheckout() {
@@ -1762,7 +1781,7 @@
         throw new Error('Empty CSV file');
       }
 
-      const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+      const headers = lines[0].split(',').map(h => sanitizeColumnName(h.trim().replace(/"/g, '')));
 
       // Parsed in chunks, yielding to the browser between them, so a large
       // file doesn't block the main thread for one long uninterrupted
@@ -2945,7 +2964,7 @@
         chatSend.disabled = true;
 
         if (!currentUser) {
-          chatMessages.innerHTML = '<div class="empty ai-disabled-msg">Sign in to use the AI assistant. It now requires an account so the shared AI budget can\'t be used anonymously.</div>';
+          chatMessages.innerHTML = '<div class="empty ai-disabled-msg">Sign in to use the AI assistant</div>';
         } else if (!csvLoaded) {
           chatMessages.innerHTML = '<div class="empty ai-disabled-msg">Upload a CSV first, then toggle AI ON to ask questions.</div>';
         } else {
