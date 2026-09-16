@@ -1104,6 +1104,7 @@
     // ---- Premium checkout (Stripe embedded Checkout Form) ----
 
     let premiumCheckoutStarted = false;
+    let mountedCheckoutForm = null;
 
     window.openPremiumPanel = function() {
       if (!currentUser) {
@@ -1123,6 +1124,16 @@
 
     window.closePremiumPanel = function() {
       document.getElementById('premium-modal').hidden = true;
+      // The embedded Stripe form (and its own floating UI, e.g. the Link
+      // pill) isn't a real child of #premium-modal's hidden state — Stripe
+      // mounts it separately, so hiding the modal alone left it floating
+      // on the page. Unmount it and reset so reopening starts clean.
+      if (mountedCheckoutForm) {
+        try { mountedCheckoutForm.unmount(); } catch (err) { console.error('Failed to unmount checkout form:', err); }
+        mountedCheckoutForm = null;
+      }
+      document.getElementById('checkout-form').innerHTML = '';
+      premiumCheckoutStarted = false;
     };
 
     window.closePremiumSigninModal = function() {
@@ -1196,6 +1207,7 @@
 
         const form = checkout.createForm({ layout: 'expanded' });
         form.mount('#checkout-form');
+        mountedCheckoutForm = form;
 
         const loadActionsResult = await checkout.loadActions();
         if (loadActionsResult.type === 'success') {
@@ -3857,31 +3869,6 @@
       gap: 10px;
     }
 
-    /* An orange divider before every visible auth button except the first
-       one currently shown — :not([hidden]) makes this react correctly to
-       which of Go Premium/Dashboard, Sign in/email, and Load Sessions are
-       actually visible at once, without any JS bookkeeping.
-       Drawn as a ::after rather than a border-left so it isn't clipped to
-       this button's own (shorter) box: it's anchored to the button (so it
-       tracks each button's actual position regardless of label width) but
-       escapes the button's height via negative top/bottom offsets sized to
-       reach the full white header bar, and is centered in the 10px flex
-       gap via left: -(gap/2 + line-width/2). ::after (not ::before) so it
-       doesn't collide with .auth-btn-premium's own ::before gloss sheen. */
-    .auth-btn {
-      position: relative;
-    }
-
-    .auth-area > .auth-btn:not([hidden]) ~ .auth-btn:not([hidden])::after {
-      content: '';
-      position: absolute;
-      top: -14px;
-      bottom: -14px;
-      left: -6px;
-      width: 2px;
-      background: #ff4f00;
-    }
-
     /* .auth-btn labels ("Go Premium", "Sign in") stay on one line even
        here (see white-space: nowrap above) — at this width the fix is
        tighter padding/type, not letting them wrap to two lines. */
@@ -3889,12 +3876,6 @@
       .auth-btn {
         padding: 7px 12px;
         font-size: 13px;
-      }
-      .auth-area {
-        gap: 6px;
-      }
-      .auth-area > .auth-btn:not([hidden]) ~ .auth-btn:not([hidden])::after {
-        left: -4px;
       }
     }
 
@@ -6371,7 +6352,7 @@
       transform: rotate(180deg);
     }
 
-    .query-schema-body {
+    .query-schema-body:not([hidden]) {
       padding: 2px 10px 10px;
       border-top: 1px solid rgba(32, 21, 21, 0.12);
       display: flex;
