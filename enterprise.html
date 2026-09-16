@@ -181,6 +181,7 @@
     .form-msg.is-error { color: var(--bad); }
     .form-msg.is-good { color: var(--good); }
     .help-note { font-size: 13px; color: var(--body-mid); margin: 14px 0 0; line-height: 1.55; }
+    .help-note a.is-disabled { pointer-events: none; opacity: 0.6; }
     .signed-in-strip {
       display: flex; align-items: center; justify-content: space-between; gap: 12px;
       background: var(--good-bg); border: 1px solid #bfe0cc; border-radius: 8px;
@@ -578,11 +579,36 @@
   };
 
   let authMiniMode = 'signin';
+  // Set while this panel is waiting on a signup confirmation code.
+  let miniConfirmEmail = null;
 
   function renderAccessPanelForAuthState() {
     const body = document.getElementById('access-panel-body');
     if (!activeAccessCard) { body.hidden = true; return; }
     body.hidden = false;
+
+    if (miniConfirmEmail) {
+      body.innerHTML = `
+        <p class="help-note" style="margin-top:0">We sent a confirmation code to ${escapeHtml(miniConfirmEmail)}. Enter it below to finish creating your account.</p>
+        <input type="text" id="mini-confirm-code" class="field-input" placeholder="Confirmation code" inputmode="numeric" autocomplete="one-time-code">
+        <button class="btn btn-purple btn-block" id="mini-confirm-submit">Confirm</button>
+        <div class="form-msg" id="mini-confirm-msg"></div>
+        <p class="help-note">
+          <a href="#" id="mini-confirm-resend">Resend code</a> &middot;
+          <a href="#" id="mini-confirm-back">Use a different email</a>
+        </p>
+      `;
+      document.getElementById('mini-confirm-submit').onclick = submitMiniConfirmCode;
+      document.getElementById('mini-confirm-resend').onclick = (e) => { e.preventDefault(); resendMiniConfirmCode(); };
+      document.getElementById('mini-confirm-back').onclick = (e) => {
+        e.preventDefault();
+        miniConfirmEmail = null;
+        authMiniMode = 'signup';
+        renderAccessPanelForAuthState();
+      };
+      document.getElementById('mini-confirm-code').focus();
+      return;
+    }
 
     if (!currentUser) {
       // Every path needs an account first. "Create" defaults to the sign-up
@@ -652,7 +678,7 @@
 
     submitBtn.disabled = true;
     msgEl.textContent = authMiniMode === 'signin' ? 'Signing in…' : 'Creating account…';
-    const { error } = authMiniMode === 'signin'
+    const { data, error } = authMiniMode === 'signin'
       ? await sb.auth.signInWithPassword({ email, password })
       : await sb.auth.signUp({ email, password });
 
@@ -662,9 +688,60 @@
       submitBtn.disabled = false;
       return;
     }
+
+    if (authMiniMode === 'signup' && !data.session) {
+      miniConfirmEmail = email;
+      renderAccessPanelForAuthState();
+      return;
+    }
     // handleAuthChange fires from onAuthStateChange and re-renders the panel
     // for the now-signed-in state (routeByRole -> renderAccessPanelForAuthState),
     // which replaces this button entirely, so it's never re-enabled from here.
+  }
+
+  async function submitMiniConfirmCode() {
+    const token = document.getElementById('mini-confirm-code').value.trim();
+    const msgEl = document.getElementById('mini-confirm-msg');
+    const submitBtn = document.getElementById('mini-confirm-submit');
+    if (!token) { msgEl.textContent = 'Enter the code from your email.'; msgEl.className = 'form-msg is-error'; return; }
+    if (submitBtn.disabled) return;
+
+    submitBtn.disabled = true;
+    msgEl.className = 'form-msg';
+    msgEl.textContent = 'Confirming…';
+    const { data, error } = await sb.auth.verifyOtp({ email: miniConfirmEmail, token, type: 'signup' });
+
+    if (error) {
+      msgEl.textContent = error.message;
+      msgEl.classList.add('is-error');
+      submitBtn.disabled = false;
+      return;
+    }
+
+    miniConfirmEmail = null;
+    // Same reasoning as the synth.html equivalent: set currentUser directly
+    // from verifyOtp's own result instead of waiting on onAuthStateChange's
+    // listener, since routeByRole (called next, via that listener) depends
+    // on it and there's no guaranteed ordering between the two.
+    currentUser = data.user || currentUser;
+    await routeByRole();
+  }
+
+  async function resendMiniConfirmCode() {
+    const msgEl = document.getElementById('mini-confirm-msg');
+    const resendLink = document.getElementById('mini-confirm-resend');
+    if (resendLink.classList.contains('is-disabled')) return;
+    msgEl.className = 'form-msg';
+    msgEl.textContent = 'Sending a new code…';
+    resendLink.classList.add('is-disabled');
+    const { error } = await sb.auth.resend({ type: 'signup', email: miniConfirmEmail });
+    if (error) {
+      msgEl.classList.add('is-error');
+      msgEl.textContent = error.message;
+    } else {
+      msgEl.textContent = 'New code sent.';
+    }
+    resendLink.classList.remove('is-disabled');
   }
 
   function renderCreateOrgPanel(body) {

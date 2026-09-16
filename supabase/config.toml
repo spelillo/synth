@@ -250,6 +250,15 @@ otp_expiry = 3600
 # subject = "You have been invited"
 # content_path = "./supabase/templates/invite.html"
 
+# Signup confirmation is code-based (typed back into the app via
+# supabase.auth.verifyOtp), not link-based — the confirmation link's
+# redirect depended on auth.site_url, which drifted to a stale deployment
+# URL more than once. A code sidesteps that whole class of bug: there's no
+# URL in it to get wrong.
+[auth.email.template.confirmation]
+subject = "Your Synth confirmation code"
+content_path = "./supabase/templates/confirmation.html"
+
 # Uncomment to customize notification email template
 # [auth.email.notification.password_changed]
 # enabled = true
