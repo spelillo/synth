@@ -471,7 +471,7 @@
 
       if (!status.role) {
         row.innerHTML = `<p class="help-text" style="margin:0 0 10px">For a school or company: pay once a year for the whole domain, generate a join link, and every verified member gets Premium for free.</p>
-           <button class="auth-btn auth-btn-enterprise" onclick="closeSettingsPanel(); openEnterprisePanel();">Set up Synth Enterprise</button>`;
+           <button class="auth-btn auth-btn-enterprise" onclick="window.open('/enterprise', '_blank')">Set up Synth Enterprise</button>`;
         return;
       }
 
@@ -1743,8 +1743,6 @@
 
     let premiumCheckoutStarted = false;
     let mountedCheckoutForm = null;
-    let enterpriseCheckoutStarted = false;
-    let mountedEnterpriseCheckoutForm = null;
 
     window.openPremiumPanel = function() {
       if (!currentUser) {
@@ -1780,16 +1778,17 @@
       document.getElementById('premium-signin-modal').hidden = true;
     };
 
-    // Header "Enterprise" button — the only public entry point to Synth
-    // Enterprise before this existed was buried inside Account Settings
-    // (which itself required already being signed in to even find it).
-    // This routes signed-out visitors to sign in first, and — unlike
-    // openEnterprisePanel below, which always starts a NEW checkout —
-    // sends an existing org admin/member to their actual org info in
-    // Settings instead of a second checkout attempt.
+    // Header "Enterprise" button. Org creation now lives entirely on
+    // synth-sql.com/enterprise (see archive/enterprise-build-spec.html) — this
+    // button's only jobs are: let an existing member sign in or redeem a join
+    // code without leaving this page, send an admin/workroom manager to the
+    // dashboard page where their tools actually live, and point anyone new
+    // at the Enterprise page to create an organization. A workroom manager is
+    // still org_members.role === 'member' (see workrooms.sql), which is why
+    // org_status's is_manager flag — not role alone — decides that branch.
     window.openEnterpriseEntry = async function() {
       if (!currentUser) {
-        document.getElementById('signin-required-modal').hidden = false;
+        openEnterpriseAccessModal();
         return;
       }
       try {
@@ -1797,42 +1796,148 @@
         const response = await fetch('/api/enterprise/status?op=org_status', {
           headers: { 'Authorization': `Bearer ${session?.access_token || ''}` },
         });
-        const status = response.ok ? await response.json() : { role: null };
-        if (status.role) {
+        const status = response.ok ? await response.json() : { role: null, is_manager: false };
+        lastEnterpriseStatus = status;
+        if (status.role === 'admin' || status.is_manager) {
+          openEnterpriseAccessModal();
+        } else if (status.role) {
           openSettingsPanel();
         } else {
-          openEnterprisePanel();
+          openEnterpriseAccessModal();
         }
       } catch (err) {
         console.error('Failed to check Enterprise status:', err);
-        openEnterprisePanel(); // fall back to the checkout flow rather than doing nothing
+        lastEnterpriseStatus = null;
+        openEnterpriseAccessModal();
       }
     };
 
-    window.openEnterprisePanel = function() {
+    // ---- Enterprise access modal: sign in to an org you already belong to,
+    // or redeem a join code, entirely on this page. Creating a NEW
+    // organization is deliberately not offered here — that only happens on
+    // synth-sql.com/enterprise (the "Explore Synth Enterprise" link below),
+    // which also holds the admin/manager dashboards this modal has no room
+    // for. ----
+    let lastEnterpriseStatus = null;
+    let enterpriseAccessAuthMode = 'signin';
+
+    window.openEnterpriseAccessModal = function() {
+      document.getElementById('enterprise-access-modal').hidden = false;
+      renderEnterpriseAccessModal();
+    };
+
+    window.closeEnterpriseAccessModal = function() {
+      document.getElementById('enterprise-access-modal').hidden = true;
+    };
+
+    function renderEnterpriseAccessModal() {
+      const body = document.getElementById('enterprise-access-body');
+
       if (!currentUser) {
-        document.getElementById('premium-signin-modal').hidden = false;
+        body.innerHTML = `
+          <div class="auth-panel-tabs" style="margin-bottom:12px">
+            <button type="button" class="auth-panel-tab ${enterpriseAccessAuthMode === 'signin' ? 'is-active' : ''}" id="ent-tab-signin">Sign in</button>
+            <button type="button" class="auth-panel-tab ${enterpriseAccessAuthMode === 'signup' ? 'is-active' : ''}" id="ent-tab-signup">Sign up</button>
+          </div>
+          <input type="email" id="ent-email" class="auth-input auth-input-block" placeholder="you@example.com" autocomplete="email">
+          <input type="password" id="ent-password" class="auth-input auth-input-block" style="margin-top:8px" placeholder="Password" autocomplete="current-password">
+          <button class="auth-btn auth-btn-primary" style="width:100%;margin-top:10px" id="ent-auth-submit">Sign in</button>
+          <div id="ent-auth-msg" class="auth-message"></div>
+          <p class="help-text" style="margin:12px 0 0">Have a join code? Sign in above, then it'll ask for it next.</p>
+        `;
+        const setMode = (mode) => {
+          enterpriseAccessAuthMode = mode;
+          document.getElementById('ent-tab-signin').classList.toggle('is-active', mode === 'signin');
+          document.getElementById('ent-tab-signup').classList.toggle('is-active', mode === 'signup');
+          document.getElementById('ent-auth-submit').textContent = mode === 'signin' ? 'Sign in' : 'Create account';
+        };
+        document.getElementById('ent-tab-signin').onclick = () => setMode('signin');
+        document.getElementById('ent-tab-signup').onclick = () => setMode('signup');
+        document.getElementById('ent-auth-submit').onclick = submitEnterpriseAccessAuth;
         return;
       }
-      document.getElementById('enterprise-modal').hidden = false;
-      if (!enterpriseCheckoutStarted) {
-        enterpriseCheckoutStarted = true;
-        startEnterpriseCheckout();
-      }
-    };
 
-    window.closeEnterprisePanel = function() {
-      document.getElementById('enterprise-modal').hidden = true;
-      // Same reason as closePremiumPanel: the embedded Stripe form isn't a
-      // real child of the modal's hidden state, so it has to be unmounted
-      // explicitly or it keeps floating on the page.
-      if (mountedEnterpriseCheckoutForm) {
-        try { mountedEnterpriseCheckoutForm.unmount(); } catch (err) { console.error('Failed to unmount enterprise checkout form:', err); }
-        mountedEnterpriseCheckoutForm = null;
+      if (lastEnterpriseStatus?.role === 'admin' || lastEnterpriseStatus?.is_manager) {
+        body.innerHTML = `
+          <p class="help-text" style="margin:0 0 14px">Admins and workroom managers manage Synth Enterprise at <strong>synth-sql.com/enterprise</strong>. There's nothing to do here.</p>
+          <button class="auth-btn auth-btn-enterprise" style="width:100%" onclick="window.open('/enterprise', '_blank')">Open synth-sql.com/enterprise</button>
+        `;
+        return;
       }
-      document.getElementById('enterprise-checkout-form').innerHTML = '';
-      enterpriseCheckoutStarted = false;
-    };
+
+      if (lastEnterpriseStatus?.role === 'member') {
+        body.innerHTML = `<p class="help-text" style="margin:0">You're already part of <strong>${escapeHtml(lastEnterpriseStatus.org?.domain || 'your organization')}</strong>. Premium is active on your account.</p>`;
+        return;
+      }
+
+      // Signed in, not yet in an org: offer the join-code field.
+      body.innerHTML = `
+        <p class="help-text" style="margin:0 0 10px">Signed in as ${escapeHtml(currentUser.email)}.</p>
+        <input type="text" id="ent-join-token" class="auth-input auth-input-block" placeholder="Paste your join code">
+        <button class="auth-btn auth-btn-primary" style="width:100%;margin-top:10px" id="ent-join-submit">Join organization</button>
+        <div id="ent-join-msg" class="auth-message"></div>
+      `;
+      document.getElementById('ent-join-submit').onclick = submitEnterpriseJoinCode;
+    }
+
+    async function submitEnterpriseAccessAuth() {
+      const email = document.getElementById('ent-email').value.trim();
+      const password = document.getElementById('ent-password').value;
+      const msgEl = document.getElementById('ent-auth-msg');
+      const submitBtn = document.getElementById('ent-auth-submit');
+
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { msgEl.textContent = 'Enter a valid email.'; return; }
+      if (password.length < 8) { msgEl.textContent = 'Password must be at least 8 characters.'; return; }
+      if (submitBtn.disabled) return;
+
+      submitBtn.disabled = true;
+      msgEl.textContent = enterpriseAccessAuthMode === 'signin' ? 'Signing in...' : 'Creating account...';
+      const { error } = enterpriseAccessAuthMode === 'signin'
+        ? await sb.auth.signInWithPassword({ email, password })
+        : await sb.auth.signUp({ email, password });
+
+      if (error) { msgEl.textContent = error.message; submitBtn.disabled = false; return; }
+
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        const response = await fetch('/api/enterprise/status?op=org_status', {
+          headers: { 'Authorization': `Bearer ${session?.access_token || ''}` },
+        });
+        lastEnterpriseStatus = response.ok ? await response.json() : null;
+      } catch (err) {
+        console.error('Failed to load Enterprise status after sign-in:', err);
+        lastEnterpriseStatus = null;
+      }
+      renderEnterpriseAccessModal();
+    }
+
+    async function submitEnterpriseJoinCode() {
+      const token = document.getElementById('ent-join-token').value.trim();
+      const msgEl = document.getElementById('ent-join-msg');
+      const submitBtn = document.getElementById('ent-join-submit');
+      if (!token) { msgEl.textContent = 'Enter a join code.'; return; }
+      if (submitBtn.disabled) return;
+      submitBtn.disabled = true;
+      msgEl.textContent = 'Joining...';
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        const response = await fetch('/api/enterprise/member-actions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token || ''}` },
+          body: JSON.stringify({ op: 'join', token }),
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body?.error?.message || `Request failed (${response.status})`);
+        msgEl.classList.remove('is-error');
+        msgEl.textContent = `Joined ${body.org?.name || 'your organization'}. Premium is now active.`;
+        refreshPremiumStatus();
+        setTimeout(closeEnterpriseAccessModal, 1400);
+      } catch (err) {
+        msgEl.classList.add('is-error');
+        msgEl.textContent = err.message;
+        submitBtn.disabled = false;
+      }
+    }
 
     window.signInThenGoPremium = function() {
       document.getElementById('premium-signin-modal').hidden = true;
@@ -1920,96 +2025,6 @@
         console.error('Stripe checkout error:', err);
         statusEl.textContent = `Couldn't start checkout: ${err.message}`;
         premiumCheckoutStarted = false; // allow retry on next open
-      }
-    }
-
-    async function startEnterpriseCheckout() {
-      const statusEl = document.getElementById('enterprise-checkout-status');
-      statusEl.classList.remove('is-error');
-
-      if (!stripeClient) {
-        statusEl.classList.add('is-error');
-        statusEl.textContent = 'Checkout isn\'t configured yet. Set a real Stripe publishable key (see STRIPE_INTEGRATION_TODO.md).';
-        return;
-      }
-
-      // Resolve the client secret BEFORE ever touching initCheckoutFormSdk —
-      // found live: initCheckoutFormSdk doesn't reject when handed a promise
-      // that fails (it reports the failure internally as a "loaderror"
-      // instead), so a rejected-but-still-passed-in promise left Stripe's
-      // form stuck rendering an empty loading skeleton forever, sitting
-      // right below the error text this function had already shown. Doing
-      // the fetch as a normal awaited call means a failure (e.g. a
-      // blocklisted domain) shows one clear error and never invokes the
-      // Stripe SDK at all.
-      let clientSecret;
-      try {
-        // The server derives the org domain from this token's verified
-        // email — it doesn't trust anything from the client body.
-        const { data: { session } } = await sb.auth.getSession();
-        const response = await fetch('/api/enterprise/create-checkout-session', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session?.access_token || ''}`
-          },
-        });
-        if (!response.ok) {
-          const body = await response.json().catch(() => ({}));
-          throw new Error(body?.error?.message || `Checkout session request failed (${response.status})`);
-        }
-        const json = await response.json();
-        clientSecret = json.client_secret;
-      } catch (err) {
-        console.error('Enterprise checkout session error:', err);
-        statusEl.classList.add('is-error');
-        statusEl.textContent = `Couldn't start checkout: ${err.message}`;
-        enterpriseCheckoutStarted = false; // allow retry on next open
-        return;
-      }
-
-      try {
-        const appearance = {
-          theme: 'flat',
-          labels: 'auto',
-          inputs: 'spaced',
-          variables: {
-            borderRadius: '4px',
-            colorBackground: '#ffffff',
-            colorDanger: '#df1b41',
-            colorPrimary: '#0570de',
-            colorSuccess: '#00c853',
-            colorText: '#30313d',
-            fontFamily: 'Inter',
-            fontSizeBase: '16px',
-            spacingUnit: '4px',
-          },
-        };
-
-        const checkout = await stripeClient.initCheckoutFormSdk({ clientSecret, appearance });
-        statusEl.textContent = '';
-
-        const form = checkout.createForm({ layout: 'expanded' });
-        form.mount('#enterprise-checkout-form');
-        mountedEnterpriseCheckoutForm = form;
-
-        const loadActionsResult = await checkout.loadActions();
-        if (loadActionsResult.type === 'success') {
-          form.on('confirm', async (event) => {
-            try {
-              await loadActionsResult.actions.confirm({ formConfirmEvent: event });
-            } catch (error) {
-              console.error('Payment confirmation error:', error);
-              statusEl.classList.add('is-error');
-              statusEl.textContent = 'Something went wrong confirming payment. Please try again.';
-            }
-          });
-        }
-      } catch (err) {
-        console.error('Stripe enterprise checkout error:', err);
-        statusEl.classList.add('is-error');
-        statusEl.textContent = `Couldn't start checkout: ${err.message}`;
-        enterpriseCheckoutStarted = false; // allow retry on next open
       }
     }
 
@@ -4698,7 +4713,7 @@
     // editingQueryId, tablePendingDelete, etc. — still runs.
     const MODAL_CLOSE_FN = {
       'premium-modal': 'closePremiumPanel',
-      'enterprise-modal': 'closeEnterprisePanel',
+      'enterprise-access-modal': 'closeEnterpriseAccessModal',
       'enterprise-usage-modal': 'closeEnterpriseUsageModal',
       'premium-signin-modal': 'closePremiumSigninModal',
       'signin-required-modal': 'closeSigninRequiredModal',
@@ -8672,24 +8687,17 @@
     </div>
   </div>
 
-  <div id="enterprise-modal" class="modal-overlay" hidden>
-    <div class="modal">
+  <div id="enterprise-access-modal" class="modal-overlay" hidden>
+    <div class="modal modal-small">
       <div class="modal-header">
         <div class="section-label">Synth Enterprise</div>
-        <button class="modal-close" onclick="closeEnterprisePanel()">&times;</button>
+        <button class="modal-close" onclick="closeEnterpriseAccessModal()">&times;</button>
       </div>
       <div class="modal-section">
-        <ul class="premium-feature-list">
-          <li>Every verified member of your domain gets Premium for free via a join link</li>
-          <li>Admin console: turn AI on/off for everyone, see usage across your org</li>
-          <li>Workrooms: organize members into classes/teams with a manager role</li>
-          <li>A curated, joinable university dataset for practicing real SQL joins</li>
-        </ul>
-        <p class="enterprise-onetime-note">Billed yearly, per organization — not per seat.</p>
+        <div id="enterprise-access-body"></div>
       </div>
-      <div class="modal-section">
-        <div id="enterprise-checkout-status" class="help-text"></div>
-        <div id="enterprise-checkout-form"></div>
+      <div class="modal-section" style="text-align:center;padding-top:0">
+        <a href="/enterprise" target="_blank" rel="noopener" class="help-text">New to Synth Enterprise? Explore synth-sql.com/enterprise &rarr;</a>
       </div>
     </div>
   </div>

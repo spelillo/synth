@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Synth Enterprise: managed SQL practice for schools and teams</title>
+  <meta name="description" content="Synth Enterprise gives a school or company its own managed workspace: shared datasets, per-classroom workrooms, and admin/manager visibility into usage across every member.">
+  <link rel="canonical" href="https://synth-sql.com/enterprise">
+  <meta property="og:title" content="Synth Enterprise">
+  <meta property="og:description" content="Managed SQL practice for schools and teams, with shared datasets, workrooms, and admin visibility across the whole organization.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://synth-sql.com/enterprise">
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="synthfavicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Loaded directly from Stripe, never bundled/self-hosted (PCI requirement) — same as synth.html. -->
+  <script src="https://js.stripe.com/dahlia/stripe.js"></script>
+  <style>
+    /* Palette lifted directly from archive/DESIGN-zapier.md: warm cream
+       canvas, coffee ink, single orange accent — the same tokens the rest
+       of synth-sql.com already runs on (see .auth-btn-premium's #ff4f00,
+       #fffefb throughout synth.html). Purple is layered on top as the one
+       Enterprise-specific accent, reusing the exact ramp already
+       established on .auth-btn-enterprise (#b98ee0/#7c3fae/#461d7c, PMS
+       268 C) rather than inventing a new purple. This page has one theme:
+       light. Nothing below flips to a dark section. */
+    :root {
+      --canvas: #fffefb;
+      --canvas-soft: #f8f4f0;
+      --ink: #201515;
+      --ink-soft: #2f2a26;
+      --body: #605d52;
+      --body-mid: #939084;
+      --mute: #c5c0b1;
+      --line: #e6ddd0;
+      --orange: #ff4f00;
+      --orange-soft: #fff1e8;
+      --on-primary: #fffefb;
+      --purple-hi: #b98ee0;
+      --purple-mid: #7c3fae;
+      --purple-deep: #461d7c;
+      --purple-soft: #f5eefb;
+      --good: #2f6e4f;
+      --good-bg: #eaf5ee;
+      --bad: #b3261e;
+      --bad-bg: #fdecea;
+      --font-body: 'Inter', system-ui, -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      background: var(--canvas);
+      color: var(--body);
+      font-family: var(--font-body);
+      margin: 0;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+    body { min-height: 100dvh; }
+    ::selection { background: var(--orange); color: var(--on-primary); }
+    a { color: var(--purple-deep); }
+    [hidden] { display: none !important; }
+
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+    /* ---- Header ---- */
+    .site-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 24px; border-bottom: 1px solid var(--line);
+    }
+    .site-header .logo-link { display: flex; align-items: center; gap: 12px; text-decoration: none; }
+    .site-header .header-logo { height: 28px; width: auto; display: block; transition: opacity 0.15s ease; }
+    .site-header .logo-link:hover .header-logo { opacity: 0.8; }
+    .site-header .logo-tag {
+      font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--purple-deep); border: 1px solid var(--purple-hi); border-radius: 999px;
+      padding: 2px 8px; margin-left: 4px;
+    }
+    .header-account { display: flex; align-items: center; gap: 14px; font-size: 13.5px; color: var(--body-mid); min-width: 0; }
+    #header-account-email { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 34vw; }
+    .header-account button {
+      background: none; border: none; color: var(--ink-soft); font-family: var(--font-body);
+      font-size: 13.5px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; padding: 0;
+    }
+    .header-account button:hover { color: var(--ink); }
+
+    /* ---- Hero ---- */
+    .hero { padding: 64px 24px 56px; }
+    .hero-inner { max-width: 1080px; margin: 0 auto; position: relative; }
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono);
+      font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 600; color: var(--purple-deep);
+      background: var(--purple-soft); border: 1px solid var(--purple-hi);
+      border-radius: 999px; padding: 5px 13px; margin-bottom: 24px;
+    }
+    h1.hero-title {
+      font-size: clamp(34px, 5vw, 50px); line-height: 1.1; font-weight: 700; color: var(--ink);
+      margin: 0 0 18px; max-width: 15ch; text-wrap: balance;
+    }
+    .hero-sub { font-size: 18px; color: var(--body); max-width: 50ch; margin: 0 0 32px; }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 14px; }
+
+    .btn {
+      font-family: var(--font-body); font-weight: 600; font-size: 15px; border: none; border-radius: 12px;
+      padding: 13px 24px; cursor: pointer; transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.15s ease, border-color 0.12s ease;
+      display: inline-flex; align-items: center; gap: 8px;
+    }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary { background: var(--orange); color: var(--on-primary); box-shadow: 0 4px 14px rgba(255,79,0,0.25); }
+    .btn-primary:hover { background: #e64700; }
+    .btn-purple {
+      background: linear-gradient(180deg, var(--purple-hi) 0%, var(--purple-mid) 55%, var(--purple-deep) 100%);
+      color: var(--on-primary); box-shadow: 0 4px 14px rgba(70,29,124,0.3);
+    }
+    .btn-purple:hover { filter: brightness(1.08); }
+    .btn-ghost { background: var(--canvas); color: var(--ink); border: 1px solid var(--ink); }
+    .btn-ghost:hover { background: var(--canvas-soft); }
+    .btn-block { width: 100%; justify-content: center; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .btn-sm { font-size: 13px; padding: 8px 16px; }
+
+    /* ---- Feature band ---- */
+    .features { padding: 8px 24px 64px; }
+    .features-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px;
+      max-width: 1080px; margin: 0 auto;
+    }
+    .feature-card {
+      background: var(--canvas-soft); border-radius: 12px; padding: 26px;
+    }
+    .feature-icon {
+      width: 38px; height: 38px; border-radius: 10px; margin-bottom: 16px;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--canvas); color: var(--ink);
+    }
+    .feature-card h3 { color: var(--ink); font-size: 16.5px; margin: 0 0 8px; }
+    .feature-card p { font-size: 14px; margin: 0; color: var(--body); }
+
+    /* ---- Access panel ---- */
+    .access { padding: 8px 24px 88px; }
+    .access-head { max-width: 1080px; margin: 0 auto 28px; }
+    .access-head h2 { color: var(--ink); font-size: 24px; margin: 0 0 8px; }
+    .access-head p { color: var(--body); font-size: 14.5px; margin: 0; }
+    .access-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+      max-width: 1080px; margin: 0 auto 20px;
+    }
+    .access-card {
+      background: var(--canvas-soft); border: 1px solid var(--line); border-radius: 12px;
+      padding: 22px; text-align: left; cursor: pointer; color: var(--body); font-family: var(--font-body);
+      transition: border-color 0.12s ease, background 0.12s ease;
+    }
+    .access-card:hover { border-color: var(--purple-mid); }
+    .access-card.is-active { border-color: var(--purple-deep); background: var(--purple-soft); }
+    .access-card .ac-title { color: var(--ink); font-weight: 600; font-size: 15.5px; margin-bottom: 6px; display: block; }
+    .access-card .ac-sub { font-size: 13px; color: var(--body-mid); display: block; }
+
+    .access-panel-body {
+      max-width: 560px; margin: 0 auto; background: var(--canvas-soft);
+      border: 1px solid var(--line); border-radius: 12px; padding: 28px;
+    }
+    .field-label {
+      display: block; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--body-mid); margin-bottom: 7px;
+    }
+    .field-input {
+      width: 100%; background: var(--canvas); border: 1px solid var(--ink); border-radius: 6px;
+      padding: 11px 14px; color: var(--ink); font-family: var(--font-body); font-size: 14.5px; margin-bottom: 14px;
+    }
+    .field-input:focus { outline: none; border-color: var(--purple-deep); box-shadow: 0 0 0 1px var(--purple-deep); }
+    .auth-tabs { display: flex; gap: 6px; margin-bottom: 18px; }
+    .auth-tab {
+      flex: 1; background: var(--canvas); border: 1px solid var(--line); color: var(--body-mid); font-family: var(--font-body);
+      font-size: 13.5px; font-weight: 600; padding: 9px; border-radius: 8px; cursor: pointer;
+    }
+    .auth-tab.is-active { border-color: var(--purple-deep); color: var(--purple-deep); background: var(--purple-soft); }
+    .form-msg { font-size: 13.5px; margin-top: 4px; min-height: 18px; }
+    .form-msg.is-error { color: var(--bad); }
+    .form-msg.is-good { color: var(--good); }
+    .help-note { font-size: 13px; color: var(--body-mid); margin: 14px 0 0; line-height: 1.55; }
+    .signed-in-strip {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      background: var(--good-bg); border: 1px solid #bfe0cc; border-radius: 8px;
+      padding: 10px 14px; margin-bottom: 18px; font-size: 13.5px; color: var(--good);
+    }
+    .state-banner {
+      border-radius: 8px; padding: 14px 16px; font-size: 14px; margin-bottom: 16px;
+    }
+    .state-banner.info { background: var(--purple-soft); border: 1px solid var(--purple-hi); color: var(--ink); }
+    .state-banner.good { background: var(--good-bg); border: 1px solid #bfe0cc; color: var(--ink); }
+    .state-banner.bad { background: var(--bad-bg); border: 1px solid #f0c4bf; color: var(--ink); }
+
+    .access-footer {
+      max-width: 560px; margin: 20px auto 0; text-align: center; font-size: 13.5px; color: var(--body-mid);
+    }
+
+    /* ---- Dashboards ---- */
+    .dashboard { padding: 40px 24px 100px; }
+    .dash-head {
+      max-width: 1080px; margin: 0 auto 28px; display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    }
+    .dash-head h1 { color: var(--ink); font-size: 26px; margin: 0 0 6px; }
+    .dash-head .dash-sub { color: var(--body-mid); font-size: 14px; margin: 0; }
+    .dash-shell { max-width: 1080px; margin: 0 auto; display: grid; grid-template-columns: 200px 1fr; gap: 24px; align-items: start; }
+    .dash-tabs { display: flex; flex-direction: column; gap: 4px; position: sticky; top: 24px; }
+    .dash-tab {
+      text-align: left; background: none; border: none; color: var(--body-mid); font-family: var(--font-body);
+      font-size: 14px; font-weight: 500; padding: 10px 14px; border-radius: 8px; cursor: pointer;
+    }
+    .dash-tab.is-active { background: var(--purple-soft); color: var(--purple-deep); font-weight: 600; }
+    .dash-tab:hover:not(.is-active) { color: var(--ink-soft); background: var(--canvas-soft); }
+    .dash-panel { background: var(--canvas-soft); border-radius: 12px; padding: 26px; min-height: 320px; }
+    .dash-panel h2 { color: var(--ink); font-size: 18px; margin: 0 0 4px; }
+    .dash-panel .panel-sub { color: var(--body-mid); font-size: 13.5px; margin: 0 0 22px; }
+    .dash-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 14px;
+      padding: 13px 0; border-bottom: 1px solid var(--line);
+    }
+    .dash-row:last-child { border-bottom: none; }
+    .dash-row .row-main { display: flex; flex-direction: column; gap: 2px; }
+    .dash-row .row-title { color: var(--ink); font-size: 14.5px; font-weight: 500; }
+    .dash-row .row-sub { color: var(--body-mid); font-size: 12.5px; font-family: var(--font-mono); }
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap: 14px; margin-bottom: 24px; }
+    .stat-tile { background: var(--canvas); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+    .stat-tile .stat-label { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--body-mid); margin-bottom: 8px; }
+    .stat-tile .stat-value { font-size: 24px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+    .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+    .toggle-row:last-child { border-bottom: none; }
+    .switch { position: relative; width: 40px; height: 22px; flex-shrink: 0; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .switch-track {
+      position: absolute; inset: 0; background: var(--mute); border-radius: 999px; cursor: pointer; transition: background 0.15s;
+    }
+    .switch-track::before {
+      content: ''; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px; background: var(--canvas); border-radius: 50%; transition: transform 0.15s;
+    }
+    .switch input:checked + .switch-track { background: var(--purple-deep); }
+    .switch input:checked + .switch-track::before { transform: translateX(18px); }
+    table.data-tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+    table.data-tbl th {
+      text-align: left; font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.05em; text-transform: uppercase;
+      color: var(--body-mid); padding: 8px 10px; border-bottom: 1px solid var(--mute);
+    }
+    table.data-tbl td { padding: 10px; border-bottom: 1px solid var(--line); color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+    table.data-tbl tr:last-child td { border-bottom: none; }
+    .empty-note { color: var(--body-mid); font-size: 13.5px; padding: 20px 0; }
+    .inline-form { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+    .inline-form select, .inline-form input {
+      background: var(--canvas); border: 1px solid var(--ink); border-radius: 6px; color: var(--ink);
+      font-family: var(--font-body); font-size: 13.5px; padding: 9px 12px;
+    }
+    .wr-switcher { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+    .wr-pill {
+      font-family: var(--font-mono); font-size: 12.5px; padding: 6px 14px; border-radius: 999px;
+      border: 1px solid var(--line); background: var(--canvas); color: var(--body-mid); cursor: pointer;
+    }
+    .wr-pill.is-active { border-color: var(--purple-deep); color: var(--purple-deep); background: var(--purple-soft); }
+    code.jl-code {
+      display: block; background: var(--canvas); border: 1px solid var(--line); border-radius: 8px;
+      padding: 10px 12px; font-family: var(--font-mono); font-size: 12.5px; color: var(--purple-deep);
+      word-break: break-all; margin-top: 10px;
+    }
+
+    footer.site-footer {
+      background: var(--ink); padding: 32px 24px; text-align: center;
+      font-size: 12.5px; color: var(--canvas-soft);
+    }
+    footer.site-footer a { color: var(--purple-hi); }
+
+    @media (max-width: 760px) {
+      .features-grid, .access-grid { grid-template-columns: 1fr; }
+      .dash-shell { grid-template-columns: 1fr; }
+      .dash-tabs { flex-direction: row; overflow-x: auto; position: static; padding-bottom: 4px; }
+      .hero { padding: 48px 20px 40px; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="site-header">
+    <a href="https://synth-sql.com/" class="logo-link" title="Back to Synth">
+      <img src="synth-cream-orangediscs.png" alt="Synth" class="header-logo">
+      <span class="logo-tag">Enterprise</span>
+    </a>
+    <div class="header-account" id="header-account" hidden>
+      <span id="header-account-email"></span>
+      <button onclick="handleSignOut()">Sign out</button>
+    </div>
+  </div>
+
+  <!-- ============ MARKETING / ACCESS VIEW ============ -->
+  <div id="view-marketing">
+    <div class="hero">
+      <div class="hero-inner">
+        <span class="eyebrow">Synth Enterprise</span>
+        <h1 class="hero-title">Run your team's SQL practice like a real workspace.</h1>
+        <p class="hero-sub">One organization, one bill. Every verified member gets Premium automatically, with the workspace tools admins and managers actually need.</p>
+        <div class="hero-actions">
+          <button class="btn btn-primary" onclick="selectAccessCard('create')">Create your organization</button>
+          <button class="btn btn-purple" onclick="selectAccessCard('signin')">Sign in</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="features">
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M9 9v11"/></svg>
+          </div>
+          <h3>Managed workspaces</h3>
+          <p>Workrooms group members into classes or teams under a manager, each with its own roster, without splitting the bill per seat.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+          </div>
+          <h3>Unified billing</h3>
+          <p>One yearly charge per domain. Every verified member of your organization's email domain gets Premium automatically, with no per-seat invoicing.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg>
+          </div>
+          <h3>Real visibility</h3>
+          <p>Admins see every workspace and every member across the organization. Managers see their own classes, rosters, and usage.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="access" id="access">
+      <div class="access-head">
+        <h2>Get started</h2>
+        <p>Creating a new organization only happens here. Joining one you already belong to can also be done from the join link your admin sent you.</p>
+      </div>
+      <div class="access-grid">
+        <button class="access-card" id="card-create" onclick="selectAccessCard('create')">
+          <span class="ac-title">Create an organization</span>
+          <span class="ac-sub">For a school or company setting up Synth Enterprise for the first time.</span>
+        </button>
+        <button class="access-card" id="card-signin" onclick="selectAccessCard('signin')">
+          <span class="ac-title">Sign in</span>
+          <span class="ac-sub">Admins and workroom managers land in their dashboard here.</span>
+        </button>
+        <button class="access-card" id="card-join" onclick="selectAccessCard('join')">
+          <span class="ac-title">Join with a code</span>
+          <span class="ac-sub">Have a join code from your admin? Redeem it here.</span>
+        </button>
+      </div>
+
+      <div id="access-panel-body" class="access-panel-body" hidden></div>
+      <div class="access-footer">Already using Synth day-to-day? <a href="/">Go to synth-sql.com &rarr;</a></div>
+    </div>
+  </div>
+
+  <!-- ============ ADMIN DASHBOARD ============ -->
+  <div id="view-admin" hidden>
+    <div class="dashboard">
+      <div class="dash-head">
+        <div>
+          <h1 id="admin-org-name">Your organization</h1>
+          <p class="dash-sub" id="admin-org-sub"></p>
+        </div>
+        <span class="eyebrow">Admin</span>
+      </div>
+      <div id="admin-banner"></div>
+      <div class="dash-shell">
+        <div class="dash-tabs">
+          <button class="dash-tab is-active" data-tab="overview" onclick="setAdminTab('overview')">Overview</button>
+          <button class="dash-tab" data-tab="workspaces" onclick="setAdminTab('workspaces')">Workspaces</button>
+          <button class="dash-tab" data-tab="roster" onclick="setAdminTab('roster')">Roster</button>
+          <button class="dash-tab" data-tab="library" onclick="setAdminTab('library')">Library</button>
+          <button class="dash-tab" data-tab="usage" onclick="setAdminTab('usage')">Usage</button>
+        </div>
+        <div class="dash-panel" id="admin-panel">Loading…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MANAGER DASHBOARD ============ -->
+  <div id="view-manager" hidden>
+    <div class="dashboard">
+      <div class="dash-head">
+        <div>
+          <h1>Your workrooms</h1>
+          <p class="dash-sub" id="manager-org-sub"></p>
+        </div>
+        <span class="eyebrow">Manager</span>
+      </div>
+      <div class="dash-shell">
+        <div class="dash-tabs">
+          <button class="dash-tab is-active" data-tab="roster" onclick="setManagerTab('roster')">Roster</button>
+          <button class="dash-tab" data-tab="usage" onclick="setManagerTab('usage')">Usage</button>
+          <button class="dash-tab" data-tab="library" onclick="setManagerTab('library')">Library</button>
+        </div>
+        <div class="dash-panel" id="manager-panel">Loading…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ "NOTHING TO MANAGE" INTERSTITIAL (plain member) ============ -->
+  <div id="view-member-redirect" hidden>
+    <div class="hero">
+      <div class="hero-inner" style="text-align:center;">
+        <span class="eyebrow">Synth Enterprise</span>
+        <h1 class="hero-title" style="max-width:none;">You're all set.</h1>
+        <p class="hero-sub" style="margin-left:auto;margin-right:auto;" id="member-redirect-text"></p>
+        <div class="hero-actions" style="justify-content:center;">
+          <button class="btn btn-primary" onclick="window.location.href='/'">Continue to Synth</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="site-footer">Synth Enterprise &middot; <a href="/">synth-sql.com</a></footer>
+
+<script>
+  // ---- Same project as synth.html — sessions are shared automatically via
+  // localStorage on this origin, so a visitor already signed in on the main
+  // app is already signed in here too. ----
+  const SUPABASE_URL = 'https://gukxpikthryasymfuhgl.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd1a3hwaWt0aHJ5YXN5bWZ1aGdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwMDAyNTQsImV4cCI6MjEwNDU3NjI1NH0.NFhryLa7MLSvjRGnT75EfxH_4M9tACdbVWOlmaLSXbw';
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const STRIPE_PUBLISHABLE_KEY = 'pk_test_51UE9ruRqXDpXXBnZCSxSuLRXb4eEBfDoNnOTP2nqFR2nFps4R4bkzwdAEq17VReeuUcx3vaHyjzg9n1cAe8Ocbto00tZ4ezyyk';
+  let stripeClient = null;
+  if (STRIPE_PUBLISHABLE_KEY !== 'pk_test_...' && window.Stripe) {
+    stripeClient = window.Stripe(STRIPE_PUBLISHABLE_KEY, { betas: ['custom_checkout_payment_form_1'] });
+  }
+
+  let currentUser = null;
+  let orgStatus = null; // last org_status response
+
+  function escapeHtml(str) {
+    return String(str ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  async function authedFetch(url, opts = {}) {
+    const { data: { session } } = await sb.auth.getSession();
+    const headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers, {
+      'Authorization': `Bearer ${session?.access_token || ''}`,
+    });
+    const response = await fetch(url, Object.assign({}, opts, { headers }));
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body?.error?.message || `Request failed (${response.status})`);
+    return body;
+  }
+  const statusOp = (op) => authedFetch(`/api/enterprise/status?op=${op}`);
+  const adminAction = (op, extra = {}) => authedFetch('/api/enterprise/admin', { method: 'POST', body: JSON.stringify({ op, ...extra }) });
+  const joinWithCode = (token) => authedFetch('/api/enterprise/member-actions', { method: 'POST', body: JSON.stringify({ op: 'join', token }) });
+
+  // ---- Boot ----
+  window.addEventListener('DOMContentLoaded', async () => {
+    const { data: { session } } = await sb.auth.getSession();
+    await handleAuthChange(session);
+    sb.auth.onAuthStateChange((_event, newSession) => handleAuthChange(newSession));
+  });
+
+  async function handleAuthChange(session) {
+    currentUser = session?.user || null;
+    const strip = document.getElementById('header-account');
+    if (currentUser) {
+      strip.hidden = false;
+      document.getElementById('header-account-email').textContent = currentUser.email;
+    } else {
+      strip.hidden = true;
+    }
+    await routeByRole();
+  }
+
+  window.handleSignOut = async function () {
+    await sb.auth.signOut();
+    window.location.href = '/enterprise';
+  };
+
+  function showView(name) {
+    for (const id of ['view-marketing', 'view-admin', 'view-manager', 'view-member-redirect']) {
+      document.getElementById(id).hidden = id !== name;
+    }
+  }
+
+  // ---- Role routing ----
+  // Mirrors the decision table in the build spec: admin -> master dashboard,
+  // manager (still org_members.role === 'member', flagged via is_manager) ->
+  // workroom dashboard, plain member -> nothing to manage here, signed-out
+  // or role-less -> the marketing/access view.
+  async function routeByRole() {
+    if (!currentUser) {
+      showView('view-marketing');
+      renderAccessPanelForAuthState();
+      return;
+    }
+    const checkoutReturned = new URLSearchParams(window.location.search).get('checkout') === 'success';
+
+    try {
+      orgStatus = await statusOp('org_status');
+    } catch (err) {
+      console.error('Failed to load Enterprise status:', err);
+      orgStatus = null;
+      showView('view-marketing');
+      // Reflect the real (signed-in) state instead of leaving whatever the
+      // access panel showed before this call — e.g. a stale "Signing in…"
+      // from the auth form that just succeeded. A user landing here right
+      // after Stripe's redirect (checkoutReturned) already handed over
+      // money — telling them only "couldn't check status" reads as if the
+      // payment itself failed, so acknowledge the payment separately from
+      // the status-check failure.
+      const body = document.getElementById('access-panel-body');
+      body.hidden = false;
+      body.innerHTML = checkoutReturned
+        ? `<div class="state-banner good">Payment received. We couldn't confirm your new organization is ready yet, but your card was charged.</div>
+           <button class="btn btn-primary btn-block" id="retry-status-btn">Check again</button>`
+        : `<div class="state-banner bad">Signed in as ${escapeHtml(currentUser.email)}, but couldn't check your Enterprise status.</div>
+           <button class="btn btn-ghost btn-block" id="retry-status-btn">Try again</button>`;
+      document.getElementById('retry-status-btn').onclick = routeByRole;
+      return;
+    }
+
+    if (orgStatus.role === 'admin') {
+      showView('view-admin');
+      await renderAdminDashboard(checkoutReturned);
+    } else if (orgStatus.is_manager) {
+      showView('view-manager');
+      await renderManagerDashboard();
+    } else if (orgStatus.role === 'member') {
+      if (checkoutReturned) {
+        // Rare: someone else's checkout just finished fulfilling while this
+        // tab was open as a plain member of a different org. Nothing to do
+        // but drop the stale query param.
+      }
+      showView('view-member-redirect');
+      document.getElementById('member-redirect-text').textContent =
+        `Premium is active on your account via ${orgStatus.org?.domain || 'your organization'}. There's nothing to manage here, that's your admin's job.`;
+    } else if (checkoutReturned) {
+      // Just paid, webhook may not have fulfilled the pending org yet — poll
+      // briefly rather than dropping them back on the marketing view.
+      showView('view-admin');
+      document.getElementById('admin-panel').innerHTML = '<p class="empty-note">Payment received. Setting up your organization now.</p>';
+      await pollForAdminFulfillment();
+    } else {
+      showView('view-marketing');
+      renderAccessPanelForAuthState();
+    }
+  }
+
+  async function pollForAdminFulfillment(attempt = 0) {
+    if (attempt >= 6) {
+      document.getElementById('admin-panel').innerHTML = '<p class="empty-note">Still setting up. Refresh this page in a moment. If this persists, contact support.</p>';
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 1500));
+    try {
+      orgStatus = await statusOp('org_status');
+    } catch (err) {
+      console.error(err);
+    }
+    if (orgStatus?.role === 'admin') {
+      await renderAdminDashboard(true);
+    } else {
+      await pollForAdminFulfillment(attempt + 1);
+    }
+  }
+
+  // ============ ACCESS PANEL (signed out or not-yet-in-an-org) ============
+
+  let activeAccessCard = null;
+
+  window.selectAccessCard = function (card) {
+    activeAccessCard = card;
+    document.getElementById('access').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    for (const id of ['card-create', 'card-signin', 'card-join']) {
+      document.getElementById(id).classList.toggle('is-active', id === `card-${card}`);
+    }
+    renderAccessPanelForAuthState();
+  };
+
+  let authMiniMode = 'signin';
+
+  function renderAccessPanelForAuthState() {
+    const body = document.getElementById('access-panel-body');
+    if (!activeAccessCard) { body.hidden = true; return; }
+    body.hidden = false;
+
+    if (!currentUser) {
+      // Every path needs an account first. "Create" defaults to the sign-up
+      // tab (most visitors here are new), the other two default to sign-in.
+      authMiniMode = activeAccessCard === 'create' ? 'signup' : 'signin';
+      body.innerHTML = authMiniMarkup();
+      wireAuthMini();
+      return;
+    }
+
+    if (activeAccessCard === 'create') {
+      renderCreateOrgPanel(body);
+    } else if (activeAccessCard === 'join') {
+      renderJoinPanel(body);
+    } else {
+      // "Sign in" card, already signed in — just reflect where they landed.
+      if (orgStatus?.role === 'admin' || orgStatus?.is_manager) {
+        body.innerHTML = `<div class="state-banner info">You're signed in as <strong>${escapeHtml(currentUser.email)}</strong>. Loading your dashboard…</div>`;
+      } else if (orgStatus?.role === 'member') {
+        body.innerHTML = `<div class="state-banner good">Signed in as ${escapeHtml(currentUser.email)}. Premium is active via ${escapeHtml(orgStatus.org?.domain || 'your organization')}.</div>
+          <button class="btn btn-ghost btn-block" onclick="window.location.href='/'">Continue to Synth</button>`;
+      } else {
+        body.innerHTML = `<div class="state-banner info">Signed in as ${escapeHtml(currentUser.email)}. Not part of an organization yet. Create one, or join with a code.</div>`;
+      }
+    }
+  }
+
+  function authMiniMarkup() {
+    return `
+      <div class="auth-tabs">
+        <button type="button" class="auth-tab ${authMiniMode === 'signin' ? 'is-active' : ''}" id="mini-tab-signin">Sign in</button>
+        <button type="button" class="auth-tab ${authMiniMode === 'signup' ? 'is-active' : ''}" id="mini-tab-signup">Sign up</button>
+      </div>
+      <label class="field-label">Email</label>
+      <input type="email" id="mini-email" class="field-input" placeholder="you@yourschool.edu" autocomplete="email">
+      <label class="field-label">Password</label>
+      <input type="password" id="mini-password" class="field-input" placeholder="Password" autocomplete="current-password">
+      <button class="btn btn-purple btn-block" id="mini-submit">Sign in</button>
+      <div class="form-msg" id="mini-msg"></div>
+      <p class="help-note">Have a join code instead of creating a new organization? Sign in above, then switch to "Join with a code".</p>
+    `;
+  }
+
+  function wireAuthMini() {
+    const setMode = (mode) => {
+      authMiniMode = mode;
+      document.getElementById('mini-tab-signin').classList.toggle('is-active', mode === 'signin');
+      document.getElementById('mini-tab-signup').classList.toggle('is-active', mode === 'signup');
+      document.getElementById('mini-submit').textContent = mode === 'signin' ? 'Sign in' : 'Create account';
+    };
+    document.getElementById('mini-tab-signin').onclick = () => setMode('signin');
+    document.getElementById('mini-tab-signup').onclick = () => setMode('signup');
+    document.getElementById('mini-submit').onclick = submitAuthMini;
+    setMode(authMiniMode);
+  }
+
+  async function submitAuthMini() {
+    const email = document.getElementById('mini-email').value.trim();
+    const password = document.getElementById('mini-password').value;
+    const msgEl = document.getElementById('mini-msg');
+    const submitBtn = document.getElementById('mini-submit');
+    msgEl.className = 'form-msg';
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { msgEl.textContent = 'Enter a valid email.'; msgEl.classList.add('is-error'); return; }
+    if (password.length < 8) { msgEl.textContent = 'Password must be at least 8 characters.'; msgEl.classList.add('is-error'); return; }
+    if (submitBtn.disabled) return;
+
+    submitBtn.disabled = true;
+    msgEl.textContent = authMiniMode === 'signin' ? 'Signing in…' : 'Creating account…';
+    const { error } = authMiniMode === 'signin'
+      ? await sb.auth.signInWithPassword({ email, password })
+      : await sb.auth.signUp({ email, password });
+
+    if (error) {
+      msgEl.textContent = error.message;
+      msgEl.classList.add('is-error');
+      submitBtn.disabled = false;
+      return;
+    }
+    // handleAuthChange fires from onAuthStateChange and re-renders the panel
+    // for the now-signed-in state (routeByRole -> renderAccessPanelForAuthState),
+    // which replaces this button entirely, so it's never re-enabled from here.
+  }
+
+  function renderCreateOrgPanel(body) {
+    body.innerHTML = `
+      <div class="signed-in-strip"><span>Signed in as ${escapeHtml(currentUser.email)}</span></div>
+      <p class="help-note" style="margin-top:0">Billed yearly, per organization domain, not per seat. Every verified member of your email domain gets Premium automatically once this is set up.</p>
+      <div id="org-checkout-status" class="form-msg"></div>
+      <div id="org-checkout-form"></div>
+    `;
+    startOrgCheckout();
+  }
+
+  let orgCheckoutStarted = false;
+  async function startOrgCheckout() {
+    if (orgCheckoutStarted) return;
+    orgCheckoutStarted = true;
+    const statusEl = document.getElementById('org-checkout-status');
+
+    if (!stripeClient) {
+      statusEl.classList.add('is-error');
+      statusEl.textContent = 'Checkout isn\'t configured yet.';
+      orgCheckoutStarted = false;
+      return;
+    }
+
+    let clientSecret;
+    try {
+      const json = await authedFetch('/api/enterprise/create-checkout-session', { method: 'POST' });
+      clientSecret = json.client_secret;
+    } catch (err) {
+      statusEl.classList.add('is-error');
+      statusEl.textContent = `Couldn't start checkout: ${err.message}`;
+      orgCheckoutStarted = false;
+      return;
+    }
+
+    try {
+      const appearance = {
+        theme: 'flat', labels: 'auto', inputs: 'spaced',
+        variables: {
+          borderRadius: '8px', colorBackground: '#17121d', colorDanger: '#e8836a',
+          colorPrimary: '#b98ee0', colorSuccess: '#5fbf8a', colorText: '#f4eef8',
+          fontFamily: 'Inter', fontSizeBase: '15px', spacingUnit: '4px',
+        },
+      };
+      const checkout = await stripeClient.initCheckoutFormSdk({ clientSecret, appearance });
+      statusEl.textContent = '';
+      const form = checkout.createForm({ layout: 'expanded' });
+      form.mount('#org-checkout-form');
+
+      const loadActionsResult = await checkout.loadActions();
+      if (loadActionsResult.type === 'success') {
+        form.on('confirm', async (event) => {
+          try {
+            await loadActionsResult.actions.confirm({ formConfirmEvent: event });
+          } catch (error) {
+            console.error('Payment confirmation error:', error);
+            statusEl.classList.add('is-error');
+            statusEl.textContent = 'Something went wrong confirming payment. Please try again.';
+          }
+        });
+      }
+    } catch (err) {
+      console.error('Stripe checkout error:', err);
+      statusEl.classList.add('is-error');
+      statusEl.textContent = `Couldn't start checkout: ${err.message}`;
+      orgCheckoutStarted = false;
+    }
+  }
+
+  function renderJoinPanel(body) {
+    body.innerHTML = `
+      <div class="signed-in-strip"><span>Signed in as ${escapeHtml(currentUser.email)}</span></div>
+      <label class="field-label">Join code</label>
+      <input type="text" id="join-token" class="field-input" placeholder="Paste the code your admin sent you">
+      <button class="btn btn-purple btn-block" id="join-submit">Join organization</button>
+      <div class="form-msg" id="join-msg"></div>
+    `;
+    document.getElementById('join-submit').onclick = async (e) => {
+      const token = document.getElementById('join-token').value.trim();
+      const msgEl = document.getElementById('join-msg');
+      msgEl.className = 'form-msg';
+      if (!token) { msgEl.textContent = 'Enter a join code.'; msgEl.classList.add('is-error'); return; }
+      if (e.target.disabled) return;
+      e.target.disabled = true;
+      msgEl.textContent = 'Joining…';
+      try {
+        const result = await joinWithCode(token);
+        msgEl.classList.add('is-good');
+        msgEl.textContent = `Joined ${result.org?.name || 'your organization'}. Redirecting to Synth.`;
+        setTimeout(() => { window.location.href = '/'; }, 1400);
+      } catch (err) {
+        msgEl.classList.add('is-error');
+        msgEl.textContent = err.message;
+        e.target.disabled = false;
+      }
+    };
+  }
+
+  // ============ ADMIN DASHBOARD ============
+
+  let adminTab = 'overview';
+  let adminCache = { roster: null, workrooms: null, templates: null, usage: null };
+
+  window.setAdminTab = function (tab) {
+    adminTab = tab;
+    document.querySelectorAll('#view-admin .dash-tab').forEach((el) => el.classList.toggle('is-active', el.dataset.tab === tab));
+    renderAdminTabContent();
+  };
+
+  async function renderAdminDashboard(justPaid) {
+    document.getElementById('admin-org-name').textContent = orgStatus.org?.name || orgStatus.org?.domain || 'Your organization';
+    document.getElementById('admin-org-sub').textContent = orgStatus.org?.domain ? `${orgStatus.org.domain} · Enterprise admin` : 'Enterprise admin';
+    document.getElementById('admin-banner').innerHTML = justPaid
+      ? '<div class="state-banner good" style="max-width:1080px;margin:0 auto 20px">Your organization is live. Generate a join link below to bring your team on.</div>'
+      : '';
+    if (justPaid) history.replaceState({}, '', '/enterprise');
+    setAdminTab('overview');
+  }
+
+  async function renderAdminTabContent() {
+    const panel = document.getElementById('admin-panel');
+    panel.innerHTML = '<p class="empty-note">Loading…</p>';
+
+    if (adminTab === 'overview') {
+      const org = orgStatus.org;
+      panel.innerHTML = `
+        <h2>Overview</h2>
+        <p class="panel-sub">Billing and organization-wide settings.</p>
+        <div class="stat-grid">
+          <div class="stat-tile"><div class="stat-label">Renews</div><div class="stat-value" style="font-size:16px">${org?.current_period_end ? new Date(org.current_period_end).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : 'Not set'}</div></div>
+          <div class="stat-tile"><div class="stat-label">Domain</div><div class="stat-value" style="font-size:16px">${escapeHtml(org?.domain || 'Not set')}</div></div>
+        </div>
+        <div class="toggle-row">
+          <div class="row-main"><span class="row-title">AI assistant enabled org-wide</span></div>
+          <label class="switch"><input type="checkbox" id="toggle-ai" ${org?.ai_enabled !== false ? 'checked' : ''}><span class="switch-track"></span></label>
+        </div>
+        <div class="toggle-row">
+          <div class="row-main"><span class="row-title">Auto-renew subscription</span></div>
+          <label class="switch"><input type="checkbox" id="toggle-renew" ${!org?.cancel_at_period_end ? 'checked' : ''}><span class="switch-track"></span></label>
+        </div>
+        <div style="margin-top:22px">
+          <div class="field-label" style="margin-bottom:10px">Bring your team on</div>
+          <button class="btn btn-ghost btn-sm" id="create-join-link-btn">Generate join link</button>
+          <div id="join-link-output"></div>
+        </div>
+      `;
+      document.getElementById('toggle-ai').onchange = async (e) => {
+        try { await adminAction('toggle_ai', { enabled: e.target.checked }); orgStatus.org.ai_enabled = e.target.checked; }
+        catch (err) { alert(err.message); e.target.checked = !e.target.checked; }
+      };
+      document.getElementById('toggle-renew').onchange = async (e) => {
+        try { await adminAction('toggle_auto_renew', { enabled: e.target.checked }); orgStatus.org.cancel_at_period_end = !e.target.checked; }
+        catch (err) { alert(err.message); e.target.checked = !e.target.checked; }
+      };
+      document.getElementById('create-join-link-btn').onclick = async (e) => {
+        e.target.disabled = true; e.target.textContent = 'Generating…';
+        try {
+          const { url } = await adminAction('create_join_link');
+          document.getElementById('join-link-output').innerHTML = `<code class="jl-code">${escapeHtml(url)}</code>`;
+        } catch (err) { alert(err.message); }
+        e.target.disabled = false; e.target.textContent = 'Generate join link';
+      };
+      return;
+    }
+
+    if (adminTab === 'workspaces') {
+      if (!adminCache.workrooms) adminCache.workrooms = await statusOp('workrooms').catch(() => ({ workrooms: [] }));
+      if (!adminCache.roster) adminCache.roster = await statusOp('org_roster').catch(() => ({ members: [] }));
+      const workrooms = adminCache.workrooms.workrooms || [];
+      const roster = adminCache.roster.members || [];
+      panel.innerHTML = `
+        <h2>Workspaces</h2>
+        <p class="panel-sub">Every workroom in your organization, and who manages it.</p>
+        ${workrooms.length ? workrooms.map((w) => `
+          <div class="dash-row">
+            <div class="row-main"><span class="row-title">${escapeHtml(w.name)}</span><span class="row-sub">managed by ${escapeHtml(w.manager_email || w.manager_id)} · ${w.roster.length} member${w.roster.length === 1 ? '' : 's'}</span></div>
+          </div>`).join('') : '<p class="empty-note">No workrooms yet.</p>'}
+        <div style="margin-top:22px">
+          <div class="field-label" style="margin-bottom:10px">New workroom</div>
+          <div class="inline-form">
+            <input type="text" id="new-wr-name" placeholder="Workroom name" style="flex:1;min-width:160px">
+            <select id="new-wr-manager">${roster.map((m) => `<option value="${escapeHtml(m.user_id)}">${escapeHtml(m.email)}</option>`).join('')}</select>
+            <button class="btn btn-purple btn-sm" id="create-wr-btn">Create</button>
+          </div>
+          <div class="form-msg" id="create-wr-msg"></div>
+        </div>
+      `;
+      document.getElementById('create-wr-btn').onclick = async (e) => {
+        const name = document.getElementById('new-wr-name').value.trim();
+        const managerUserId = document.getElementById('new-wr-manager').value;
+        const msgEl = document.getElementById('create-wr-msg');
+        if (!name) { msgEl.textContent = 'Name the workroom.'; msgEl.className = 'form-msg is-error'; return; }
+        if (e.target.disabled) return;
+        e.target.disabled = true;
+        try {
+          await adminAction('create_workroom', { name, manager_user_id: managerUserId });
+          adminCache.workrooms = null;
+          renderAdminTabContent();
+        } catch (err) {
+          msgEl.textContent = err.message; msgEl.className = 'form-msg is-error';
+          e.target.disabled = false;
+        }
+      };
+      return;
+    }
+
+    if (adminTab === 'roster') {
+      if (!adminCache.roster) adminCache.roster = await statusOp('org_roster').catch(() => ({ members: [] }));
+      const roster = adminCache.roster.members || [];
+      panel.innerHTML = `
+        <h2>Roster</h2>
+        <p class="panel-sub">${roster.length} member${roster.length === 1 ? '' : 's'} in your organization.</p>
+        ${roster.length ? `<table class="data-tbl"><thead><tr><th>Email</th></tr></thead><tbody>${roster.map((m) => `<tr><td>${escapeHtml(m.email)}</td></tr>`).join('')}</tbody></table>` : '<p class="empty-note">No members yet. Generate a join link from Overview.</p>'}
+      `;
+      return;
+    }
+
+    if (adminTab === 'library') {
+      if (!adminCache.templates) adminCache.templates = await statusOp('templates').catch(() => ({ templates: [] }));
+      const templates = adminCache.templates.templates || [];
+      const enabledIds = new Set((orgStatus.enabledTemplates || []).map((t) => t.id));
+      panel.innerHTML = `
+        <h2>Library</h2>
+        <p class="panel-sub">Datasets your organization's members can load.</p>
+        ${templates.length ? templates.map((t) => `
+          <div class="toggle-row">
+            <div class="row-main"><span class="row-title">${escapeHtml(t.name)}</span><span class="row-sub">${escapeHtml(t.vertical)}</span></div>
+            <label class="switch"><input type="checkbox" class="tmpl-toggle" data-id="${escapeHtml(t.id)}" ${enabledIds.has(t.id) ? 'checked' : ''}><span class="switch-track"></span></label>
+          </div>`).join('') : '<p class="empty-note">No library datasets available yet.</p>'}
+      `;
+      panel.querySelectorAll('.tmpl-toggle').forEach((el) => {
+        el.onchange = async (e) => {
+          try { await adminAction('enable_template', { template_id: e.target.dataset.id, enabled: e.target.checked }); }
+          catch (err) { alert(err.message); e.target.checked = !e.target.checked; }
+        };
+      });
+      return;
+    }
+
+    if (adminTab === 'usage') {
+      if (!adminCache.usage) adminCache.usage = await statusOp('usage').catch(() => ({ members: [] }));
+      const members = adminCache.usage.members || [];
+      panel.innerHTML = `
+        <h2>Usage</h2>
+        <p class="panel-sub">AI assistant calls per member. Counts activity, not query content. Synth doesn't store what anyone actually asked or ran.</p>
+        ${members.length ? `<table class="data-tbl"><thead><tr><th>Email</th><th>Last 24h</th><th>Last 7d</th></tr></thead><tbody>${members.map((m) => `<tr><td>${escapeHtml(m.email)}</td><td>${m.count_24h}</td><td>${m.count_7d}</td></tr>`).join('')}</tbody></table>` : '<p class="empty-note">No usage yet.</p>'}
+      `;
+      return;
+    }
+  }
+
+  // ============ MANAGER DASHBOARD ============
+
+  let managerTab = 'roster';
+  let managerCache = { workrooms: null, usage: null };
+  let selectedWorkroomId = null;
+
+  window.setManagerTab = function (tab) {
+    managerTab = tab;
+    document.querySelectorAll('#view-manager .dash-tab').forEach((el) => el.classList.toggle('is-active', el.dataset.tab === tab));
+    renderManagerTabContent();
+  };
+
+  async function renderManagerDashboard() {
+    document.getElementById('manager-org-sub').textContent = orgStatus.org?.domain ? `${orgStatus.org.domain} · Workroom manager` : 'Workroom manager';
+    managerCache.workrooms = await statusOp('workrooms').catch(() => ({ workrooms: [] }));
+    const workrooms = managerCache.workrooms.workrooms || [];
+    if (!selectedWorkroomId && workrooms.length) selectedWorkroomId = workrooms[0].id;
+    setManagerTab('roster');
+  }
+
+  function managerWorkroomSwitcher() {
+    const workrooms = managerCache.workrooms.workrooms || [];
+    if (workrooms.length <= 1) return '';
+    return `<div class="wr-switcher">${workrooms.map((w) => `<button class="wr-pill ${w.id === selectedWorkroomId ? 'is-active' : ''}" data-wr="${escapeHtml(w.id)}">${escapeHtml(w.name)}</button>`).join('')}</div>`;
+  }
+
+  function wireWorkroomSwitcher(panel) {
+    panel.querySelectorAll('.wr-pill').forEach((el) => {
+      el.onclick = () => { selectedWorkroomId = el.dataset.wr; renderManagerTabContent(); };
+    });
+  }
+
+  async function renderManagerTabContent() {
+    const panel = document.getElementById('manager-panel');
+    const workrooms = managerCache.workrooms.workrooms || [];
+    const current = workrooms.find((w) => w.id === selectedWorkroomId);
+
+    if (!workrooms.length) {
+      panel.innerHTML = '<p class="empty-note">No workroom is assigned to you yet. Check with your admin.</p>';
+      return;
+    }
+
+    if (managerTab === 'roster') {
+      panel.innerHTML = `
+        <h2>${escapeHtml(current?.name || 'Roster')}</h2>
+        <p class="panel-sub">${current?.roster.length || 0} member${current?.roster.length === 1 ? '' : 's'} in this workroom.</p>
+        ${managerWorkroomSwitcher()}
+        ${current?.roster.length ? `<table class="data-tbl"><thead><tr><th>Email</th></tr></thead><tbody>${current.roster.map((m) => `<tr><td>${escapeHtml(m.email)}</td></tr>`).join('')}</tbody></table>` : '<p class="empty-note">No members in this workroom yet.</p>'}
+      `;
+      wireWorkroomSwitcher(panel);
+      return;
+    }
+
+    if (managerTab === 'usage') {
+      if (!managerCache.usage) managerCache.usage = await statusOp('usage').catch(() => ({ members: [] }));
+      const workroomUserIds = new Set((current?.roster || []).map((m) => m.user_id));
+      const rows = (managerCache.usage.members || []).filter((m) => workroomUserIds.has(m.user_id));
+      panel.innerHTML = `
+        <h2>Usage</h2>
+        <p class="panel-sub">AI assistant calls per student in ${escapeHtml(current?.name || 'this workroom')}. Reflects a student's overall activity, not activity scoped only to this workroom.</p>
+        ${managerWorkroomSwitcher()}
+        ${rows.length ? `<table class="data-tbl"><thead><tr><th>Email</th><th>Last 24h</th><th>Last 7d</th></tr></thead><tbody>${rows.map((m) => `<tr><td>${escapeHtml(m.email)}</td><td>${m.count_24h}</td><td>${m.count_7d}</td></tr>`).join('')}</tbody></table>` : '<p class="empty-note">No usage yet.</p>'}
+      `;
+      wireWorkroomSwitcher(panel);
+      return;
+    }
+
+    if (managerTab === 'library') {
+      const templates = orgStatus.enabledTemplates || [];
+      panel.innerHTML = `
+        <h2>Library</h2>
+        <p class="panel-sub">Datasets your organization has enabled. Ask your admin to add more.</p>
+        ${templates.length ? templates.map((t) => `
+          <div class="dash-row"><div class="row-main"><span class="row-title">${escapeHtml(t.name)}</span><span class="row-sub">${escapeHtml(t.vertical)}</span></div></div>`).join('') : '<p class="empty-note">No library datasets enabled yet.</p>'}
+      `;
+      return;
+    }
+  }
+</script>
+</body>
+</html>

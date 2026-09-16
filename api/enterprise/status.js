@@ -47,7 +47,7 @@ export default async function handler(req, res) {
   switch (op) {
     case 'org_status': {
       const membership = await getMembership(supabaseAdmin, userId);
-      if (!membership) { res.status(200).json({ role: null, org: null, enabledTemplates: [] }); return; }
+      if (!membership) { res.status(200).json({ role: null, org: null, enabledTemplates: [], is_manager: false }); return; }
 
       const { data: org, error: orgError } = await supabaseAdmin
         .from('organizations')
@@ -61,7 +61,15 @@ export default async function handler(req, res) {
         .eq('org_id', membership.org_id);
       const enabledTemplates = (enabledTemplateRows || []).map((r) => r.dataset_library_templates).filter(Boolean);
 
-      res.status(200).json({ role: membership.role, org, enabledTemplates });
+      // A workroom manager is still org_members.role === 'member' (see
+      // workrooms.sql) — the only way to tell them apart from a rank-and-file
+      // member is whether any workroom names them as its manager_id. Needed
+      // so the client can route a manager to the Enterprise-page dashboard
+      // instead of treating them like a plain member.
+      const { data: managedWorkroom } = await supabaseAdmin
+        .from('workrooms').select('id').eq('manager_id', userId).limit(1).maybeSingle();
+
+      res.status(200).json({ role: membership.role, org, enabledTemplates, is_manager: !!managedWorkroom });
       return;
     }
 
@@ -84,13 +92,35 @@ export default async function handler(req, res) {
 
     case 'usage': {
       const membership = await getMembership(supabaseAdmin, userId);
-      if (!membership || membership.role !== 'admin') {
-        res.status(403).json({ error: { message: 'Only your organization\'s admin can view usage' } });
+      if (!membership) {
+        res.status(403).json({ error: { message: 'Only your organization\'s admin or a workroom manager can view usage' } });
         return;
       }
-      const { data: members, error: membersError } = await supabaseAdmin
-        .from('org_members').select('user_id, role, joined_at').eq('org_id', membership.org_id);
-      if (membersError) { res.status(500).json({ error: { message: membersError.message } }); return; }
+
+      // Admin: every member of the org. Manager (still role === 'member' —
+      // see org_status above): only the roster of workroom(s) they manage,
+      // not the whole org. Anyone else (a plain member) gets the same 403
+      // an admin-only check would have given them.
+      let members;
+      if (membership.role === 'admin') {
+        const { data: orgMembers, error: membersError } = await supabaseAdmin
+          .from('org_members').select('user_id, role, joined_at').eq('org_id', membership.org_id);
+        if (membersError) { res.status(500).json({ error: { message: membersError.message } }); return; }
+        members = orgMembers;
+      } else {
+        const { data: managedWorkrooms, error: workroomsError } = await supabaseAdmin
+          .from('workrooms').select('id').eq('manager_id', userId);
+        if (workroomsError) { res.status(500).json({ error: { message: workroomsError.message } }); return; }
+        if (!managedWorkrooms?.length) {
+          res.status(403).json({ error: { message: 'Only your organization\'s admin or a workroom manager can view usage' } });
+          return;
+        }
+        const { data: rosterRows, error: rosterError } = await supabaseAdmin
+          .from('workroom_members').select('user_id').in('workroom_id', managedWorkrooms.map((w) => w.id));
+        if (rosterError) { res.status(500).json({ error: { message: rosterError.message } }); return; }
+        const uniqueIds = [...new Set((rosterRows || []).map((r) => r.user_id))];
+        members = uniqueIds.map((id) => ({ user_id: id, role: 'member', joined_at: null }));
+      }
       if (!members.length) { res.status(200).json({ members: [] }); return; }
 
       const memberIds = members.map((m) => m.user_id);

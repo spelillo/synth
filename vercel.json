@@ -5,6 +5,7 @@
     { "source": "/terms", "destination": "/terms.html" },
     { "source": "/privacy", "destination": "/privacy.html" },
     { "source": "/pricing", "destination": "/pricing.html" },
+    { "source": "/enterprise", "destination": "/enterprise.html" },
     { "source": "/query-csv-with-sql", "destination": "/query-csv-with-sql.html" }
   ],
   "crons": [

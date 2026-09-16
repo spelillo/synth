@@ -131,7 +131,7 @@ export default async function handler(req, res) {
     if (pendingError) throw pendingError;
 
     const proto = req.headers['x-forwarded-proto'] || 'https';
-    const returnUrl = `${proto}://${req.headers.host}/?enterprise_checkout=success`;
+    const returnUrl = `${proto}://${req.headers.host}/enterprise?checkout=success`;
 
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
