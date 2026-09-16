@@ -178,7 +178,16 @@
       if (!sb) return;
       const { data: { session } } = await sb.auth.getSession();
       handleAuthChange(session);
-      sb.auth.onAuthStateChange((_event, newSession) => handleAuthChange(newSession));
+      sb.auth.onAuthStateChange((event, newSession) => {
+        handleAuthChange(newSession);
+        // Fires when someone clicks the link in the reset-password email
+        // instead of pasting the code — Supabase's client auto-detects the
+        // recovery tokens in the URL and authenticates them, but without
+        // this they'd just land signed in with no way to actually set a
+        // new password. Send them to the same "set new password" step the
+        // paste-a-code flow ends on.
+        if (event === 'PASSWORD_RECOVERY') openPasswordRecoveryReset();
+      });
     }
 
     // Stripe redirects back to /?checkout=success after a completed
@@ -630,8 +639,14 @@
     // entirely on Supabase's side. Nothing custom to store or invalidate here.
 
     let forgotPasswordEmail = '';
+    // True once a valid recovery session already exists — either from
+    // verifyOtp succeeding below, or from clicking the email's link (see
+    // openPasswordRecoveryReset) — so submitForgotPasswordReset knows
+    // whether it still needs to verify a pasted code first.
+    let recoverySessionActive = false;
 
     window.openForgotPasswordModal = function(prefillEmail) {
+      recoverySessionActive = false;
       document.getElementById('forgot-password-modal').hidden = false;
       document.getElementById('forgot-step-request').hidden = false;
       document.getElementById('forgot-step-reset').hidden = true;
@@ -640,11 +655,34 @@
       document.getElementById('forgot-reset-message').textContent = '';
       document.getElementById('forgot-reset-message').classList.remove('error', 'success');
       document.getElementById('forgot-code').value = '';
+      document.getElementById('forgot-code').hidden = false;
+      document.getElementById('forgot-step-reset-instructions').textContent = 'Enter the code we emailed you, then choose a new password.';
       document.getElementById('forgot-new-password').value = '';
       const emailField = document.getElementById('forgot-email');
       emailField.value = prefillEmail || '';
       emailField.disabled = false;
     };
+
+    // Reached via the PASSWORD_RECOVERY auth event (the email's link, not
+    // the pasted code) — the click already authenticated a recovery
+    // session, so skip straight to setting a new password with no code
+    // field, instead of leaving the user stuck "signed in" with no way to
+    // actually change anything.
+    function openPasswordRecoveryReset() {
+      recoverySessionActive = true;
+      document.getElementById('forgot-password-modal').hidden = false;
+      document.getElementById('forgot-step-request').hidden = true;
+      document.getElementById('forgot-step-reset').hidden = false;
+      document.getElementById('forgot-code').hidden = true;
+      document.getElementById('forgot-step-reset-instructions').textContent = 'Choose a new password for your account.';
+      document.getElementById('forgot-new-password').value = '';
+      document.getElementById('forgot-reset-message').textContent = '';
+      document.getElementById('forgot-reset-message').classList.remove('error', 'success');
+      // Clean the recovery tokens out of the URL bar — Supabase's client
+      // already consumed them, no reason to leave them visible/bookmarkable.
+      const clean = window.location.pathname + window.location.search;
+      window.history.replaceState({}, '', clean);
+    }
 
     window.closeForgotPasswordModal = function() {
       document.getElementById('forgot-password-modal').hidden = true;
@@ -676,37 +714,44 @@
     };
 
     window.submitForgotPasswordReset = async function() {
-      const code = document.getElementById('forgot-code').value.trim();
       const newPassword = document.getElementById('forgot-new-password').value;
       const msgEl = document.getElementById('forgot-reset-message');
       msgEl.classList.remove('error');
 
-      if (!code) {
-        msgEl.textContent = 'Enter the code from your email.';
-        msgEl.classList.add('error');
-        return;
-      }
       if (newPassword.length < 8) {
         msgEl.textContent = 'Password must be at least 8 characters.';
         msgEl.classList.add('error');
         return;
       }
 
-      msgEl.textContent = 'Checking code...';
-      const { error: verifyError } = await sb.auth.verifyOtp({
-        email: forgotPasswordEmail,
-        token: code,
-        type: 'recovery'
-      });
-      if (verifyError) {
-        msgEl.textContent = 'That code is wrong or expired. Request a new one.';
-        msgEl.classList.add('error');
-        return;
+      // Arriving via the email's link (openPasswordRecoveryReset) already
+      // authenticated a recovery session — only the paste-a-code path still
+      // needs to verify one here.
+      if (!recoverySessionActive) {
+        const code = document.getElementById('forgot-code').value.trim();
+        if (!code) {
+          msgEl.textContent = 'Enter the code from your email.';
+          msgEl.classList.add('error');
+          return;
+        }
+
+        msgEl.textContent = 'Checking code...';
+        const { error: verifyError } = await sb.auth.verifyOtp({
+          email: forgotPasswordEmail,
+          token: code,
+          type: 'recovery'
+        });
+        if (verifyError) {
+          msgEl.textContent = 'That code is wrong or expired. Request a new one.';
+          msgEl.classList.add('error');
+          return;
+        }
+        recoverySessionActive = true;
       }
 
-      // verifyOtp signs the browser into a real (recovery) session, so this
-      // sets the password on the account that just verified — then the
-      // one-time code Supabase issued is already spent and won't verify again.
+      // Either the code above just verified, or the email link already did
+      // — either way there's now a real recovery session to set the new
+      // password on. The one-time code/link is already spent either way.
       const { error: updateError } = await sb.auth.updateUser({ password: newPassword });
       if (updateError) {
         msgEl.textContent = updateError.message;
@@ -714,6 +759,7 @@
         return;
       }
 
+      recoverySessionActive = false;
       msgEl.classList.add('success');
       msgEl.textContent = 'Password updated. You are signed in.';
       setTimeout(closeForgotPasswordModal, 1500);
@@ -4209,6 +4255,10 @@
 
     .auth-input-block {
       display: block;
+    }
+
+    .auth-input-block[hidden] {
+      display: none;
     }
 
     .password-field {
@@ -7739,7 +7789,7 @@
         <div id="forgot-request-message" class="auth-message" style="margin-top:10px"></div>
       </div>
       <div class="modal-section" id="forgot-step-reset" hidden>
-        <p class="help-text" style="margin:0 0 12px">Enter the code we emailed you, then choose a new password.</p>
+        <p class="help-text" style="margin:0 0 12px" id="forgot-step-reset-instructions">Enter the code we emailed you, then choose a new password.</p>
         <input type="text" id="forgot-code" class="auth-input auth-input-block" placeholder="Reset code" autocomplete="one-time-code" style="margin-bottom:10px">
         <div class="password-field password-field-block">
           <input type="password" id="forgot-new-password" class="auth-input" placeholder="New password" autocomplete="new-password">
