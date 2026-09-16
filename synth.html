@@ -497,7 +497,12 @@
       }
 
       // Supabase's "confirm email" project setting is on — no session yet.
-      msgEl.textContent = 'Account created. Check your email to confirm, then sign in.';
+      // Switch the panel to Sign in mode instead of telling the user to
+      // "sign in above" while it's still showing the Create account form —
+      // now the form they're looking at already is the sign-in form.
+      document.getElementById('auth-password').value = '';
+      setAuthPanelMode('signin');
+      msgEl.textContent = 'Account created. Check your email to confirm your address, then sign in.';
     };
 
     window.openForgotPasswordFromHeader = function() {
@@ -567,7 +572,13 @@
 
       if (!data.session) {
         // Supabase's "confirm email" project setting is on — no session yet.
-        msgEl.textContent = 'Account created. Check your email to confirm, then sign in above.';
+        // Switch the panel to Sign in mode instead of telling the user to
+        // "sign in above" while it's still showing the Create account form
+        // — now the form they're looking at already is the sign-in form.
+        passwordInput.value = '';
+        landingAuthMode = 'signin';
+        renderLandingAuthMode();
+        msgEl.textContent = 'Account created. Check your email to confirm your address, then sign in.';
         return;
       }
       // onAuthStateChange -> handleAuthChange -> confirmLandingSignIn takes it from here.
@@ -769,20 +780,10 @@
       updateSignInButtonAvailability();
     };
 
-    // Runs before initAuth() so a returning signed-in user never lands on a
-    // dimmed-out Normal Mode panel — Lite Mode is only the default for a
-    // fresh, session-less visit.
-    async function initLandingMode() {
-      let forceNormal = false;
-      if (sb) {
-        try {
-          const { data: { session } } = await sb.auth.getSession();
-          forceNormal = !!session;
-        } catch (err) {
-          console.error('Failed to check session for landing mode:', err);
-        }
-      }
-      selectLandingMode(forceNormal ? 'normal' : 'lite');
+    // Normal Mode is the default landing state now — Lite Mode is still
+    // available, but only if someone actively picks it via the toggle.
+    function initLandingMode() {
+      selectLandingMode('normal');
     }
 
     window.signOutUser = async function() {
