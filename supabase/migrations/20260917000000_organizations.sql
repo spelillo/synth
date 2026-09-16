@@ -31,20 +31,10 @@ create table public.organizations (
 );
 
 alter table public.organizations enable row level security;
-
--- Members can read their own org's row (needed so the client can show org
--- name / ai_enabled state) but never write it directly — writes go through
--- api/enterprise/toggle-ai.js using the service role, which also checks the
--- caller is that org's admin.
-create policy "organizations: members can read their own org"
-  on public.organizations for select
-  using (
-    exists (
-      select 1 from public.org_members m
-      where m.org_id = organizations.id
-        and m.user_id = auth.uid()
-    )
-  );
+-- The "members can read their own org" policy is added further down, after
+-- org_members exists — it references that table, and table-creation order
+-- here also has to satisfy org_members' own foreign key back to
+-- organizations(id), so neither table can fully come first on its own.
 
 create table public.org_members (
   org_id uuid not null references public.organizations(id) on delete cascade,
@@ -67,6 +57,20 @@ create policy "org_members: members can read their org's roster"
       select 1 from public.org_members self
       where self.org_id = org_members.org_id
         and self.user_id = auth.uid()
+    )
+  );
+
+-- Members can read their own org's row (needed so the client can show org
+-- name / ai_enabled state) but never write it directly — writes go through
+-- api/enterprise/toggle-ai.js using the service role, which also checks the
+-- caller is that org's admin.
+create policy "organizations: members can read their own org"
+  on public.organizations for select
+  using (
+    exists (
+      select 1 from public.org_members m
+      where m.org_id = organizations.id
+        and m.user_id = auth.uid()
     )
   );
 
