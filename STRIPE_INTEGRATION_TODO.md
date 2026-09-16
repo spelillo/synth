@@ -42,8 +42,9 @@ API version bumped to `2026-08-26.dahlia; custom_checkout_payment_form_preview=v
 - `supabase/migrations/20260918000000_org_subscription_lifecycle.sql` — adds `stripe_customer_id`, `stripe_subscription_id`, `current_period_end`, `cancel_at_period_end`, and the three `notice_*_sent_at` columns to `organizations`.
 - [api/_mailer.js](api/_mailer.js) — Gmail SMTP + app password (`nodemailer`), added to `package.json`.
 - [api/cron/enterprise-renewal-notices.js](api/cron/enterprise-renewal-notices.js) — daily Vercel Cron (see `vercel.json`), emails the admin once per threshold per billing period.
-- [api/enterprise/toggle-auto-renew.js](api/enterprise/toggle-auto-renew.js) — admin-only, wraps Stripe's `cancel_at_period_end`.
-- [api/enterprise/org-status.js](api/enterprise/org-status.js) — lets the client show renewal date/auto-renew state.
+- `api/enterprise/admin.js` (`op: 'toggle_auto_renew'`) — admin-only, wraps Stripe's `cancel_at_period_end`.
+- `api/enterprise/status.js` (`?op=org_status`) — lets the client show renewal date/auto-renew state.
+  *(Both were originally separate files, `toggle-auto-renew.js`/`org-status.js` — consolidated 2026-09-16 to fit under Vercel Hobby's 12-serverless-function cap. See SYNTH_ENTERPRISE_BUILD_INSTRUCTIONS.md's "Function count" note.)*
 - [api/stripe-webhook.js](api/stripe-webhook.js) — now handles `customer.subscription.updated` (tracks renewal, resets notice flags on an actual renewal) and `customer.subscription.deleted` (revokes every member's org-granted Premium, then deletes the `organizations` row — cascades to `org_members`/`org_join_links`/`workrooms`; does **not** touch anyone's login).
 - `synth.html` — Account Settings' Enterprise section is now dynamic (`renderSettingsEnterpriseRow()`): shows renewal date + an auto-renew toggle for the admin.
 

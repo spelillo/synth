@@ -7,6 +7,19 @@ order — later children depend on earlier ones being done and deployed.
 
 Status key: ✅ built and merged · ⬜ not started.
 
+**Function count note (2026-09-16, post-deploy):** the individual route
+files named throughout this doc (one file per action, `join.js`,
+`toggle-ai.js`, `create-workroom.js`, etc.) were consolidated into three
+dispatch-based files — `api/enterprise/admin.js`, `status.js`,
+`member-actions.js` — after the first deploy failed Vercel Hobby's
+12-serverless-function-per-deployment cap at 18 functions. See
+[SYNTH_ENTERPRISE_SPEC.md](SYNTH_ENTERPRISE_SPEC.md)'s route-consolidation
+table at the top for the exact old-name → new-file/op mapping. The steps
+below still describe each action by its original filename; if you're
+implementing something new, follow the same one-file-per-dispatch pattern
+(add an `op` case to the right existing file) rather than creating a 15th
+route file.
+
 ## Before you start
 
 - Read [SYNTH_ENTERPRISE_SPEC.md](SYNTH_ENTERPRISE_SPEC.md) sections 3 and 8 first — every "decision" listed there is locked. Don't re-derive them; if one seems wrong mid-build, stop and flag it instead of quietly picking a different answer.

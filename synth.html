@@ -251,13 +251,13 @@
       const textEl = document.getElementById('enterprise-join-banner-text');
       try {
         const { data: { session } } = await sb.auth.getSession();
-        const response = await fetch('/api/enterprise/join', {
+        const response = await fetch('/api/enterprise/member-actions', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${session?.access_token || ''}`,
           },
-          body: JSON.stringify({ token }),
+          body: JSON.stringify({ op: 'join', token }),
         });
         const body = await response.json().catch(() => ({}));
         if (!response.ok) {
@@ -459,7 +459,7 @@
       let status;
       try {
         const { data: { session } } = await sb.auth.getSession();
-        const response = await fetch('/api/enterprise/org-status', {
+        const response = await fetch('/api/enterprise/status?op=org_status', {
           headers: { 'Authorization': `Bearer ${session?.access_token || ''}` },
         });
         status = await response.json();
@@ -531,7 +531,7 @@
       let templates;
       try {
         const { data: { session } } = await sb.auth.getSession();
-        const response = await fetch('/api/enterprise/list-templates', {
+        const response = await fetch('/api/enterprise/status?op=templates', {
           headers: { 'Authorization': `Bearer ${session?.access_token || ''}` },
         });
         const body = await response.json();
@@ -559,13 +559,13 @@
     window.toggleTemplateEnabled = async function(templateId, currentlyOn) {
       try {
         const { data: { session } } = await sb.auth.getSession();
-        const response = await fetch('/api/enterprise/enable-template', {
+        const response = await fetch('/api/enterprise/admin', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${session?.access_token || ''}`,
           },
-          body: JSON.stringify({ template_id: templateId, enabled: !currentlyOn }),
+          body: JSON.stringify({ op: 'enable_template', template_id: templateId, enabled: !currentlyOn }),
         });
         if (!response.ok) {
           const body = await response.json().catch(() => ({}));
@@ -593,7 +593,7 @@
       let workrooms;
       try {
         const { data: { session } } = await sb.auth.getSession();
-        const response = await fetch('/api/enterprise/workrooms-list', {
+        const response = await fetch('/api/enterprise/status?op=workrooms', {
           headers: { 'Authorization': `Bearer ${session?.access_token || ''}` },
         });
         const body = await response.json();
@@ -649,7 +649,7 @@
 
       try {
         const { data: { session } } = await sb.auth.getSession();
-        const response = await fetch('/api/enterprise/org-roster', {
+        const response = await fetch('/api/enterprise/status?op=org_roster', {
           headers: { 'Authorization': `Bearer ${session?.access_token || ''}` },
         });
         const body = await response.json();
@@ -675,13 +675,13 @@
       }
       try {
         const { data: { session } } = await sb.auth.getSession();
-        const response = await fetch('/api/enterprise/create-workroom', {
+        const response = await fetch('/api/enterprise/admin', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${session?.access_token || ''}`,
           },
-          body: JSON.stringify({ name, manager_user_id: managerUserId }),
+          body: JSON.stringify({ op: 'create_workroom', name, manager_user_id: managerUserId }),
         });
         const body = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(body?.error?.message || `Request failed (${response.status})`);
@@ -706,13 +706,13 @@
     async function workroomRosterAction(workroomId, action, targetUserId) {
       try {
         const { data: { session } } = await sb.auth.getSession();
-        const response = await fetch('/api/enterprise/workroom-roster', {
+        const response = await fetch('/api/enterprise/member-actions', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${session?.access_token || ''}`,
           },
-          body: JSON.stringify({ workroom_id: workroomId, action, user_id: targetUserId }),
+          body: JSON.stringify({ op: 'workroom_roster', workroom_id: workroomId, roster_action: action, user_id: targetUserId }),
         });
         const body = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(body?.error?.message || `Request failed (${response.status})`);
@@ -736,13 +736,13 @@
       if (btn) btn.disabled = true;
       try {
         const { data: { session } } = await sb.auth.getSession();
-        const response = await fetch('/api/enterprise/toggle-ai', {
+        const response = await fetch('/api/enterprise/admin', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${session?.access_token || ''}`,
           },
-          body: JSON.stringify({ enabled: !currentlyOn }),
+          body: JSON.stringify({ op: 'toggle_ai', enabled: !currentlyOn }),
         });
         if (!response.ok) {
           const body = await response.json().catch(() => ({}));
@@ -762,7 +762,7 @@
       body.innerHTML = '<p class="help-text" style="margin:0">Loading…</p>';
       try {
         const { data: { session } } = await sb.auth.getSession();
-        const response = await fetch('/api/enterprise/usage', {
+        const response = await fetch('/api/enterprise/status?op=usage', {
           headers: { 'Authorization': `Bearer ${session?.access_token || ''}` },
         });
         const result = await response.json().catch(() => ({}));
@@ -798,9 +798,13 @@
       outputEl.innerHTML = '<p class="help-text" style="margin:0">Generating…</p>';
       try {
         const { data: { session } } = await sb.auth.getSession();
-        const response = await fetch('/api/enterprise/create-join-link', {
+        const response = await fetch('/api/enterprise/admin', {
           method: 'POST',
-          headers: { 'Authorization': `Bearer ${session?.access_token || ''}` },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token || ''}`,
+          },
+          body: JSON.stringify({ op: 'create_join_link' }),
         });
         const body = await response.json().catch(() => ({}));
         if (!response.ok) {
@@ -821,13 +825,13 @@
       if (btn) btn.disabled = true;
       try {
         const { data: { session } } = await sb.auth.getSession();
-        const response = await fetch('/api/enterprise/toggle-auto-renew', {
+        const response = await fetch('/api/enterprise/admin', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${session?.access_token || ''}`,
           },
-          body: JSON.stringify({ enabled: !currentlyOn }),
+          body: JSON.stringify({ op: 'toggle_auto_renew', enabled: !currentlyOn }),
         });
         if (!response.ok) {
           const body = await response.json().catch(() => ({}));
@@ -1476,7 +1480,7 @@
       const libraryList = document.getElementById('cloud-library-list');
       try {
         const { data: { session } } = await sb.auth.getSession();
-        const response = await fetch('/api/enterprise/org-status', {
+        const response = await fetch('/api/enterprise/status?op=org_status', {
           headers: { 'Authorization': `Bearer ${session?.access_token || ''}` },
         });
         const status = await response.json();
@@ -1774,6 +1778,35 @@
 
     window.closePremiumSigninModal = function() {
       document.getElementById('premium-signin-modal').hidden = true;
+    };
+
+    // Header "Enterprise" button — the only public entry point to Synth
+    // Enterprise before this existed was buried inside Account Settings
+    // (which itself required already being signed in to even find it).
+    // This routes signed-out visitors to sign in first, and — unlike
+    // openEnterprisePanel below, which always starts a NEW checkout —
+    // sends an existing org admin/member to their actual org info in
+    // Settings instead of a second checkout attempt.
+    window.openEnterpriseEntry = async function() {
+      if (!currentUser) {
+        document.getElementById('signin-required-modal').hidden = false;
+        return;
+      }
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        const response = await fetch('/api/enterprise/status?op=org_status', {
+          headers: { 'Authorization': `Bearer ${session?.access_token || ''}` },
+        });
+        const status = response.ok ? await response.json() : { role: null };
+        if (status.role) {
+          openSettingsPanel();
+        } else {
+          openEnterprisePanel();
+        }
+      } catch (err) {
+        console.error('Failed to check Enterprise status:', err);
+        openEnterprisePanel(); // fall back to the checkout flow rather than doing nothing
+      }
     };
 
     window.openEnterprisePanel = function() {
@@ -2320,13 +2353,13 @@
 
       try {
         const { data: { session } } = await sb.auth.getSession();
-        const response = await fetch('/api/enterprise/load-template', {
+        const response = await fetch('/api/enterprise/member-actions', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${session?.access_token || ''}`,
           },
-          body: JSON.stringify({ template_id: templateId }),
+          body: JSON.stringify({ op: 'load_template', template_id: templateId }),
         });
         const templateData = await response.json();
         if (!response.ok) throw new Error(templateData?.error?.message || `Request failed (${response.status})`);
@@ -8396,6 +8429,7 @@
     <div class="header-right">
       <div class="auth-area">
         <button id="go-premium-btn" class="auth-btn auth-btn-premium" onclick="openPremiumPanel()" title="$9.99 once, early-adopter price — not a subscription">Go Premium</button>
+        <button id="enterprise-nav-btn" class="auth-btn" onclick="openEnterpriseEntry()" title="For schools and companies">Enterprise</button>
         <button id="dashboard-nav-btn" class="auth-btn auth-btn-premium" onclick="openDashboard()" hidden>Go to Dashboard</button>
         <button id="sign-in-btn" class="auth-btn" onclick="toggleAuthPanel()">Sign in</button>
         <button id="my-projects-btn" class="auth-btn auth-btn-primary" onclick="openCloudPanel()" hidden>Load Sessions</button>

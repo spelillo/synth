@@ -1,7 +1,28 @@
 # Synth Enterprise — Spec & Build Plan
 
-Status: drafted, not yet built. No code has been written against this spec.
-Verified against the codebase on 2026-09-16.
+Status: all 5 children built and deployed. Verified against the codebase on
+2026-09-16.
+
+**Route consolidation notice (2026-09-16, post-deploy):** the first deploy
+attempt failed — Vercel Hobby caps a deployment at 12 serverless functions,
+and this epic's one-file-per-action design (14 separate `api/enterprise/*`
+routes) pushed the project to 18. Every `api/enterprise/*.js` route
+mentioned below by its original individual filename (`join.js`,
+`toggle-ai.js`, `usage.js`, `create-workroom.js`, etc. — 13 files total)
+was merged into exactly **three** dispatch-based files, chosen at your
+direction over paying for Vercel Pro:
+
+| Consolidated file | Replaces | Dispatch |
+|---|---|---|
+| `api/enterprise/admin.js` | `toggle-ai.js`, `toggle-auto-renew.js`, `enable-template.js`, `create-workroom.js`, `create-join-link.js` | POST body `{ op: '...' }` — all five require the same "caller is org admin" check |
+| `api/enterprise/status.js` | `org-status.js`, `org-roster.js`, `usage.js`, `workrooms-list.js`, `list-templates.js` | GET `?op=...` — each op has its own authorization rule |
+| `api/enterprise/member-actions.js` | `join.js`, `load-template.js`, `workroom-roster.js` | POST body `{ op: '...' }` — each op has its own authorization rule |
+
+`api/enterprise/create-checkout-session.js` and `api/cron/enterprise-renewal-notices.js`
+were kept standalone (different trigger/contract). This dropped the
+project from 18 functions to 8. **The rest of this document still
+describes routes by their original individual names** — that history is
+kept intact rather than rewritten; use the table above to translate.
 
 ## 1. Why
 
