@@ -12,7 +12,7 @@ Synth is a browser-based SQL/AI query tool for CSV files. Two tiers, no trial pe
 
 ## Premium — $9.99 one-time
 
-Early-adopter price while Synth is in beta. Paid once via Stripe — not a subscription, nothing recurs, nothing to cancel later. Backed by a 7-day, no-questions-asked refund.
+Early-adopter price while Synth is in beta. Paid once via Stripe — not a subscription, nothing recurs, nothing to cancel later.
 
 - Multi-table workspaces — up to 10 tables per workspace
 - Table renaming
@@ -25,5 +25,5 @@ Early-adopter price while Synth is in beta. Paid once via Stripe — not a subsc
 
 - Payment processor: Stripe (card details never touch Synth's servers)
 - Billing model: one-time purchase, not recurring
-- Refund policy: 7 days, no questions asked — email spelillo11@gmail.com
+- Refund policy: purchases are non-refundable except where required by law — email spelillo11@gmail.com with questions
 - Full page: https://synth-sql.com/pricing
