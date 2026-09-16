@@ -3860,11 +3860,26 @@
     /* An orange divider before every visible auth button except the first
        one currently shown — :not([hidden]) makes this react correctly to
        which of Go Premium/Dashboard, Sign in/email, and Load Sessions are
-       actually visible at once, without any JS bookkeeping. */
-    .auth-area > .auth-btn:not([hidden]) ~ .auth-btn:not([hidden]) {
-      margin-left: 4px;
-      padding-left: 20px;
-      border-left: 2px solid #ff4f00;
+       actually visible at once, without any JS bookkeeping.
+       Drawn as a ::after rather than a border-left so it isn't clipped to
+       this button's own (shorter) box: it's anchored to the button (so it
+       tracks each button's actual position regardless of label width) but
+       escapes the button's height via negative top/bottom offsets sized to
+       reach the full white header bar, and is centered in the 10px flex
+       gap via left: -(gap/2 + line-width/2). ::after (not ::before) so it
+       doesn't collide with .auth-btn-premium's own ::before gloss sheen. */
+    .auth-btn {
+      position: relative;
+    }
+
+    .auth-area > .auth-btn:not([hidden]) ~ .auth-btn:not([hidden])::after {
+      content: '';
+      position: absolute;
+      top: -14px;
+      bottom: -14px;
+      left: -6px;
+      width: 2px;
+      background: #ff4f00;
     }
 
     /* .auth-btn labels ("Go Premium", "Sign in") stay on one line even
@@ -3875,8 +3890,11 @@
         padding: 7px 12px;
         font-size: 13px;
       }
-      .auth-area > .auth-btn:not([hidden]) ~ .auth-btn:not([hidden]) {
-        padding-left: 12px;
+      .auth-area {
+        gap: 6px;
+      }
+      .auth-area > .auth-btn:not([hidden]) ~ .auth-btn:not([hidden])::after {
+        left: -4px;
       }
     }
 
