@@ -248,6 +248,7 @@
       tableRename: 'premium',
       crossTableAI: 'premium',
       largeCsv: 'premium',
+      relationshipDetection: 'premium',
     };
 
     function canUseFeature(featureKey) {
@@ -949,6 +950,11 @@
     }
 
     window.startRenameWorkspace = function(workspaceId) {
+      // Dashboard access itself became a Normal+ feature (see openDashboard),
+      // which means renaming here is no longer gated as a side effect of
+      // Dashboard being Premium-only the way it used to be — needs its own
+      // explicit check now, same feature as renaming a table chip.
+      if (!requireFeature('tableRename')) return;
       const label = document.querySelector(`.workspace-name[data-workspace-name="${CSS.escape(workspaceId)}"]`);
       if (!label) return;
       const original = label.textContent;
@@ -1504,7 +1510,7 @@
           const { data: blob, error: dlErr } = await sb.storage.from('csvs').download(d.storage_path);
           if (dlErr) throw dlErr;
           const text = await blob.text();
-          const { headers, rows } = parseCSVText(text);
+          const { headers, rows } = await parseCSVText(text);
 
           // Load under the SAVED table_name, not a re-slugified filename —
           // a rename made before saving has to survive the round trip.
@@ -2343,7 +2349,11 @@
     }
 
     function renderRelationshipsTabVisibility() {
-      document.getElementById('relationships-tab-btn').hidden = tables.length < 2;
+      // A grandfathered non-premium workspace can still have tables.length
+      // >= 2 (multi-CSV is gated going forward, not retroactively — see
+      // canUseFeature('multiCsv')), so table count alone isn't a safe
+      // gate here: relationship detection is a Premium feature on its own.
+      document.getElementById('relationships-tab-btn').hidden = tables.length < 2 || !canUseFeature('relationshipDetection');
     }
 
     window.confirmRelationship = function(id) {
