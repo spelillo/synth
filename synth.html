@@ -167,34 +167,7 @@
       if (!sb) return;
       const { data: { session } } = await sb.auth.getSession();
       handleAuthChange(session);
-      await confirmLandingGateFromRedirect(session);
       sb.auth.onAuthStateChange((_event, newSession) => handleAuthChange(newSession));
-    }
-
-    // If this page load is the magic-link redirect (it carries ?gate=<id>),
-    // this is the device the user actually clicked the link on — possibly a
-    // completely different device than the one showing the pending landing
-    // page. Mark that gate confirmed so the *other* device's Realtime
-    // subscription (see watchLandingGate) picks it up and unlocks itself.
-    async function confirmLandingGateFromRedirect(session) {
-      const params = new URLSearchParams(window.location.search);
-      const gateId = params.get('gate');
-      if (!gateId) return;
-
-      if (session) {
-        try {
-          await sb
-            .from('landing_gates')
-            .update({ confirmed: true, confirmed_at: new Date().toISOString() })
-            .eq('id', gateId);
-        } catch (err) {
-          console.error('Failed to confirm landing gate:', err);
-        }
-      }
-
-      params.delete('gate');
-      const clean = window.location.pathname + (params.toString() ? '?' + params.toString() : '') + window.location.hash;
-      window.history.replaceState({}, '', clean);
     }
 
     // Stripe redirects back to /?checkout=success after a completed
@@ -236,8 +209,25 @@
         isPremium = false;
         updatePremiumUI();
       }
+      updateSignInButtonAvailability();
       updateCloudButtons();
       updateAIState();
+    }
+
+    // Lite Mode's whole pitch is "no account needed" — a clickable Sign in
+    // button while that's selected undercuts it, so it's greyed out and
+    // inert until Normal Mode is picked (or Premium is already signed in;
+    // once currentUser exists the button's a settings link, always live).
+    function updateSignInButtonAvailability() {
+      const signInBtn = document.getElementById('sign-in-btn');
+      if (currentUser) {
+        signInBtn.disabled = false;
+        signInBtn.title = 'Account settings';
+        return;
+      }
+      const disabled = landingMode === 'lite';
+      signInBtn.disabled = disabled;
+      signInBtn.title = disabled ? 'Switch to Normal Mode to sign in' : '';
     }
 
     // ---- Premium status (profiles.is_premium) ----
@@ -423,38 +413,103 @@
       }
       const panel = document.getElementById('auth-panel');
       panel.hidden = !panel.hidden;
+      if (!panel.hidden) setAuthPanelMode(authPanelMode);
     };
 
-    window.sendMagicLink = async function() {
+    // ---- Show/hide toggle, shared by every password field on the page ----
+
+    window.togglePasswordField = function(inputId, btnEl) {
+      const input = document.getElementById(inputId);
+      const showing = input.type === 'text';
+      input.type = showing ? 'password' : 'text';
+      btnEl.classList.toggle('is-showing', !showing);
+      btnEl.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+    };
+
+    // ---- Header sign-in dropdown: email + password, sign in or sign up ----
+    // Supabase's own signUp/signInWithPassword do the real work here — bcrypt
+    // hashing and every query going through the client library's parameterized
+    // calls (never raw SQL string-building) come for free from that, not from
+    // anything written in this file.
+
+    let authPanelMode = 'signin';
+
+    window.setAuthPanelMode = function(mode) {
+      authPanelMode = mode;
+      document.getElementById('auth-tab-signin').classList.toggle('is-active', mode === 'signin');
+      document.getElementById('auth-tab-signup').classList.toggle('is-active', mode === 'signup');
+      document.getElementById('auth-panel-submit-btn').textContent = mode === 'signin' ? 'Sign in' : 'Create account';
+      document.getElementById('auth-forgot-link').hidden = mode !== 'signin';
+      document.getElementById('auth-message').textContent = '';
+    };
+
+    window.authPanelSubmit = async function() {
       const email = document.getElementById('auth-email').value.trim();
-      if (!email) return;
+      const password = document.getElementById('auth-password').value;
       const msgEl = document.getElementById('auth-message');
-      msgEl.textContent = 'Sending link...';
-      const { error } = await sb.auth.signInWithOtp({
-        email,
-        options: { emailRedirectTo: window.location.href }
-      });
-      msgEl.textContent = error ? `Error: ${error.message}` : 'Check your email for a sign-in link.';
+
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        msgEl.textContent = 'Enter a valid email.';
+        return;
+      }
+      if (password.length < 8) {
+        msgEl.textContent = 'Password must be at least 8 characters.';
+        return;
+      }
+
+      msgEl.textContent = authPanelMode === 'signin' ? 'Signing in...' : 'Creating account...';
+
+      const { data, error } = authPanelMode === 'signin'
+        ? await sb.auth.signInWithPassword({ email, password })
+        : await sb.auth.signUp({ email, password });
+
+      if (error) {
+        msgEl.textContent = error.message;
+        return;
+      }
+
+      if (data.session) {
+        document.getElementById('auth-panel').hidden = true;
+        document.getElementById('auth-password').value = '';
+        return; // onAuthStateChange -> handleAuthChange takes it from here
+      }
+
+      // Supabase's "confirm email" project setting is on — no session yet.
+      msgEl.textContent = 'Account created. Check your email to confirm, then sign in.';
     };
 
-    // ---- Landing gate: entering an email + requesting a magic link unlocks the CSV upload ----
-    //
-    // The gate is confirmed two ways, whichever fires first:
-    //  1. Same-browser: Supabase's own onAuthStateChange fires here directly
-    //     (it syncs sessions across tabs of the same browser via localStorage).
-    //  2. Any device: the "landing_gates" table + Realtime (see
-    //     confirmLandingGateFromRedirect, watchLandingGate below) — the
-    //     device that actually clicked the link flips a row, and this
-    //     device is subscribed to that row's change.
+    window.openForgotPasswordFromHeader = function() {
+      document.getElementById('auth-panel').hidden = true;
+      openForgotPasswordModal(document.getElementById('auth-email').value.trim());
+    };
 
-    let landingGateId = null;
-    let landingGateChannel = null;
-    let landingGatePollTimer = null;
+    // ---- Landing panel: same email + password flow, styled for the hero ----
 
-    window.landingSendMagicLink = async function() {
+    let landingAuthMode = 'signup';
+
+    window.toggleLandingAuthMode = function() {
+      landingAuthMode = landingAuthMode === 'signup' ? 'signin' : 'signup';
+      renderLandingAuthMode();
+    };
+
+    function renderLandingAuthMode() {
+      const isSignup = landingAuthMode === 'signup';
+      document.getElementById('landing-auth-title').textContent = isSignup ? 'Create your account.' : 'Sign in.';
+      document.getElementById('landing-auth-submit-btn').textContent = isSignup ? 'Create account' : 'Sign in';
+      document.getElementById('landing-auth-switch-text').textContent = isSignup ? 'Already have an account?' : "Don't have an account?";
+      document.getElementById('landing-auth-switch-link').textContent = isSignup ? 'Sign in' : 'Sign up';
+      document.getElementById('landing-auth-forgot-wrap').hidden = isSignup;
+      const msgEl = document.getElementById('landing-auth-message');
+      msgEl.textContent = '';
+      msgEl.classList.remove('error', 'success');
+    }
+
+    window.landingAuthSubmit = async function() {
       const emailInput = document.getElementById('landing-email');
+      const passwordInput = document.getElementById('landing-password');
       const msgEl = document.getElementById('landing-auth-message');
       const email = emailInput.value.trim();
+      const password = passwordInput.value;
 
       msgEl.classList.remove('error');
 
@@ -463,121 +518,53 @@
         msgEl.classList.add('error');
         return;
       }
-
-      if (!sb) {
-        // Cloud sign-in isn't configured — nothing to actually confirm, so
-        // don't block the product behind a check we can't perform.
-        msgEl.textContent = 'Check your email for a sign-in link.';
-        unlockLandingUpload();
-        return;
-      }
-
-      msgEl.textContent = 'Sending link...';
-
-      landingGateId = crypto.randomUUID();
-      const { error: gateError } = await sb.from('landing_gates').insert({ id: landingGateId, confirmed: false });
-      if (gateError) console.error('Failed to create landing gate:', gateError);
-
-      const redirectUrl = new URL(window.location.href);
-      redirectUrl.searchParams.set('gate', landingGateId);
-
-      const { error } = await sb.auth.signInWithOtp({
-        email,
-        options: { emailRedirectTo: redirectUrl.toString() }
-      });
-      if (error) {
-        msgEl.textContent = `Error: ${error.message}`;
+      if (password.length < 8) {
+        msgEl.textContent = 'Password must be at least 8 characters.';
         msgEl.classList.add('error');
         return;
       }
 
-      msgEl.innerHTML = `Check your email for a sign-in link. This page unlocks itself the moment you click it, on this device or any other, or <a href="#" onclick="landingRecheckSession(); return false;">check again</a> once you have.`;
-      showLandingPending();
-      watchLandingGate(landingGateId);
+      if (!sb) {
+        // Cloud sign-in isn't configured — nothing to actually confirm, so
+        // don't block the product behind a check we can't perform.
+        unlockLandingUpload();
+        return;
+      }
+
+      msgEl.textContent = landingAuthMode === 'signup' ? 'Creating account...' : 'Signing in...';
+
+      const { data, error } = landingAuthMode === 'signup'
+        ? await sb.auth.signUp({ email, password })
+        : await sb.auth.signInWithPassword({ email, password });
+
+      if (error) {
+        msgEl.textContent = error.message;
+        msgEl.classList.add('error');
+        return;
+      }
+
+      if (!data.session) {
+        // Supabase's "confirm email" project setting is on — no session yet.
+        msgEl.textContent = 'Account created. Check your email to confirm, then sign in above.';
+        return;
+      }
+      // onAuthStateChange -> handleAuthChange -> confirmLandingSignIn takes it from here.
     };
 
-    function watchLandingGate(gateId) {
-      stopWatchingLandingGate();
-
-      landingGateChannel = sb
-        .channel('landing-gate-' + gateId)
-        .on('postgres_changes', {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'landing_gates',
-          filter: `id=eq.${gateId}`
-        }, (payload) => {
-          if (payload.new && payload.new.confirmed) confirmLandingGateConfirmed();
-        })
-        .subscribe();
-
-      // Realtime should catch this almost instantly, but poll as a fallback
-      // in case the subscription doesn't fire for any reason.
-      landingGatePollTimer = setInterval(async () => {
-        const { data } = await sb.from('landing_gates').select('confirmed').eq('id', gateId).single();
-        if (data && data.confirmed) confirmLandingGateConfirmed();
-      }, 4000);
-    }
-
-    function stopWatchingLandingGate() {
-      if (landingGatePollTimer) {
-        clearInterval(landingGatePollTimer);
-        landingGatePollTimer = null;
-      }
-      if (landingGateChannel) {
-        sb.removeChannel(landingGateChannel);
-        landingGateChannel = null;
-      }
-    }
-
-    window.landingRecheckSession = async function() {
-      const msgEl = document.getElementById('landing-auth-message');
-      if (!sb) return;
-      msgEl.textContent = 'Checking...';
-      msgEl.classList.remove('error');
-
-      if (landingGateId) {
-        const { data } = await sb.from('landing_gates').select('confirmed').eq('id', landingGateId).single();
-        if (data && data.confirmed) {
-          confirmLandingGateConfirmed();
-          return;
-        }
-      }
-
-      const { data: { session } } = await sb.auth.getSession();
-      handleAuthChange(session);
-      if (!session) {
-        msgEl.textContent = 'Still waiting. Click the link in your email on any device, then check again.';
-      }
+    window.openForgotPasswordFromLanding = function() {
+      openForgotPasswordModal(document.getElementById('landing-email').value.trim());
     };
-
-    function showLandingPending() {
-      const label = document.getElementById('landing-upload-label');
-      const sub = document.getElementById('landing-upload-sub');
-      label.classList.add('is-pending');
-      sub.textContent = "Unlocks automatically once you click the link in your email.";
-    }
 
     function confirmLandingSignIn(email) {
       const panel = document.getElementById('landing-upload-panel');
       if (!panel || normalModeConfirmed) return;
       normalModeConfirmed = true;
-      stopWatchingLandingGate();
       unlockLandingUpload();
 
       const emailInput = document.getElementById('landing-email');
       if (emailInput && !emailInput.value.trim()) emailInput.value = email;
 
       showLandingConnected(`Connected. Signed in as ${email}.`);
-    }
-
-    function confirmLandingGateConfirmed() {
-      const panel = document.getElementById('landing-upload-panel');
-      if (!panel || normalModeConfirmed) return;
-      normalModeConfirmed = true;
-      stopWatchingLandingGate();
-      unlockLandingUpload();
-      showLandingConnected('Connected. The link was clicked.');
     }
 
     function showLandingConnected(text) {
@@ -589,9 +576,11 @@
       }
 
       const emailInput = document.getElementById('landing-email');
-      const magicBtn = document.querySelector('.landing-magic-btn');
+      const passwordInput = document.getElementById('landing-password');
+      const submitBtn = document.getElementById('landing-auth-submit-btn');
       if (emailInput) emailInput.disabled = true;
-      if (magicBtn) magicBtn.disabled = true;
+      if (passwordInput) passwordInput.disabled = true;
+      if (submitBtn) submitBtn.disabled = true;
     }
 
     function unlockLandingUpload() {
@@ -602,17 +591,112 @@
       document.getElementById('landing-upload-panel').classList.add('unlocked');
     }
 
-    // ---- Landing mode: Lite (no sign-in, nothing saved) vs Normal (today's
-    // sign-in-gated flow, unlocks cloud save). Lite Mode never calls Supabase
-    // at all — it just skips straight to unlockLandingUpload() instead of
-    // waiting on landingSendMagicLink()/watchLandingGate() to do it.
+    // ---- Forgot password: request a reset code by email, paste it back in ----
+    // The code itself is Supabase's own recovery OTP (sb.auth.resetPasswordForEmail
+    // + sb.auth.verifyOtp) — generated, hashed, expired, and made single-use
+    // entirely on Supabase's side. Nothing custom to store or invalidate here.
+
+    let forgotPasswordEmail = '';
+
+    window.openForgotPasswordModal = function(prefillEmail) {
+      document.getElementById('forgot-password-modal').hidden = false;
+      document.getElementById('forgot-step-request').hidden = false;
+      document.getElementById('forgot-step-reset').hidden = true;
+      document.getElementById('forgot-request-message').textContent = '';
+      document.getElementById('forgot-request-message').classList.remove('error', 'success');
+      document.getElementById('forgot-reset-message').textContent = '';
+      document.getElementById('forgot-reset-message').classList.remove('error', 'success');
+      document.getElementById('forgot-code').value = '';
+      document.getElementById('forgot-new-password').value = '';
+      const emailField = document.getElementById('forgot-email');
+      emailField.value = prefillEmail || '';
+      emailField.disabled = false;
+    };
+
+    window.closeForgotPasswordModal = function() {
+      document.getElementById('forgot-password-modal').hidden = true;
+    };
+
+    window.submitForgotPasswordRequest = async function() {
+      const email = document.getElementById('forgot-email').value.trim();
+      const msgEl = document.getElementById('forgot-request-message');
+      msgEl.classList.remove('error');
+
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        msgEl.textContent = 'Enter a valid email first.';
+        msgEl.classList.add('error');
+        return;
+      }
+
+      msgEl.textContent = 'Sending code...';
+      const { error } = await sb.auth.resetPasswordForEmail(email);
+      if (error) {
+        msgEl.textContent = error.message;
+        msgEl.classList.add('error');
+        return;
+      }
+
+      forgotPasswordEmail = email;
+      document.getElementById('forgot-email').disabled = true;
+      document.getElementById('forgot-step-request').hidden = true;
+      document.getElementById('forgot-step-reset').hidden = false;
+    };
+
+    window.submitForgotPasswordReset = async function() {
+      const code = document.getElementById('forgot-code').value.trim();
+      const newPassword = document.getElementById('forgot-new-password').value;
+      const msgEl = document.getElementById('forgot-reset-message');
+      msgEl.classList.remove('error');
+
+      if (!code) {
+        msgEl.textContent = 'Enter the code from your email.';
+        msgEl.classList.add('error');
+        return;
+      }
+      if (newPassword.length < 8) {
+        msgEl.textContent = 'Password must be at least 8 characters.';
+        msgEl.classList.add('error');
+        return;
+      }
+
+      msgEl.textContent = 'Checking code...';
+      const { error: verifyError } = await sb.auth.verifyOtp({
+        email: forgotPasswordEmail,
+        token: code,
+        type: 'recovery'
+      });
+      if (verifyError) {
+        msgEl.textContent = 'That code is wrong or expired. Request a new one.';
+        msgEl.classList.add('error');
+        return;
+      }
+
+      // verifyOtp signs the browser into a real (recovery) session, so this
+      // sets the password on the account that just verified — then the
+      // one-time code Supabase issued is already spent and won't verify again.
+      const { error: updateError } = await sb.auth.updateUser({ password: newPassword });
+      if (updateError) {
+        msgEl.textContent = updateError.message;
+        msgEl.classList.add('error');
+        return;
+      }
+
+      msgEl.classList.add('success');
+      msgEl.textContent = 'Password updated. You are signed in.';
+      setTimeout(closeForgotPasswordModal, 1500);
+    };
+
+    // ---- Landing mode: Lite (no sign-in, nothing saved) vs Normal (sign-in
+    // gated flow, unlocks cloud save). Lite Mode never calls Supabase at all
+    // — it just skips straight to unlockLandingUpload() instead of waiting
+    // on landingAuthSubmit() to do it.
     let landingMode = 'lite';
 
-    // True only once a REAL Normal Mode sign-in/gate-confirmation has
-    // happened (set inside confirmLandingSignIn/confirmLandingGateConfirmed).
-    // Kept separate from the upload panel's `.unlocked` CSS class, which
-    // Lite Mode also toggles on as a visual side effect — conflating the two
-    // meant switching Lite -> Normal never re-locked the upload button.
+    // True only once a REAL Normal Mode sign-in has happened (set inside
+    // confirmLandingSignIn). Kept separate from the upload panel's
+    // `.unlocked` CSS class, which Lite Mode also toggles on as a visual
+    // side effect — conflating the two meant switching Lite -> Normal never
+    // re-locked the upload button.
     let normalModeConfirmed = false;
 
     window.toggleLandingModeInfo = function() {
@@ -640,7 +724,6 @@
       const label = document.getElementById('landing-upload-label');
 
       if (mode === 'lite') {
-        stopWatchingLandingGate();
         unlockLandingUpload();
         kicker.hidden = true;
         // A real Normal Mode sign-in that already happened stays unlocked
@@ -657,19 +740,19 @@
           panel.classList.remove('unlocked');
           label.classList.add('is-locked');
           label.classList.remove('is-pending');
-          document.getElementById('landing-upload-sub').textContent = 'Unlocks once your magic link is on its way.';
+          document.getElementById('landing-upload-sub').textContent = 'Unlocks once you sign up or sign in.';
         }
       }
+
+      updateSignInButtonAvailability();
     };
 
-    // Runs before initAuth() so a returning signed-in user, or someone who
-    // just clicked a magic link on another device (?gate=...), never lands
-    // on a dimmed-out Normal Mode panel — Lite Mode is only the default for
-    // a fresh, session-less visit.
+    // Runs before initAuth() so a returning signed-in user never lands on a
+    // dimmed-out Normal Mode panel — Lite Mode is only the default for a
+    // fresh, session-less visit.
     async function initLandingMode() {
-      const params = new URLSearchParams(window.location.search);
-      let forceNormal = params.has('gate');
-      if (!forceNormal && sb) {
+      let forceNormal = false;
+      if (sb) {
         try {
           const { data: { session } } = await sb.auth.getSession();
           forceNormal = !!session;
@@ -2969,10 +3052,19 @@
       document.getElementById('workspace-resizer').addEventListener('mousedown', (e) => startPaneDrag(e, 'v'));
       window.addEventListener('resize', clearPaneOverridesForMobile);
 
-      document.getElementById('landing-email').addEventListener('keydown', (e) => {
+      ['landing-email', 'landing-password'].forEach(id => {
+        document.getElementById(id).addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            landingAuthSubmit();
+          }
+        });
+      });
+
+      document.getElementById('auth-password').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
-          landingSendMagicLink();
+          authPanelSubmit();
         }
       });
 
@@ -3785,6 +3877,7 @@
       'premium-modal': 'closePremiumPanel',
       'premium-signin-modal': 'closePremiumSigninModal',
       'signin-required-modal': 'closeSigninRequiredModal',
+      'forgot-password-modal': 'closeForgotPasswordModal',
       'workspace-notice-modal': 'closeWorkspaceNoticeModal',
       'settings-modal': 'closeSettingsPanel',
       'cancel-premium-modal': 'closeCancelPremiumModal',
@@ -3934,6 +4027,18 @@
       color: #ff4f00;
     }
 
+    .auth-btn:disabled {
+      background: #f8f4f0;
+      border-color: #c5c0b1;
+      color: #939084;
+      cursor: not-allowed;
+    }
+
+    .auth-btn:disabled:hover {
+      border-color: #c5c0b1;
+      color: #939084;
+    }
+
     .auth-btn-primary {
       background: #ff4f00;
       border-color: #ff4f00;
@@ -4018,7 +4123,39 @@
       display: none;
     }
 
+    .auth-panel-tabs {
+      display: flex;
+      gap: 4px;
+      background: #f8f4f0;
+      border: 1px solid #c5c0b1;
+      border-radius: 8px;
+      padding: 3px;
+      margin-bottom: 4px;
+    }
+
+    .auth-panel-tab {
+      flex: 1;
+      appearance: none;
+      border: none;
+      background: none;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      color: #605d52;
+      cursor: pointer;
+    }
+
+    .auth-panel-tab.is-active {
+      background: #fffefb;
+      color: #201515;
+      box-shadow: 0 1px 2px rgba(32, 21, 21, 0.12);
+    }
+
+    .auth-input,
     #auth-email {
+      width: 100%;
       padding: 8px 12px;
       border: 1px solid #c5c0b1;
       border-radius: 6px;
@@ -4028,14 +4165,89 @@
       color: #201515;
     }
 
+    .auth-input:focus,
     #auth-email:focus {
       outline: none;
       border-color: #ff4f00;
     }
 
+    .auth-input-block {
+      display: block;
+    }
+
+    .password-field {
+      position: relative;
+      display: flex;
+    }
+
+    .password-field .auth-input,
+    .password-field input {
+      flex: 1;
+      min-width: 0;
+      padding-right: 38px;
+    }
+
+    .password-field-block {
+      display: block;
+    }
+
+    .password-toggle-btn {
+      position: absolute;
+      right: 4px;
+      top: 50%;
+      transform: translateY(-50%);
+      appearance: none;
+      border: none;
+      background: none;
+      padding: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #939084;
+      cursor: pointer;
+      border-radius: 6px;
+    }
+
+    .password-toggle-btn:hover {
+      color: #605d52;
+    }
+
+    .password-toggle-slash {
+      opacity: 1;
+      transition: opacity 0.1s ease;
+    }
+
+    .password-toggle-btn.is-showing .password-toggle-slash {
+      opacity: 0;
+    }
+
+    .auth-forgot-link {
+      font-size: 12px;
+      color: #939084;
+      text-decoration: none;
+      text-align: right;
+    }
+
+    .auth-forgot-link:hover {
+      color: #ff4f00;
+    }
+
+    .auth-forgot-link[hidden] {
+      display: none;
+    }
+
     .auth-message {
       font-size: 13px;
       color: #939084;
+    }
+
+    .auth-message.error {
+      color: #c0392b;
+    }
+
+    .auth-message.success {
+      color: #1a7a3c;
+      font-weight: 600;
     }
 
     .save-btn {
@@ -4494,7 +4706,9 @@
       gap: 12px;
     }
 
-    #landing-email {
+    #landing-email,
+    #landing-password {
+      width: 100%;
       padding: 14px 16px;
       border: 1px solid rgba(255, 254, 251, 0.24);
       border-radius: 12px;
@@ -4504,14 +4718,63 @@
       font-size: 16px;
     }
 
-    #landing-email::placeholder {
+    #landing-password {
+      padding-right: 46px;
+    }
+
+    #landing-email::placeholder,
+    #landing-password::placeholder {
       color: #939084;
     }
 
-    #landing-email:focus {
+    #landing-email:focus,
+    #landing-password:focus {
       outline: none;
       border-color: #ff4f00;
       background: rgba(255, 254, 251, 0.1);
+    }
+
+    .landing-auth-form .password-field .password-toggle-btn {
+      color: rgba(255, 254, 251, 0.55);
+    }
+
+    .landing-auth-form .password-field .password-toggle-btn:hover {
+      color: #fffefb;
+    }
+
+    .landing-auth-switch {
+      margin-top: 14px;
+      font-size: 13px;
+      color: #939084;
+    }
+
+    .landing-auth-switch a {
+      color: #ffb27a;
+      font-weight: 600;
+      text-decoration: none;
+      margin-left: 4px;
+    }
+
+    .landing-auth-switch a:hover {
+      color: #ff4f00;
+    }
+
+    .landing-auth-forgot {
+      margin-top: 8px;
+    }
+
+    .landing-auth-forgot[hidden] {
+      display: none;
+    }
+
+    .landing-auth-forgot a {
+      font-size: 13px;
+      color: #939084;
+      text-decoration: none;
+    }
+
+    .landing-auth-forgot a:hover {
+      color: #ff4f00;
     }
 
     .landing-magic-btn {
@@ -4540,9 +4803,36 @@
       cursor: not-allowed;
     }
 
-    #landing-email:disabled {
+    #landing-email:disabled,
+    #landing-password:disabled {
       opacity: 0.6;
       cursor: not-allowed;
+    }
+
+    /* Chrome forces its own light autofill background on recognized
+       email/password fields, ignoring our `background` entirely — the
+       fix is to paint over it with a huge inset box-shadow instead. */
+    #landing-email:-webkit-autofill,
+    #landing-email:-webkit-autofill:hover,
+    #landing-email:-webkit-autofill:focus,
+    #landing-password:-webkit-autofill,
+    #landing-password:-webkit-autofill:hover,
+    #landing-password:-webkit-autofill:focus {
+      -webkit-text-fill-color: #fffefb;
+      -webkit-box-shadow: 0 0 0 1000px #2a201c inset;
+      box-shadow: 0 0 0 1000px #2a201c inset;
+      caret-color: #fffefb;
+      transition: background-color 9999s ease-in-out 0s;
+    }
+
+    .auth-input:-webkit-autofill,
+    .auth-input:-webkit-autofill:hover,
+    .auth-input:-webkit-autofill:focus {
+      -webkit-text-fill-color: #201515;
+      -webkit-box-shadow: 0 0 0 1000px #fffefb inset;
+      box-shadow: 0 0 0 1000px #fffefb inset;
+      caret-color: #201515;
+      transition: background-color 9999s ease-in-out 0s;
     }
 
     .landing-auth-message {
@@ -7322,8 +7612,23 @@
         <button id="sign-in-btn" class="auth-btn" onclick="toggleAuthPanel()">Sign in</button>
         <button id="my-projects-btn" class="auth-btn auth-btn-primary" onclick="openCloudPanel()" hidden>Load Sessions</button>
         <div id="auth-panel" class="auth-panel" hidden>
-          <input type="email" id="auth-email" placeholder="you@example.com">
-          <button class="auth-btn auth-btn-primary" onclick="sendMagicLink()">Send magic link</button>
+          <div class="auth-panel-tabs">
+            <button type="button" class="auth-panel-tab is-active" id="auth-tab-signin" onclick="setAuthPanelMode('signin')">Sign in</button>
+            <button type="button" class="auth-panel-tab" id="auth-tab-signup" onclick="setAuthPanelMode('signup')">Sign up</button>
+          </div>
+          <input type="email" id="auth-email" class="auth-input" placeholder="you@example.com" autocomplete="email">
+          <div class="password-field">
+            <input type="password" id="auth-password" class="auth-input" placeholder="Password" autocomplete="current-password">
+            <button type="button" class="password-toggle-btn" onclick="togglePasswordField('auth-password', this)" aria-label="Show password">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/>
+                <circle cx="12" cy="12" r="3"/>
+                <line class="password-toggle-slash" x1="2" y1="2" x2="22" y2="22"/>
+              </svg>
+            </button>
+          </div>
+          <button class="auth-btn auth-btn-primary" id="auth-panel-submit-btn" onclick="authPanelSubmit()">Sign in</button>
+          <a href="#" id="auth-forgot-link" class="auth-forgot-link" onclick="openForgotPasswordFromHeader(); return false;">Forgot password?</a>
           <div id="auth-message" class="auth-message"></div>
         </div>
       </div>
@@ -7366,7 +7671,7 @@
     <div class="modal modal-small">
       <div class="delete-warning-icon premium-icon">★</div>
       <div class="delete-warning-title">Sign in to go Premium</div>
-      <div class="delete-warning-body">Premium is tied to your account, so you'll need to sign in first. It only takes a magic link.</div>
+      <div class="delete-warning-body">Premium is tied to your account, so you'll need to sign in first.</div>
       <div class="modal-actions">
         <button class="modal-cancel-btn" onclick="closePremiumSigninModal()">Cancel</button>
         <button class="modal-save-btn premium-cta-btn" onclick="signInThenGoPremium()">Sign in</button>
@@ -7378,10 +7683,41 @@
     <div class="modal modal-small">
       <div class="delete-warning-icon">✦</div>
       <div class="delete-warning-title">Sign in to continue</div>
-      <div class="delete-warning-body">This is a free account feature. Sign in with a magic link — no Premium purchase needed.</div>
+      <div class="delete-warning-body">This is a free account feature. Sign in or create an account — no Premium purchase needed.</div>
       <div class="modal-actions">
         <button class="modal-cancel-btn" onclick="closeSigninRequiredModal()">Cancel</button>
         <button class="modal-save-btn" onclick="signInFromRequiredModal()">Sign in</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="forgot-password-modal" class="modal-overlay" hidden>
+    <div class="modal modal-small">
+      <div class="modal-header">
+        <div class="section-label">Reset password</div>
+        <button class="modal-close" onclick="closeForgotPasswordModal()">&times;</button>
+      </div>
+      <div class="modal-section" id="forgot-step-request">
+        <p class="help-text" style="margin:0 0 12px">Enter your email and we'll send you a reset code.</p>
+        <input type="email" id="forgot-email" class="auth-input auth-input-block" placeholder="you@example.com" autocomplete="email">
+        <button class="modal-save-btn" style="margin-top:12px;width:100%" onclick="submitForgotPasswordRequest()">Send reset code</button>
+        <div id="forgot-request-message" class="auth-message" style="margin-top:10px"></div>
+      </div>
+      <div class="modal-section" id="forgot-step-reset" hidden>
+        <p class="help-text" style="margin:0 0 12px">Enter the code we emailed you, then choose a new password.</p>
+        <input type="text" id="forgot-code" class="auth-input auth-input-block" placeholder="Reset code" autocomplete="one-time-code" style="margin-bottom:10px">
+        <div class="password-field password-field-block">
+          <input type="password" id="forgot-new-password" class="auth-input" placeholder="New password" autocomplete="new-password">
+          <button type="button" class="password-toggle-btn" onclick="togglePasswordField('forgot-new-password', this)" aria-label="Show password">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/>
+              <circle cx="12" cy="12" r="3"/>
+              <line class="password-toggle-slash" x1="2" y1="2" x2="22" y2="22"/>
+            </svg>
+          </button>
+        </div>
+        <button class="modal-save-btn" style="margin-top:12px;width:100%" onclick="submitForgotPasswordReset()">Set new password</button>
+        <div id="forgot-reset-message" class="auth-message" style="margin-top:10px"></div>
       </div>
     </div>
   </div>
@@ -7616,7 +7952,6 @@
   <div id="landing-view">
     <div class="landing-hero">
       <h1 class="landing-hero-title">Run SQL queries on your CSV files instantly</h1>
-      <p class="landing-hero-sub">Upload a CSV file and it loads into a live SQLite database instantly, running entirely in your browser tab. No server, no install, nothing to set up.</p>
     </div>
     <div class="landing-mode-bar">
       <div class="landing-mode-row">
@@ -7669,11 +8004,27 @@
       <div class="landing-panel landing-panel-auth">
         <div class="landing-panel-inner">
           <div class="landing-kicker" id="landing-kicker-auth">Step 1</div>
-          <h2 class="landing-panel-title">Start with your email.</h2>
-          <p class="landing-panel-sub">We'll send a one-time sign-in link. No password, ever.</p>
+          <h2 class="landing-panel-title" id="landing-auth-title">Create your account.</h2>
           <div class="landing-auth-form">
             <input type="email" id="landing-email" placeholder="you@example.com" autocomplete="email">
-            <button type="button" class="landing-magic-btn" onclick="landingSendMagicLink()">Send magic link</button>
+            <div class="password-field">
+              <input type="password" id="landing-password" placeholder="Password" autocomplete="new-password">
+              <button type="button" class="password-toggle-btn" onclick="togglePasswordField('landing-password', this)" aria-label="Show password">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                  <line class="password-toggle-slash" x1="2" y1="2" x2="22" y2="22"/>
+                </svg>
+              </button>
+            </div>
+            <button type="button" class="landing-magic-btn" id="landing-auth-submit-btn" onclick="landingAuthSubmit()">Create account</button>
+          </div>
+          <div class="landing-auth-switch">
+            <span id="landing-auth-switch-text">Already have an account?</span>
+            <a href="#" id="landing-auth-switch-link" onclick="toggleLandingAuthMode(); return false;">Sign in</a>
+          </div>
+          <div class="landing-auth-forgot" id="landing-auth-forgot-wrap" hidden>
+            <a href="#" onclick="openForgotPasswordFromLanding(); return false;">Forgot password?</a>
           </div>
           <div id="landing-auth-message" class="landing-auth-message"></div>
         </div>
@@ -7684,7 +8035,7 @@
         <div class="landing-panel-inner">
           <div class="landing-kicker" id="landing-kicker-upload">Step 2</div>
           <h2 class="landing-panel-title">Upload your CSV.</h2>
-          <p class="landing-panel-sub" id="landing-upload-sub">Unlocks once your magic link is on its way.</p>
+          <p class="landing-panel-sub" id="landing-upload-sub">Unlocks once you sign up or sign in.</p>
           <label for="file-upload" id="landing-upload-label" class="landing-upload-btn is-locked">Upload a CSV</label>
         </div>
       </div>
@@ -7696,7 +8047,7 @@
         <div class="about-step">
           <div class="about-step-num">01</div>
           <div class="about-step-title">Pick a mode</div>
-          <div class="about-step-body">Lite Mode skips sign-in entirely. Normal Mode adds a one-time magic link so datasets and chat sessions sync across devices.</div>
+          <div class="about-step-body">Lite Mode skips sign-in entirely. Normal Mode adds a free account (email + password) so datasets and chat sessions sync across devices.</div>
         </div>
         <div class="about-step">
           <div class="about-step-num">02</div>
