@@ -222,6 +222,12 @@
       document.getElementById('go-premium-btn').hidden = isPremium;
       document.getElementById('dashboard-nav-btn').hidden = !currentUser;
       renderSettingsPremiumRow();
+      // Premium status can change mid-session (checkout completes without
+      // a reload) — refresh the table-chip bar too, since its "+ Add
+      // table" cap/tooltip and rename affordance are tier-gated and would
+      // otherwise stay stale until some unrelated re-render happened to
+      // touch them.
+      renderTableChips();
     }
 
     // ---- Tier gating (Lite -> Normal -> Premium) ----
@@ -841,7 +847,7 @@
       document.getElementById('cloud-modal').hidden = true;
     };
 
-    // ---- Dashboard (premium home base: every saved workspace, at a glance) ----
+    // ---- Dashboard (any signed-in account's home base: every saved workspace, at a glance) ----
 
     let dashboardPreviousView = null;
     let pendingDeleteWorkspaceId = null;
@@ -5691,7 +5697,7 @@
       color: #939084;
     }
 
-    /* ---- Dashboard (premium home base) ---- */
+    /* ---- Dashboard (signed-in home base) ---- */
 
     #dashboard-view {
       min-height: 100vh;
