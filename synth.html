@@ -225,10 +225,14 @@
       updateAIState();
     }
 
-    // Lite Mode's whole pitch is "no account needed" — a clickable Sign in
-    // button while that's selected undercuts it, so it's greyed out and
-    // inert until Normal Mode is picked (or Premium is already signed in;
-    // once currentUser exists the button's a settings link, always live).
+    // Lite Mode's whole pitch is "no account needed to start" — a clickable
+    // Sign in button on the pre-upload landing page undercuts that, so it's
+    // greyed out there until Normal Mode is picked. But that's a landing-page
+    // affordance only: once the user is actually in the app (uploaded a CSV),
+    // every Premium/Save-Query/Dashboard gate expects Sign in to work, so it
+    // must never stay disabled there just because Lite Mode was picked
+    // before upload — same for an existing session (currentUser), which
+    // always gets a live "Account settings" link.
     function updateSignInButtonAvailability() {
       const signInBtn = document.getElementById('sign-in-btn');
       if (currentUser) {
@@ -236,7 +240,8 @@
         signInBtn.title = 'Account settings';
         return;
       }
-      const disabled = landingMode === 'lite';
+      const onLandingView = !document.getElementById('landing-view').hidden;
+      const disabled = onLandingView && landingMode === 'lite';
       signInBtn.disabled = disabled;
       signInBtn.title = disabled ? 'Switch to Normal Mode to sign in' : '';
     }
@@ -791,6 +796,11 @@
       document.getElementById('app-view').hidden = true;
       document.getElementById('dashboard-view').hidden = true;
       document.getElementById('landing-view').hidden = false;
+      // Re-check now that landing-view is actually visible again — the
+      // SIGNED_OUT auth-state-change callback (which also calls this) can
+      // fire before these hidden flags flip, so it may have checked too
+      // early and left the button live on a Lite Mode landing page.
+      updateSignInButtonAvailability();
 
       // The header/view swap above only hides stale data, it doesn't
       // discard it — on a shared device the previous account's CSVs and
@@ -2822,6 +2832,12 @@
     function revealApp() {
       document.getElementById('landing-view').hidden = true;
       document.getElementById('app-view').hidden = false;
+      // The header Sign in button is greyed out for Lite Mode on the
+      // landing page (see updateSignInButtonAvailability) — that's only
+      // meant to reinforce "no account needed to start", not to block
+      // signing in once you're actually using the app, where every
+      // Premium/Save-Query/Dashboard gate expects it to work.
+      updateSignInButtonAvailability();
     }
 
     // Schema text for every table in the workspace — what the AI's system
