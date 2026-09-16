@@ -471,7 +471,7 @@
 
       if (!status.role) {
         row.innerHTML = `<p class="help-text" style="margin:0 0 10px">For a school or company: pay once a year for the whole domain, generate a join link, and every verified member gets Premium for free.</p>
-           <button class="auth-btn auth-btn-premium" onclick="closeSettingsPanel(); openEnterprisePanel();">Set up Synth Enterprise</button>`;
+           <button class="auth-btn auth-btn-enterprise" onclick="closeSettingsPanel(); openEnterprisePanel();">Set up Synth Enterprise</button>`;
         return;
       }
 
@@ -4917,6 +4917,51 @@
         inset 0 2px 5px rgba(20, 60, 100, 0.5);
     }
 
+    /* Synth Enterprise's own glossy CTA — same construction as
+       .auth-btn-premium above (same ::before sheen overlay, same shadow
+       layering), swapped to the brand purple (#461D7C / PMS 268 C) so
+       Enterprise reads as its own theme instead of borrowing Premium's
+       blue. */
+    .auth-btn-enterprise {
+      position: relative;
+      overflow: hidden;
+      background: linear-gradient(180deg, #b98ee0 0%, #7c3fae 50%, #461d7c 100%);
+      border-color: #461d7c;
+      color: #fffefb;
+      text-shadow: 0 1px 1px rgba(30, 10, 55, 0.35);
+      box-shadow:
+        0 3px 8px rgba(70, 29, 124, 0.45),
+        inset 0 1px 0 rgba(255, 255, 255, 0.6),
+        inset 0 -3px 5px rgba(35, 15, 65, 0.35);
+      transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+    }
+
+    .auth-btn-enterprise::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0.12) 45%, rgba(255, 255, 255, 0) 60%);
+      pointer-events: none;
+    }
+
+    .auth-btn-enterprise:hover {
+      background: linear-gradient(180deg, #c49fe8 0%, #8a4bbd 50%, #4f2189 100%);
+      border-color: #4f2189;
+      color: #fffefb;
+      transform: translateY(-1px);
+      box-shadow:
+        0 6px 14px rgba(70, 29, 124, 0.5),
+        inset 0 1px 0 rgba(255, 255, 255, 0.7),
+        inset 0 -3px 5px rgba(35, 15, 65, 0.4);
+    }
+
+    .auth-btn-enterprise:active {
+      transform: translateY(0);
+      box-shadow:
+        0 1px 3px rgba(70, 29, 124, 0.4),
+        inset 0 2px 5px rgba(35, 15, 65, 0.5);
+    }
+
     .auth-panel {
       position: absolute;
       top: calc(100% + 8px);
@@ -5253,6 +5298,20 @@
       border-radius: 8px;
       padding: 10px 12px;
       color: #0b4a78;
+      margin: 10px 0 0;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    }
+
+    /* Purple counterpart of .premium-onetime-note, for the one note inside
+       the Enterprise modal — kept as a separate class rather than
+       recoloring .premium-onetime-note itself, since that class is shared
+       with the personal Premium modal, which stays blue. */
+    .enterprise-onetime-note {
+      background: linear-gradient(180deg, #f8f2fc 0%, #ecdcf7 100%);
+      border: 1px solid #d3aeec;
+      border-radius: 8px;
+      padding: 10px 12px;
+      color: #461d7c;
       margin: 10px 0 0;
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
     }
@@ -8439,7 +8498,7 @@
     <div class="header-right">
       <div class="auth-area">
         <button id="go-premium-btn" class="auth-btn auth-btn-premium" onclick="openPremiumPanel()" title="$9.99 once, early-adopter price — not a subscription">Go Premium</button>
-        <button id="enterprise-nav-btn" class="auth-btn" onclick="openEnterpriseEntry()" title="For schools and companies">Enterprise</button>
+        <button id="enterprise-nav-btn" class="auth-btn auth-btn-enterprise" onclick="openEnterpriseEntry()" title="For schools and companies">Enterprise</button>
         <button id="dashboard-nav-btn" class="auth-btn auth-btn-premium" onclick="openDashboard()" hidden>Go to Dashboard</button>
         <button id="sign-in-btn" class="auth-btn" onclick="toggleAuthPanel()">Sign in</button>
         <button id="my-projects-btn" class="auth-btn auth-btn-primary" onclick="openCloudPanel()" hidden>Load Sessions</button>
@@ -8606,7 +8665,7 @@
           <li>Workrooms: organize members into classes/teams with a manager role</li>
           <li>A curated, joinable university dataset for practicing real SQL joins</li>
         </ul>
-        <p class="premium-onetime-note">Billed yearly, per organization — not per seat.</p>
+        <p class="enterprise-onetime-note">Billed yearly, per organization — not per seat.</p>
       </div>
       <div class="modal-section">
         <div id="enterprise-checkout-status" class="help-text"></div>
