@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Query a CSV File with SQL — No SQL Server Required | Synth</title>
+<meta name="description" content="Run real SQL on a CSV file with no SQL Server, no Postgres, and nothing to install. Compare your options and see how to query a spreadsheet in three steps.">
+<link rel="canonical" href="https://synth-sql.com/query-csv-with-sql">
+<meta property="og:title" content="Query a CSV File with SQL — No SQL Server Required">
+<meta property="og:description" content="Run real SQL on a CSV file with no SQL Server, no Postgres, and nothing to install.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://synth-sql.com/query-csv-with-sql">
+<meta property="og:image" content="https://synth-sql.com/synth-og-card.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="synthfavicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="marketing.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Article",
+      "headline": "Query a CSV File with SQL — No SQL Server Required",
+      "description": "Run real SQL on a CSV file with no SQL Server, no Postgres, and nothing to install.",
+      "url": "https://synth-sql.com/query-csv-with-sql",
+      "dateModified": "2026-09-15",
+      "author": { "@type": "Organization", "name": "Synth" },
+      "publisher": { "@type": "Organization", "name": "Synth", "logo": "https://synth-sql.com/synth-logo.png" }
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Can I query a CSV file without setting up a database?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. Synth loads a CSV directly into a real SQLite database that runs entirely in your browser tab — there's no server to install, host, or configure. Upload the file and start writing SQL immediately." }
+        },
+        {
+          "@type": "Question",
+          "name": "How do I run SQL on a spreadsheet or CSV?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Upload the file to a tool that loads it into an actual SQL engine, such as Synth's browser-based SQLite database, rather than converting it to a spreadsheet formula language. That gives you real SELECT, JOIN, GROUP BY, and window functions against your file." }
+        },
+        {
+          "@type": "Question",
+          "name": "Is there a way to query data without knowing SQL?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. Synth includes an AI assistant with a General Mode that answers questions about your data in plain English, with no SQL required, alongside a SQL Mode for people who want to write or see the query." }
+        },
+        {
+          "@type": "Question",
+          "name": "Does this require installing anything?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No. Synth runs entirely in the browser using WebAssembly. There's nothing to download, install, or host, and your data never leaves your device unless you explicitly sign in and save it to the cloud." }
+        },
+        {
+          "@type": "Question",
+          "name": "How is this different from Google Sheets QUERY or Excel?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Google Sheets QUERY and Excel Power Query use their own formula syntax, not real SQL. Synth runs an actual SQLite database against your file, so you get standard SQL — JOINs, window functions, subqueries — instead of a spreadsheet-specific query language." }
+        }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+
+<header class="site-header">
+  <a href="/" class="site-header-logo-link">
+    <img src="synth-logo.png" alt="Synth" class="site-header-logo">
+  </a>
+  <nav class="site-header-nav">
+    <a href="/pricing">Pricing</a>
+    <a href="/about">About</a>
+    <a href="/" class="cta">Open Synth</a>
+  </nav>
+</header>
+
+<main>
+  <div class="kicker">Guide</div>
+  <h1 class="page-title">How to query a CSV file with SQL — no SQL Server required</h1>
+
+  <p class="lede">Synth lets you run real SQL directly on a CSV file — no SQL Server, no Postgres, no database to install or host. Upload a file and it loads into a live SQLite database running entirely in your browser tab. Query it with actual SQL, or just ask in plain English if you'd rather skip SQL altogether.</p>
+
+  <h2>Your options for querying a CSV file</h2>
+  <p>Most people reach for one of a handful of tools when they need to ask questions of a CSV file. Here's how they actually compare:</p>
+
+  <div style="overflow-x:auto;">
+    <table class="compare">
+      <thead>
+        <tr><th>Option</th><th>Setup required</th><th>Real SQL?</th><th>Works on a single CSV?</th></tr>
+      </thead>
+      <tbody>
+        <tr class="highlight"><td>Synth</td><td>None — browser only</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+        <tr><td>SQL Server / Postgres</td><td>Install + host a database</td><td class="yes">Yes</td><td>Overkill for one file</td></tr>
+        <tr><td>Google Sheets QUERY()</td><td>None</td><td>No (its own syntax)</td><td class="yes">Yes</td></tr>
+        <tr><td>Excel Power Query</td><td>None</td><td>No</td><td class="yes">Yes</td></tr>
+        <tr><td>Python (pandas/duckdb)</td><td>Install Python + libraries</td><td>Yes (duckdb)</td><td>Yes, but requires code</td></tr>
+        <tr><td>ChatGPT Code Interpreter</td><td>None</td><td>Indirect (via generated Python)</td><td>Yes, but not a standalone tool</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>How it works</h2>
+  <ol class="steps">
+    <li>Upload a CSV — drag it in, or click to browse. No account required.</li>
+    <li>It becomes a real SQLite database, instantly, running in your browser tab.</li>
+    <li>Write SQL yourself, or ask the AI assistant in plain English — then sort, filter, and export your results.</li>
+  </ol>
+
+  <h2>Who this is for</h2>
+  <p>There are two different reasons people land here, and Synth is built for both:</p>
+  <ul>
+    <li><strong>You know SQL and just don't want to set up a server</strong> for a one-off file. Synth gives you a real SQL engine with zero infrastructure.</li>
+    <li><strong>You don't know SQL and want an answer in plain English.</strong> Synth's AI assistant reads your schema and answers directly — no query language required.</li>
+  </ul>
+
+  <h2>Why not just use Excel or Google Sheets?</h2>
+  <p>Spreadsheet formulas — VLOOKUP, QUERY(), Power Query — solve some of this, but they're a different, more limited language than SQL, and they get unwieldy past a few thousand rows or once you need to join two files together. Synth loads CSVs up to 500,000 rows and runs 100% client-side, so nothing you upload ever leaves your browser unless you explicitly sign in and save it.</p>
+
+  <h2>Frequently asked questions</h2>
+  <details class="faq-item">
+    <summary>Can I query a CSV file without setting up a database?</summary>
+    <p>Yes. Synth loads a CSV directly into a real SQLite database that runs entirely in your browser tab — there's no server to install, host, or configure. Upload the file and start writing SQL immediately.</p>
+  </details>
+  <details class="faq-item">
+    <summary>How do I run SQL on a spreadsheet or CSV?</summary>
+    <p>Upload the file to a tool that loads it into an actual SQL engine, such as Synth's browser-based SQLite database, rather than converting it to a spreadsheet formula language. That gives you real SELECT, JOIN, GROUP BY, and window functions against your file.</p>
+  </details>
+  <details class="faq-item">
+    <summary>Is there a way to query data without knowing SQL?</summary>
+    <p>Yes. Synth includes an AI assistant with a General Mode that answers questions about your data in plain English, with no SQL required, alongside a SQL Mode for people who want to write or see the query.</p>
+  </details>
+  <details class="faq-item">
+    <summary>Does this require installing anything?</summary>
+    <p>No. Synth runs entirely in the browser using WebAssembly. There's nothing to download, install, or host, and your data never leaves your device unless you explicitly sign in and save it to the cloud.</p>
+  </details>
+  <details class="faq-item">
+    <summary>How is this different from Google Sheets QUERY or Excel?</summary>
+    <p>Google Sheets QUERY and Excel Power Query use their own formula syntax, not real SQL. Synth runs an actual SQLite database against your file, so you get standard SQL — JOINs, window functions, subqueries — instead of a spreadsheet-specific query language.</p>
+  </details>
+
+  <div class="cta-band">
+    <h2>Try it on your own CSV</h2>
+    <p>Free to start, no sign-in required.</p>
+    <a href="/" class="cta-btn">Open Synth</a>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="site-footer-inner">
+    <div class="site-footer-brand">Synth</div>
+    <nav class="site-footer-links">
+      <a href="/pricing">Pricing</a>
+      <a href="/about">About</a>
+      <a href="/query-csv-with-sql">Guide</a>
+      <a href="/terms">Terms of Service</a>
+      <a href="/privacy">Privacy Policy</a>
+    </nav>
+    <div class="site-footer-copyright">&copy; 2026 Synth. All rights reserved.</div>
+  </div>
+</footer>
+
+</body>
+</html>

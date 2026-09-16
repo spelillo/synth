@@ -1,5 +1,10 @@
 {
   "rewrites": [
-    { "source": "/", "destination": "/synth.html" }
+    { "source": "/", "destination": "/synth.html" },
+    { "source": "/about", "destination": "/about.html" },
+    { "source": "/terms", "destination": "/terms.html" },
+    { "source": "/privacy", "destination": "/privacy.html" },
+    { "source": "/pricing", "destination": "/pricing.html" },
+    { "source": "/query-csv-with-sql", "destination": "/query-csv-with-sql.html" }
   ]
 }

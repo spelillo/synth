@@ -1,0 +1,27 @@
+# Synth
+
+Synth lets you query any CSV file with real SQL, or in plain English,
+directly in your browser. No database setup, no SQL Server, no
+installation — upload a CSV and it becomes a live SQLite database
+running client-side, entirely in your browser tab.
+
+## Who it's for
+
+- People who know SQL and don't want to set up a server for one file
+- People who don't know SQL and want to ask questions in plain English
+- Analysts working with CSVs up to 500,000 rows
+
+## Key facts
+
+- Runs 100% client-side via SQLite compiled to WebAssembly (sql.js) — your data never leaves your browser unless you sign in and explicitly save it to the cloud
+- Free tier: single-table workspaces, up to 50,000 rows, no sign-in required
+- Premium: $9.99, paid once (not a subscription) — multi-table workspaces (up to 10 tables), table renaming, cross-table AI joins, relationship detection, and CSVs up to 500,000 rows
+- Built-in AI assistant supports two modes: SQL Mode (returns a runnable SQL query) and General Mode (returns a plain-English answer, no SQL)
+
+## Key pages
+
+- App: https://synth-sql.com/
+- Pricing: https://synth-sql.com/pricing
+- Guide — querying a CSV with SQL, no server required: https://synth-sql.com/query-csv-with-sql
+- About: https://synth-sql.com/about
+- Machine-readable pricing: https://synth-sql.com/pricing.md

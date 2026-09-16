@@ -4,13 +4,50 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Synth: Instantly query any CSV file with SQL</title>
-  <meta name="description" content="Instantly query any CSV file with SQL, or ask in plain English. It runs as a local SQLite database right in your browser tab. No sign-in required to try it.">
+  <meta name="description" content="Query any CSV file with real SQL, or plain English. Runs as a local SQLite database in your browser. No install, no sign-in required.">
+  <link rel="canonical" href="https://synth-sql.com/">
   <meta property="og:title" content="Synth: Instantly query any CSV file with SQL">
-  <meta property="og:description" content="Instantly query any CSV file with SQL, or ask in plain English. It runs as a local SQLite database right in your browser tab.">
+  <meta property="og:description" content="Query any CSV file with real SQL, or plain English. Runs as a local SQLite database right in your browser tab — no install required.">
   <meta property="og:type" content="website">
-  <meta property="og:image" content="synth-cream-orangediscs.png">
-  <meta name="twitter:card" content="summary">
+  <meta property="og:url" content="https://synth-sql.com/">
+  <meta property="og:image" content="https://synth-sql.com/synth-og-card.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Synth: Instantly query any CSV file with SQL">
+  <meta name="twitter:description" content="Query any CSV file with real SQL, or plain English. Runs as a local SQLite database right in your browser tab — no install required.">
+  <meta name="twitter:image" content="https://synth-sql.com/synth-og-card.png">
   <link rel="icon" href="synthfavicon.png">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "name": "Synth",
+        "url": "https://synth-sql.com/",
+        "logo": "https://synth-sql.com/synth-logo.png"
+      },
+      {
+        "@type": "WebSite",
+        "name": "Synth",
+        "url": "https://synth-sql.com/"
+      },
+      {
+        "@type": "SoftwareApplication",
+        "name": "Synth",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Web",
+        "url": "https://synth-sql.com/",
+        "description": "Synth lets you run real SQL directly on a CSV file, or ask questions in plain English. No SQL Server, no Postgres, no database to install or host — your file loads into a live SQLite database running entirely in your browser tab.",
+        "offers": [
+          { "@type": "Offer", "name": "Free", "price": "0", "priceCurrency": "USD" },
+          { "@type": "Offer", "name": "Premium", "price": "9.99", "priceCurrency": "USD" }
+        ]
+      }
+    ]
+  }
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -82,6 +119,14 @@
     let tables = [];              // [{ name, fileName, rowCount, columns }]
     let activeTableName = null;
     let focusedTableNames = new Set();
+    // Tracks the table count we last warned about, so the cross-table-AI
+    // paywall notice (see crossTableAIBlocked/sendMessage) shows once per
+    // table-count change instead of on every single chat message.
+    let crossTableNoticeTableCount = 0;
+
+    function crossTableAIBlocked() {
+      return tables.length > 1 && !canUseFeature('crossTableAI');
+    }
 
     function slugifyTableName(filename) {
       let base = filename.replace(/\.[^/.]+$/, '')
@@ -307,7 +352,7 @@
         ? `<span class="workspace-badge">Premium</span>
            <p class="help-text" style="margin:8px 0">Multi-table workspaces, table renaming, cross-table AI queries, relationship detection, and CSVs up to 500,000 rows. It's a one-time purchase, so nothing renews and there's nothing to cancel on Stripe's side.</p>
            <button class="auth-btn" onclick="openCancelPremiumModal()">Cancel Premium</button>`
-        : `<p class="help-text" style="margin:0 0 10px">Free plan: single-table workspaces, up to 50,000 rows. Upgrade for multi-table workspaces, table renaming, cross-table AI queries, relationship detection, and CSVs up to 500,000 rows.</p>
+        : `<p class="help-text" style="margin:0 0 10px">Free plan: single-table workspaces, up to 50,000 rows. Upgrade for multi-table workspaces, table renaming, cross-table AI queries, relationship detection, and CSVs up to 500,000 rows. Early-adopter price while Synth is in beta, backed by a 7-day guarantee.</p>
            <button class="auth-btn auth-btn-premium" onclick="closeSettingsPanel(); openPremiumPanel();">Go Premium ($9.99 once)</button>`;
     }
 
@@ -1079,32 +1124,6 @@
 
     window.closeHelpPanel = function() {
       document.getElementById('help-modal').hidden = true;
-    };
-
-    // ---- Landing footer: About / Terms of Service / Privacy Policy ----
-
-    window.openAboutModal = function() {
-      document.getElementById('about-modal').hidden = false;
-    };
-
-    window.closeAboutModal = function() {
-      document.getElementById('about-modal').hidden = true;
-    };
-
-    window.openTermsModal = function() {
-      document.getElementById('terms-modal').hidden = false;
-    };
-
-    window.closeTermsModal = function() {
-      document.getElementById('terms-modal').hidden = true;
-    };
-
-    window.openPrivacyModal = function() {
-      document.getElementById('privacy-modal').hidden = false;
-    };
-
-    window.closePrivacyModal = function() {
-      document.getElementById('privacy-modal').hidden = true;
     };
 
     // ---- Premium checkout (Stripe embedded Checkout Form) ----
@@ -2991,6 +3010,15 @@
       updateCloudButtons();
       cancelReplyContext();
 
+      // Cross-table AI is Premium-gated (see buildSystemPrompt). Without this,
+      // a free account with 2+ tables silently got a narrower, single-table
+      // answer with no indication why — surfacing it here instead so it reads
+      // as "this needs Premium," not "the AI got it wrong."
+      if (crossTableAIBlocked() && crossTableNoticeTableCount !== tables.length) {
+        crossTableNoticeTableCount = tables.length;
+        messagesDiv.innerHTML += `<div class="chat-turn assistant-turn"><div class="chat-message assistant chat-message-notice">This needs data from more than one table — that's a Premium feature. This answer will only use <strong>${escapeHtml(activeTableName)}</strong>. <a href="#" onclick="openPremiumPanel(); return false;">Unlock cross-table AI queries</a></div></div>`;
+      }
+
       messagesDiv.innerHTML += `<div class="chat-turn assistant-turn"><div class="chat-message assistant">Thinking...</div></div>`;
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
 
@@ -3754,9 +3782,6 @@
     // overlay) so whatever cleanup that function does — resetting
     // editingQueryId, tablePendingDelete, etc. — still runs.
     const MODAL_CLOSE_FN = {
-      'about-modal': 'closeAboutModal',
-      'terms-modal': 'closeTermsModal',
-      'privacy-modal': 'closePrivacyModal',
       'premium-modal': 'closePremiumPanel',
       'premium-signin-modal': 'closePremiumSigninModal',
       'signin-required-modal': 'closeSigninRequiredModal',
@@ -4367,6 +4392,33 @@
       display: none;
     }
 
+    .landing-hero {
+      padding: 56px 64px 8px;
+      max-width: 900px;
+    }
+
+    .landing-hero-title {
+      font-size: 34px;
+      line-height: 1.2;
+      font-weight: 700;
+      color: #201515;
+      letter-spacing: -0.01em;
+      margin: 0;
+    }
+
+    .landing-hero-sub {
+      margin: 14px 0 0;
+      font-size: 16px;
+      line-height: 1.5;
+      color: #6b665e;
+      max-width: 640px;
+    }
+
+    @media (max-width: 720px) {
+      .landing-hero { padding: 40px 24px 4px; }
+      .landing-hero-title { font-size: 26px; }
+    }
+
     .landing-split {
       flex: 1;
       min-height: 540px;
@@ -4862,7 +4914,7 @@
       gap: 8px 24px;
     }
 
-    .landing-footer-links button {
+    .landing-footer-links a {
       appearance: none;
       border: none;
       background: none;
@@ -4871,11 +4923,12 @@
       font-size: 13px;
       font-weight: 600;
       color: #605d52;
+      text-decoration: none;
       cursor: pointer;
       transition: color 0.15s ease;
     }
 
-    .landing-footer-links button:hover {
+    .landing-footer-links a:hover {
       color: #ff4f00;
     }
 
@@ -4884,20 +4937,6 @@
       color: #939084;
     }
 
-    /* ---- Legal modal content (About / Terms / Privacy) ---- */
-
-    .legal-updated {
-      font-size: 12px;
-      color: #939084;
-      margin: -8px 0 16px;
-    }
-
-    .legal-section-title {
-      font-weight: 700;
-      font-size: 14px;
-      color: #201515;
-      margin-bottom: 6px;
-    }
 
     @media (max-width: 900px) {
       .landing-split { grid-template-columns: 1fr; }
@@ -5723,7 +5762,7 @@
       margin-bottom: 28px;
     }
 
-    .dashboard-header h1 {
+    .dashboard-header h2 {
       font-size: 24px;
       margin: 0;
       color: #201515;
@@ -6678,6 +6717,19 @@
       border-radius: 12px;
     }
 
+    .chat-message.assistant.chat-message-notice {
+      background: linear-gradient(180deg, #f5faff 0%, #e0f0fd 100%);
+      border: 1px solid #b9dbf5;
+      color: #0b4a78;
+      padding-right: 0.875rem;
+    }
+
+    .chat-message.assistant.chat-message-notice a {
+      color: #0b4a78;
+      font-weight: 600;
+      text-decoration: underline;
+    }
+
     .chat-turn {
       display: flex;
       flex-direction: column;
@@ -7265,7 +7317,7 @@
     </a>
     <div class="header-right">
       <div class="auth-area">
-        <button id="go-premium-btn" class="auth-btn auth-btn-premium" onclick="openPremiumPanel()" title="$9.99 once, not a subscription">Go Premium</button>
+        <button id="go-premium-btn" class="auth-btn auth-btn-premium" onclick="openPremiumPanel()" title="$9.99 once, early-adopter price — not a subscription">Go Premium</button>
         <button id="dashboard-nav-btn" class="auth-btn auth-btn-premium" onclick="openDashboard()" hidden>Go to Dashboard</button>
         <button id="sign-in-btn" class="auth-btn" onclick="toggleAuthPanel()">Sign in</button>
         <button id="my-projects-btn" class="auth-btn auth-btn-primary" onclick="openCloudPanel()" hidden>Load Sessions</button>
@@ -7300,6 +7352,8 @@
           <li>Large files — load CSVs up to 500,000 rows instead of 50,000</li>
         </ul>
         <p class="premium-onetime-note">&#10003; <strong>$9.99, paid once.</strong> Not a subscription, so there's nothing to cancel later.</p>
+        <p class="premium-onetime-note premium-guarantee-note">&#10003; <strong>Early-adopter price</strong> — $9.99 while Synth is in beta.</p>
+        <p class="premium-onetime-note premium-guarantee-note">&#10003; <strong>7-day guarantee.</strong> Not what you expected? Email us, no questions asked.</p>
       </div>
       <div class="modal-section">
         <div id="premium-checkout-status" class="help-text"></div>
@@ -7455,7 +7509,7 @@
           <li>Relationship detection: auto-suggested foreign keys you can confirm in the Relationships tab</li>
           <li>Large files: load CSVs up to 500,000 rows instead of 50,000</li>
         </ul>
-        <p class="premium-onetime-note">&#10003; <strong>$9.99, paid once.</strong> Not a subscription, so there's nothing to cancel later.</p>
+        <p class="premium-onetime-note">&#10003; <strong>$9.99, paid once.</strong> Not a subscription, so there's nothing to cancel later. Early-adopter price while Synth is in beta, backed by a 7-day guarantee.</p>
       </div>
     </div>
   </div>
@@ -7560,6 +7614,10 @@
   <input type="file" id="file-upload-add" accept=".csv" multiple onchange="addTablesCSV(event)">
 
   <div id="landing-view">
+    <div class="landing-hero">
+      <h1 class="landing-hero-title">Run SQL queries on your CSV files instantly</h1>
+      <p class="landing-hero-sub">Upload a CSV file and it loads into a live SQLite database instantly, running entirely in your browser tab. No server, no install, nothing to set up.</p>
+    </div>
     <div class="landing-mode-bar">
       <div class="landing-mode-row">
         <div class="landing-mode-toggle" role="tablist" aria-label="Choose how to start">
@@ -7599,7 +7657,7 @@
             </div>
             <div class="lmc-row">
               <div class="lmc-cell lmc-cell-label">Data security</div>
-              <div class="lmc-cell lmc-cell-lite" data-mode-label="Lite Mode: ">Nothing touches our cloud or database. Safety first.</div>
+              <div class="lmc-cell lmc-cell-lite" data-mode-label="Lite Mode: ">Nothing touches our cloud or database.</div>
               <div class="lmc-cell lmc-cell-normal" data-mode-label="Normal Mode: ">Saved data is stored securely in the cloud. AI conversations stay private and are never shared publicly.</div>
             </div>
           </div>
@@ -7611,7 +7669,7 @@
       <div class="landing-panel landing-panel-auth">
         <div class="landing-panel-inner">
           <div class="landing-kicker" id="landing-kicker-auth">Step 1</div>
-          <h1 class="landing-panel-title">Start with your email.</h1>
+          <h2 class="landing-panel-title">Start with your email.</h2>
           <p class="landing-panel-sub">We'll send a one-time sign-in link. No password, ever.</p>
           <div class="landing-auth-form">
             <input type="email" id="landing-email" placeholder="you@example.com" autocomplete="email">
@@ -7657,9 +7715,11 @@
       <div class="landing-footer-inner">
         <div class="landing-footer-brand">Synth</div>
         <nav class="landing-footer-links">
-          <button type="button" onclick="openAboutModal()">About</button>
-          <button type="button" onclick="openTermsModal()">Terms of Service</button>
-          <button type="button" onclick="openPrivacyModal()">Privacy Policy</button>
+          <a href="/pricing">Pricing</a>
+          <a href="/about">About</a>
+          <a href="/query-csv-with-sql">Guide</a>
+          <a href="/terms">Terms of Service</a>
+          <a href="/privacy">Privacy Policy</a>
         </nav>
         <div class="landing-footer-copyright">&copy; 2026 Synth. All rights reserved.</div>
       </div>
@@ -7859,7 +7919,7 @@
 
   <div id="dashboard-view" hidden>
     <div class="dashboard-header">
-      <h1>Your workspaces</h1>
+      <h2>Your workspaces</h2>
       <div class="dashboard-header-actions">
         <button class="upload-btn" onclick="closeDashboard(); document.getElementById('file-upload').click();">+ New workspace</button>
         <button class="auth-btn" onclick="closeDashboard()">&larr; Back to app</button>
@@ -7894,121 +7954,5 @@
     </div>
   </div>
 
-  <div id="about-modal" class="modal-overlay" hidden>
-    <div class="modal">
-      <div class="modal-header">
-        <div class="section-label">About Synth</div>
-        <button class="modal-close" onclick="closeAboutModal()">&times;</button>
-      </div>
-      <div class="modal-section">
-        <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#128202;</span> What Synth is</div>
-        <p class="help-text">Synth instantly queries any CSV file with real SQL, or plain-English questions. Upload a file and it loads into an actual SQLite database running in your browser tab — no server-side database, no waiting on uploads.</p>
-      </div>
-      <div class="modal-section">
-        <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#128274;</span> Local-first, by default</div>
-        <p class="help-text">Lite Mode never touches a server — your file, your query, your browser, nothing else. Sign in with Normal Mode only if you want workspaces and chat sessions saved to the cloud so you can pick them up from another device.</p>
-      </div>
-      <div class="modal-section">
-        <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#129302;</span> SQL or plain English</div>
-        <p class="help-text">Write SQL yourself, or ask the built-in AI assistant. Switch anytime between SQL Mode (get a runnable query back) and General Mode (get a plain-English answer instead).</p>
-      </div>
-      <div class="modal-section">
-        <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#9733;</span> Premium</div>
-        <p class="help-text">A one-time $9.99 purchase unlocks multi-table workspaces, table renaming, cross-table AI joins, relationship detection, and CSVs up to 500,000 rows. No subscription, nothing to cancel.</p>
-      </div>
-    </div>
-  </div>
-
-  <div id="terms-modal" class="modal-overlay" hidden>
-    <div class="modal">
-      <div class="modal-header">
-        <div class="section-label">Terms of Service</div>
-        <button class="modal-close" onclick="closeTermsModal()">&times;</button>
-      </div>
-      <div class="legal-updated">Last updated: September 12, 2026</div>
-      <div class="modal-section">
-        <div class="legal-section-title">1. Acceptance of terms</div>
-        <p class="help-text">By using Synth, you agree to these Terms. If you don't agree, don't use the service.</p>
-      </div>
-      <div class="modal-section">
-        <div class="legal-section-title">2. The service</div>
-        <p class="help-text">Synth lets you upload a CSV file, query it with SQL or an AI assistant, and optionally save your work to the cloud. Lite Mode requires no account and stores nothing outside your browser. Normal Mode requires a magic-link sign-in and can save workspaces and chat sessions to your account.</p>
-      </div>
-      <div class="modal-section">
-        <div class="legal-section-title">3. Premium purchases</div>
-        <p class="help-text">Premium is a one-time, non-recurring purchase that unlocks additional features (multi-table workspaces, table renaming, cross-table AI queries, relationship detection, and CSVs up to 500,000 rows). Payments are processed by Stripe; we never see or store your card details. Purchases are non-refundable except where required by law.</p>
-      </div>
-      <div class="modal-section">
-        <div class="legal-section-title">4. The AI assistant</div>
-        <p class="help-text">SQL and answers generated by the AI assistant may be incorrect or incomplete. You're responsible for reviewing any query before running it and for verifying any answer before relying on it. The assistant is not professional, financial, or legal advice.</p>
-      </div>
-      <div class="modal-section">
-        <div class="legal-section-title">5. Acceptable use</div>
-        <p class="help-text">Don't upload data you don't have the right to use, don't use Synth to violate any law, and don't attempt to disrupt, reverse-engineer, or abuse the service or its infrastructure.</p>
-      </div>
-      <div class="modal-section">
-        <div class="legal-section-title">6. Your data</div>
-        <p class="help-text">You retain ownership of any data you upload. If you save data to the cloud, you grant us a limited license to store and process it solely to provide the service back to you. You can delete saved workspaces and sessions at any time from the Dashboard or Load Sessions panel.</p>
-      </div>
-      <div class="modal-section">
-        <div class="legal-section-title">7. Disclaimers &amp; limitation of liability</div>
-        <p class="help-text">Synth is provided "as is," without warranties of any kind. To the fullest extent permitted by law, we aren't liable for indirect, incidental, or consequential damages arising from your use of the service, including decisions made from AI-generated queries or answers.</p>
-      </div>
-      <div class="modal-section">
-        <div class="legal-section-title">8. Changes to these terms</div>
-        <p class="help-text">We may update these Terms from time to time. Continuing to use Synth after a change means you accept the updated Terms.</p>
-      </div>
-      <div class="modal-section">
-        <div class="legal-section-title">9. Contact</div>
-        <p class="help-text">Questions about these Terms? Reach us at <strong>spelillo11@gmail.com</strong>.</p>
-      </div>
-    </div>
-  </div>
-
-  <div id="privacy-modal" class="modal-overlay" hidden>
-    <div class="modal">
-      <div class="modal-header">
-        <div class="section-label">Privacy Policy</div>
-        <button class="modal-close" onclick="closePrivacyModal()">&times;</button>
-      </div>
-      <div class="legal-updated">Last updated: September 12, 2026</div>
-      <div class="modal-section">
-        <div class="legal-section-title">What we collect</div>
-        <p class="help-text">In Lite Mode: nothing. In Normal Mode: the email address you sign in with, plus any workspace (CSV data and table structure) or chat session you explicitly choose to save to the cloud.</p>
-      </div>
-      <div class="modal-section">
-        <div class="legal-section-title">How your data is processed</div>
-        <p class="help-text">Your CSV is parsed into a real SQLite database running entirely inside your browser tab, using WebAssembly. It never leaves your device unless you sign in and click Save — Lite Mode never contacts our servers at all.</p>
-      </div>
-      <div class="modal-section">
-        <div class="legal-section-title">The AI assistant &amp; third-party processing</div>
-        <p class="help-text">When you ask the AI assistant a question, that question plus your table's schema (column names and types only — never your actual row data) is sent to our AI provider to generate a response. If you paste real data into your own message, that text is sent as part of the request.</p>
-      </div>
-      <div class="modal-section">
-        <div class="legal-section-title">Payments</div>
-        <p class="help-text">Premium purchases are handled directly by Stripe. We receive confirmation that a payment succeeded, but never see or store your card number.</p>
-      </div>
-      <div class="modal-section">
-        <div class="legal-section-title">Cookies &amp; local storage</div>
-        <p class="help-text">Saved queries, your SQL/General mode preference, and your Lite/Normal mode choice are stored in your browser's local storage, on your device only. Signed-in sessions use a standard authentication cookie/token. We don't use third-party ad-tracking cookies.</p>
-      </div>
-      <div class="modal-section">
-        <div class="legal-section-title">Your choices &amp; data deletion</div>
-        <p class="help-text">You can delete any saved workspace or chat session yourself from the Dashboard or Load Sessions panel. To delete your account entirely, contact us and we'll remove your data.</p>
-      </div>
-      <div class="modal-section">
-        <div class="legal-section-title">Children's privacy</div>
-        <p class="help-text">Synth isn't directed at children under 13, and we don't knowingly collect data from them.</p>
-      </div>
-      <div class="modal-section">
-        <div class="legal-section-title">Changes to this policy</div>
-        <p class="help-text">We may update this Privacy Policy from time to time. Material changes will be reflected by updating the date above.</p>
-      </div>
-      <div class="modal-section">
-        <div class="legal-section-title">Contact</div>
-        <p class="help-text">Questions about this policy, or want your data deleted? Reach us at <strong>spelillo11@gmail.com</strong>.</p>
-      </div>
-    </div>
-  </div>
 </body>
 </html>
