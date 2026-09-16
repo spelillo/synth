@@ -1097,20 +1097,13 @@
       document.getElementById('landing-upload-panel').classList.add('unlocked');
     }
 
-    // ---- Forgot password: request a reset code by email, paste it back in ----
-    // The code itself is Supabase's own recovery OTP (sb.auth.resetPasswordForEmail
-    // + sb.auth.verifyOtp) — generated, hashed, expired, and made single-use
-    // entirely on Supabase's side. Nothing custom to store or invalidate here.
-
-    let forgotPasswordEmail = '';
-    // True once a valid recovery session already exists — either from
-    // verifyOtp succeeding below, or from clicking the email's link (see
-    // openPasswordRecoveryReset) — so submitForgotPasswordReset knows
-    // whether it still needs to verify a pasted code first.
-    let recoverySessionActive = false;
+    // ---- Forgot password: request a reset link by email ----
+    // The link is Supabase's own recovery flow (sb.auth.resetPasswordForEmail)
+    // — clicking it fires the PASSWORD_RECOVERY auth event above, which opens
+    // openPasswordRecoveryReset() straight to the "set new password" step.
+    // Nothing custom to store or invalidate here.
 
     window.openForgotPasswordModal = function(prefillEmail) {
-      recoverySessionActive = false;
       document.getElementById('forgot-password-modal').hidden = false;
       document.getElementById('forgot-step-request').hidden = false;
       document.getElementById('forgot-step-reset').hidden = true;
@@ -1118,27 +1111,21 @@
       document.getElementById('forgot-request-message').classList.remove('error', 'success');
       document.getElementById('forgot-reset-message').textContent = '';
       document.getElementById('forgot-reset-message').classList.remove('error', 'success');
-      document.getElementById('forgot-code').value = '';
-      document.getElementById('forgot-code').hidden = false;
-      document.getElementById('forgot-step-reset-instructions').textContent = 'Enter the code we emailed you, then choose a new password.';
       document.getElementById('forgot-new-password').value = '';
       const emailField = document.getElementById('forgot-email');
       emailField.value = prefillEmail || '';
       emailField.disabled = false;
     };
 
-    // Reached via the PASSWORD_RECOVERY auth event (the email's link, not
-    // the pasted code) — the click already authenticated a recovery
-    // session, so skip straight to setting a new password with no code
-    // field, instead of leaving the user stuck "signed in" with no way to
+    // Reached via the PASSWORD_RECOVERY auth event, i.e. the user clicked
+    // the link in the reset email — that click already authenticated a
+    // recovery session, so this opens straight to "set new password"
+    // instead of leaving the user stuck "signed in" with no way to
     // actually change anything.
     function openPasswordRecoveryReset() {
-      recoverySessionActive = true;
       document.getElementById('forgot-password-modal').hidden = false;
       document.getElementById('forgot-step-request').hidden = true;
       document.getElementById('forgot-step-reset').hidden = false;
-      document.getElementById('forgot-code').hidden = true;
-      document.getElementById('forgot-step-reset-instructions').textContent = 'Choose a new password for your account.';
       document.getElementById('forgot-new-password').value = '';
       document.getElementById('forgot-reset-message').textContent = '';
       document.getElementById('forgot-reset-message').classList.remove('error', 'success');
@@ -1163,7 +1150,7 @@
         return;
       }
 
-      msgEl.textContent = 'Sending code...';
+      msgEl.textContent = 'Sending link...';
       const { error } = await sb.auth.resetPasswordForEmail(email);
       if (error) {
         msgEl.textContent = error.message;
@@ -1171,12 +1158,14 @@
         return;
       }
 
-      forgotPasswordEmail = email;
       document.getElementById('forgot-email').disabled = true;
-      document.getElementById('forgot-step-request').hidden = true;
-      document.getElementById('forgot-step-reset').hidden = false;
+      msgEl.classList.add('success');
+      msgEl.textContent = 'Check your email for a password reset link.';
     };
 
+    // Only ever reached via openPasswordRecoveryReset — clicking the email
+    // link already authenticated a recovery session, so this just sets the
+    // new password directly on it.
     window.submitForgotPasswordReset = async function() {
       const newPassword = document.getElementById('forgot-new-password').value;
       const msgEl = document.getElementById('forgot-reset-message');
@@ -1188,34 +1177,6 @@
         return;
       }
 
-      // Arriving via the email's link (openPasswordRecoveryReset) already
-      // authenticated a recovery session — only the paste-a-code path still
-      // needs to verify one here.
-      if (!recoverySessionActive) {
-        const code = document.getElementById('forgot-code').value.trim();
-        if (!code) {
-          msgEl.textContent = 'Enter the code from your email.';
-          msgEl.classList.add('error');
-          return;
-        }
-
-        msgEl.textContent = 'Checking code...';
-        const { error: verifyError } = await sb.auth.verifyOtp({
-          email: forgotPasswordEmail,
-          token: code,
-          type: 'recovery'
-        });
-        if (verifyError) {
-          msgEl.textContent = 'That code is wrong or expired. Request a new one.';
-          msgEl.classList.add('error');
-          return;
-        }
-        recoverySessionActive = true;
-      }
-
-      // Either the code above just verified, or the email link already did
-      // — either way there's now a real recovery session to set the new
-      // password on. The one-time code/link is already spent either way.
       const { error: updateError } = await sb.auth.updateUser({ password: newPassword });
       if (updateError) {
         msgEl.textContent = updateError.message;
@@ -1223,7 +1184,6 @@
         return;
       }
 
-      recoverySessionActive = false;
       msgEl.classList.add('success');
       msgEl.textContent = 'Password updated. You are signed in.';
       setTimeout(closeForgotPasswordModal, 1500);
@@ -8530,14 +8490,13 @@
         <button class="modal-close" onclick="closeForgotPasswordModal()">&times;</button>
       </div>
       <div class="modal-section" id="forgot-step-request">
-        <p class="help-text" style="margin:0 0 12px">Enter your email and we'll send you a reset code.</p>
+        <p class="help-text" style="margin:0 0 12px">Enter your email and we'll send you a password reset link.</p>
         <input type="email" id="forgot-email" class="auth-input auth-input-block" placeholder="you@example.com" autocomplete="email">
-        <button class="modal-save-btn" style="margin-top:12px;width:100%" onclick="submitForgotPasswordRequest()">Send reset code</button>
+        <button class="modal-save-btn" style="margin-top:12px;width:100%" onclick="submitForgotPasswordRequest()">Send reset link</button>
         <div id="forgot-request-message" class="auth-message" style="margin-top:10px"></div>
       </div>
       <div class="modal-section" id="forgot-step-reset" hidden>
-        <p class="help-text" style="margin:0 0 12px" id="forgot-step-reset-instructions">Enter the code we emailed you, then choose a new password.</p>
-        <input type="text" id="forgot-code" class="auth-input auth-input-block" placeholder="Reset code" autocomplete="one-time-code" style="margin-bottom:10px">
+        <p class="help-text" style="margin:0 0 12px">Choose a new password for your account.</p>
         <div class="password-field password-field-block">
           <input type="password" id="forgot-new-password" class="auth-input" placeholder="New password" autocomplete="new-password">
           <button type="button" class="password-toggle-btn" onclick="togglePasswordField('forgot-new-password', this)" aria-label="Show password">
