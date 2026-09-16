@@ -172,6 +172,7 @@
       await initLandingMode();
       initAuth();
       checkPremiumCheckoutReturn();
+      checkEnterpriseJoinReturn();
     });
 
     async function initAuth() {
@@ -207,6 +208,77 @@
       document.getElementById('premium-success-banner').hidden = true;
     };
 
+    // ---- Synth Enterprise join links (?join=<token>) ----
+    // Mirrors checkPremiumCheckoutReturn's URL-param pattern above, but the
+    // outcome isn't known until an authenticated request completes (a
+    // Stripe redirect is always "success" by the time it comes back; a
+    // join link can fail on an expired token or a domain mismatch), so this
+    // stashes the token and resolves it once sign-in state is known —
+    // same deferred pattern as pendingSaveQueryDraft/resumePendingSaveQuery
+    // further down this file.
+    let pendingJoinToken = null;
+
+    function checkEnterpriseJoinReturn() {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('join');
+      if (!token) return;
+
+      pendingJoinToken = token;
+      params.delete('join');
+      const clean = window.location.pathname + (params.toString() ? '?' + params.toString() : '') + window.location.hash;
+      window.history.replaceState({}, '', clean);
+
+      // initAuth() (called just before this) doesn't await its own
+      // getSession() call, so currentUser isn't reliably set yet here even
+      // for an already-signed-in visitor — handleAuthChange's
+      // resumePendingJoinLink() call is what actually resolves this in
+      // that case. This prompt is only needed for the genuinely-signed-out
+      // path.
+      if (!currentUser) {
+        openSigninRequiredModal();
+      }
+    }
+
+    function resumePendingJoinLink() {
+      const token = pendingJoinToken;
+      if (!token) return;
+      pendingJoinToken = null;
+      redeemJoinToken(token);
+    }
+
+    async function redeemJoinToken(token) {
+      const banner = document.getElementById('enterprise-join-banner');
+      const textEl = document.getElementById('enterprise-join-banner-text');
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        const response = await fetch('/api/enterprise/join', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token || ''}`,
+          },
+          body: JSON.stringify({ token }),
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(body?.error?.message || `Request failed (${response.status})`);
+        }
+        banner.classList.remove('is-error');
+        textEl.textContent = `✓ You've joined ${body.org?.name || 'your organization'} — Premium is now active on your account.`;
+        banner.hidden = false;
+        refreshPremiumStatus();
+      } catch (err) {
+        console.error('Failed to redeem join link:', err);
+        banner.classList.add('is-error');
+        textEl.textContent = `Couldn't join: ${err.message}`;
+        banner.hidden = false;
+      }
+    }
+
+    window.dismissEnterpriseJoinBanner = function() {
+      document.getElementById('enterprise-join-banner').hidden = true;
+    };
+
     function handleAuthChange(session) {
       currentUser = session?.user || null;
       const signInBtn = document.getElementById('sign-in-btn');
@@ -222,6 +294,7 @@
         confirmLandingSignIn(currentUser.email);
         refreshPremiumStatus();
         resumePendingSaveQuery();
+        resumePendingJoinLink();
       } else {
         signInBtn.textContent = 'Sign in';
         signInBtn.title = '';
@@ -359,6 +432,7 @@
         ? `Member since ${joined.toLocaleDateString(undefined, { year: 'numeric', month: 'long' })}`
         : '';
       renderSettingsPremiumRow();
+      renderSettingsEnterpriseRow();
       document.getElementById('settings-modal').hidden = false;
     };
 
@@ -376,6 +450,396 @@
         : `<p class="help-text" style="margin:0 0 10px">Free plan: single-table workspaces, up to 50,000 rows. Upgrade for multi-table workspaces, table renaming, cross-table AI queries, relationship detection, and CSVs up to 500,000 rows. Early-adopter price while Synth is in beta.</p>
            <button class="auth-btn auth-btn-premium" onclick="closeSettingsPanel(); openPremiumPanel();">Go Premium ($9.99 once)</button>`;
     }
+
+    async function renderSettingsEnterpriseRow() {
+      const row = document.getElementById('settings-enterprise-row');
+      if (!row) return;
+      row.innerHTML = '<p class="help-text" style="margin:0">Loading…</p>';
+
+      let status;
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        const response = await fetch('/api/enterprise/org-status', {
+          headers: { 'Authorization': `Bearer ${session?.access_token || ''}` },
+        });
+        status = await response.json();
+      } catch (err) {
+        console.error('Failed to load Enterprise status:', err);
+        row.innerHTML = '<p class="help-text" style="margin:0">Couldn\'t load Enterprise status.</p>';
+        return;
+      }
+
+      if (!status.role) {
+        row.innerHTML = `<p class="help-text" style="margin:0 0 10px">For a school or company: pay once a year for the whole domain, generate a join link, and every verified member gets Premium for free.</p>
+           <button class="auth-btn auth-btn-premium" onclick="closeSettingsPanel(); openEnterprisePanel();">Set up Synth Enterprise</button>`;
+        return;
+      }
+
+      if (status.role === 'member') {
+        row.innerHTML = `<p class="help-text" style="margin:0 0 10px">Your Premium access comes from your organization (<strong>${escapeHtml(status.org?.domain || '')}</strong>). Contact your admin with any billing questions.</p>
+           <div id="enterprise-workrooms-member"></div>`;
+        // A workroom manager is still org_members.role === 'member' — the
+        // spec deliberately keeps "manager" out of the role column (see
+        // SYNTH_ENTERPRISE_SPEC.md §8 decision 1) — so this always tries to
+        // render the section; renderWorkroomsSection just leaves it empty
+        // if the API returns no workrooms for this caller.
+        renderWorkroomsSection('enterprise-workrooms-member', { allowCreate: false });
+        return;
+      }
+
+      // role === 'admin'
+      const org = status.org;
+      const renewalDate = org?.current_period_end ? new Date(org.current_period_end).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : 'unknown';
+      const autoRenewOn = !org?.cancel_at_period_end;
+      const aiOn = org?.ai_enabled !== false;
+      row.innerHTML = `<p class="help-text" style="margin:0 0 6px">Admin of <strong>${escapeHtml(org?.domain || '')}</strong></p>
+         <p class="help-text" style="margin:0 0 10px">${autoRenewOn
+            ? `Renews <strong>${renewalDate}</strong>. You'll get an email at 3 months, 1 month, and 1 week before renewal.`
+            : `Auto-renew is off — access continues through <strong>${renewalDate}</strong>, then your organization's Premium ends and its data is removed.`}</p>
+         <button id="enterprise-auto-renew-btn" class="auth-btn" onclick="toggleOrgAutoRenew(${autoRenewOn})">${autoRenewOn ? 'Turn off auto-renew' : 'Turn auto-renew back on'}</button>
+         <div id="enterprise-auto-renew-status" class="help-text" style="margin-top:6px"></div>
+         <div style="margin-top:14px;padding-top:14px;border-top:1px solid #e5e0d8">
+           <p class="help-text" style="margin:0 0 8px">Anyone with a <strong>${escapeHtml(org?.domain || '')}</strong> email who opens this link gets Premium for free.</p>
+           <button class="auth-btn" onclick="createEnterpriseJoinLink()">Get join link</button>
+           <div id="enterprise-join-link-output" style="margin-top:8px"></div>
+         </div>
+         <div style="margin-top:14px;padding-top:14px;border-top:1px solid #e5e0d8">
+           <p class="help-text" style="margin:0 0 8px">AI assistant for members: <strong>${aiOn ? 'On' : 'Off'}</strong></p>
+           <button id="enterprise-ai-toggle-btn" class="auth-btn" onclick="toggleOrgAi(${aiOn})">${aiOn ? 'Turn AI off for everyone' : 'Turn AI back on'}</button>
+           <div id="enterprise-ai-toggle-status" class="help-text" style="margin-top:6px"></div>
+         </div>
+         <div style="margin-top:14px;padding-top:14px;border-top:1px solid #e5e0d8">
+           <button class="auth-btn" onclick="openEnterpriseUsageModal()">View member AI usage</button>
+         </div>
+         <div style="margin-top:14px;padding-top:14px;border-top:1px solid #e5e0d8">
+           <p class="help-text" style="margin:0 0 8px">Workrooms — organize members into classes or teams, each with a manager.</p>
+           <div id="enterprise-workrooms-admin"></div>
+         </div>
+         <div style="margin-top:14px;padding-top:14px;border-top:1px solid #e5e0d8">
+           <p class="help-text" style="margin:0 0 8px">Dataset library — curated multi-table datasets for practicing joins.</p>
+           <div id="enterprise-template-list">Loading…</div>
+         </div>`;
+      renderEnterpriseTemplateList(status.enabledTemplates || []);
+      renderWorkroomsSection('enterprise-workrooms-admin', { allowCreate: true });
+    }
+
+    async function renderEnterpriseTemplateList(enabledTemplates) {
+      const listEl = document.getElementById('enterprise-template-list');
+      if (!listEl) return;
+      const enabledIds = new Set(enabledTemplates.map((t) => t.id));
+
+      let templates;
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        const response = await fetch('/api/enterprise/list-templates', {
+          headers: { 'Authorization': `Bearer ${session?.access_token || ''}` },
+        });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body?.error?.message || `Request failed (${response.status})`);
+        templates = body.templates;
+      } catch (err) {
+        listEl.innerHTML = `<p class="help-text" style="margin:0">Couldn't load dataset library: ${escapeHtml(err.message)}</p>`;
+        return;
+      }
+
+      if (!templates.length) {
+        listEl.innerHTML = '<p class="help-text" style="margin:0">No datasets available yet.</p>';
+        return;
+      }
+
+      listEl.innerHTML = templates.map((t) => {
+        const isOn = enabledIds.has(t.id);
+        return `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+             <span class="help-text" style="margin:0">${escapeHtml(t.name)}</span>
+             <button class="auth-btn" onclick="toggleTemplateEnabled('${t.id}', ${isOn})">${isOn ? 'Disable' : 'Enable'}</button>
+           </div>`;
+      }).join('');
+    }
+
+    window.toggleTemplateEnabled = async function(templateId, currentlyOn) {
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        const response = await fetch('/api/enterprise/enable-template', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token || ''}`,
+          },
+          body: JSON.stringify({ template_id: templateId, enabled: !currentlyOn }),
+        });
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(body?.error?.message || `Request failed (${response.status})`);
+        }
+        await renderSettingsEnterpriseRow();
+      } catch (err) {
+        console.error('Failed to toggle template:', err);
+        alert(`Couldn't update dataset library: ${err.message}`);
+      }
+    };
+
+    // ---- Workrooms (classes/teams with a manager role) ----
+    // Shared between the admin view (sees every workroom in the org, can
+    // create new ones) and a manager's own member-settings view (sees only
+    // the workroom(s) they manage) — same rendering and roster-edit logic
+    // either way, since api/enterprise/workrooms-list.js already scopes
+    // which workrooms come back based on the caller's role.
+
+    async function renderWorkroomsSection(containerId, { allowCreate }) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      container.innerHTML = '<p class="help-text" style="margin:0">Loading…</p>';
+
+      let workrooms;
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        const response = await fetch('/api/enterprise/workrooms-list', {
+          headers: { 'Authorization': `Bearer ${session?.access_token || ''}` },
+        });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body?.error?.message || `Request failed (${response.status})`);
+        workrooms = body.workrooms;
+      } catch (err) {
+        container.innerHTML = `<p class="help-text" style="margin:0">Couldn't load workrooms: ${escapeHtml(err.message)}</p>`;
+        return;
+      }
+
+      const createFormHtml = allowCreate ? `
+        <div style="margin-bottom:12px">
+          <input id="new-workroom-name" type="text" placeholder="Workroom name (e.g. Period 3 Statistics)" style="width:100%;padding:6px 8px;font-size:13px;border:1px solid #d8d2c6;border-radius:6px;margin-bottom:6px">
+          <select id="new-workroom-manager" style="width:100%;padding:6px 8px;font-size:13px;border:1px solid #d8d2c6;border-radius:6px;margin-bottom:6px">
+            <option value="">Loading members…</option>
+          </select>
+          <button class="auth-btn" onclick="createWorkroom()">Create workroom</button>
+          <div id="new-workroom-status" class="help-text" style="margin-top:6px"></div>
+        </div>` : '';
+
+      const listHtml = workrooms.length
+        ? workrooms.map((w) => `
+          <div style="margin-bottom:10px;padding:8px;border:1px solid #e5e0d8;border-radius:8px">
+            <p class="help-text" style="margin:0 0 4px"><strong>${escapeHtml(w.name)}</strong> — manager: ${escapeHtml(w.manager_email)}</p>
+            <div id="workroom-roster-${w.id}">
+              ${w.roster.length
+                ? w.roster.map((m) => `<div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:2px 0">
+                    <span>${escapeHtml(m.email)}</span>
+                    ${w.manager_id === currentUser?.id ? `<button class="auth-btn" style="padding:2px 8px;font-size:12px" onclick="removeFromWorkroomRoster('${w.id}', '${m.user_id}')">Remove</button>` : ''}
+                  </div>`).join('')
+                : '<p class="help-text" style="margin:0">No members yet.</p>'}
+            </div>
+            ${w.manager_id === currentUser?.id ? `
+              <div style="margin-top:6px;display:flex;gap:6px">
+                <select id="add-roster-select-${w.id}" style="flex:1;padding:4px 6px;font-size:12px;border:1px solid #d8d2c6;border-radius:6px">
+                  <option value="">Loading members…</option>
+                </select>
+                <button class="auth-btn" style="padding:4px 10px;font-size:12px" onclick="addToWorkroomRoster('${w.id}')">Add</button>
+              </div>` : ''}
+          </div>`).join('')
+        : '<p class="help-text" style="margin:0">No workrooms yet.</p>';
+
+      container.innerHTML = createFormHtml + listHtml;
+
+      // Populate every member-picker <select> (the create form's manager
+      // picker, plus one add-to-roster picker per workroom this viewer
+      // manages) from the same org roster fetch.
+      const selectsNeedingMembers = [
+        ...(allowCreate ? ['new-workroom-manager'] : []),
+        ...workrooms.filter((w) => w.manager_id === currentUser?.id).map((w) => `add-roster-select-${w.id}`),
+      ];
+      if (!selectsNeedingMembers.length) return;
+
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        const response = await fetch('/api/enterprise/org-roster', {
+          headers: { 'Authorization': `Bearer ${session?.access_token || ''}` },
+        });
+        const body = await response.json();
+        const options = (body.members || []).map((m) => `<option value="${m.user_id}">${escapeHtml(m.email)}</option>`).join('');
+        for (const selectId of selectsNeedingMembers) {
+          const select = document.getElementById(selectId);
+          if (select) select.innerHTML = options || '<option value="">No members</option>';
+        }
+      } catch (err) {
+        console.error('Failed to load org roster for picker:', err);
+      }
+    }
+
+    window.createWorkroom = async function() {
+      const nameEl = document.getElementById('new-workroom-name');
+      const managerEl = document.getElementById('new-workroom-manager');
+      const statusEl = document.getElementById('new-workroom-status');
+      const name = nameEl.value.trim();
+      const managerUserId = managerEl.value;
+      if (!name || !managerUserId) {
+        statusEl.textContent = 'Enter a name and pick a manager.';
+        return;
+      }
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        const response = await fetch('/api/enterprise/create-workroom', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token || ''}`,
+          },
+          body: JSON.stringify({ name, manager_user_id: managerUserId }),
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body?.error?.message || `Request failed (${response.status})`);
+        await renderWorkroomsSection('enterprise-workrooms-admin', { allowCreate: true });
+      } catch (err) {
+        console.error('Failed to create workroom:', err);
+        statusEl.textContent = `Couldn't create workroom: ${err.message}`;
+      }
+    };
+
+    window.addToWorkroomRoster = async function(workroomId) {
+      const select = document.getElementById(`add-roster-select-${workroomId}`);
+      const targetUserId = select?.value;
+      if (!targetUserId) return;
+      await workroomRosterAction(workroomId, 'add', targetUserId);
+    };
+
+    window.removeFromWorkroomRoster = async function(workroomId, targetUserId) {
+      await workroomRosterAction(workroomId, 'remove', targetUserId);
+    };
+
+    async function workroomRosterAction(workroomId, action, targetUserId) {
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        const response = await fetch('/api/enterprise/workroom-roster', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token || ''}`,
+          },
+          body: JSON.stringify({ workroom_id: workroomId, action, user_id: targetUserId }),
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body?.error?.message || `Request failed (${response.status})`);
+        // Re-render whichever section is currently visible — harmless
+        // no-op on the container that isn't in the DOM's admin/member branch.
+        if (document.getElementById('enterprise-workrooms-admin')) {
+          await renderWorkroomsSection('enterprise-workrooms-admin', { allowCreate: true });
+        }
+        if (document.getElementById('enterprise-workrooms-member')) {
+          await renderWorkroomsSection('enterprise-workrooms-member', { allowCreate: false });
+        }
+      } catch (err) {
+        console.error(`Failed to ${action} roster member:`, err);
+        alert(`Couldn't update roster: ${err.message}`);
+      }
+    }
+
+    window.toggleOrgAi = async function(currentlyOn) {
+      const btn = document.getElementById('enterprise-ai-toggle-btn');
+      const statusEl = document.getElementById('enterprise-ai-toggle-status');
+      if (btn) btn.disabled = true;
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        const response = await fetch('/api/enterprise/toggle-ai', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token || ''}`,
+          },
+          body: JSON.stringify({ enabled: !currentlyOn }),
+        });
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(body?.error?.message || `Request failed (${response.status})`);
+        }
+        await renderSettingsEnterpriseRow();
+      } catch (err) {
+        console.error('Failed to toggle org AI setting:', err);
+        if (statusEl) statusEl.textContent = `Couldn't update: ${err.message}`;
+        if (btn) btn.disabled = false;
+      }
+    };
+
+    window.openEnterpriseUsageModal = async function() {
+      document.getElementById('enterprise-usage-modal').hidden = false;
+      const body = document.getElementById('enterprise-usage-body');
+      body.innerHTML = '<p class="help-text" style="margin:0">Loading…</p>';
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        const response = await fetch('/api/enterprise/usage', {
+          headers: { 'Authorization': `Bearer ${session?.access_token || ''}` },
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(result?.error?.message || `Request failed (${response.status})`);
+        }
+        if (!result.members.length) {
+          body.innerHTML = '<p class="help-text" style="margin:0">No members yet.</p>';
+          return;
+        }
+        const rows = result.members.map((m) => `<tr>
+             <td>${escapeHtml(m.email)}</td>
+             <td>${escapeHtml(m.role)}</td>
+             <td style="text-align:right">${m.count_24h}</td>
+             <td style="text-align:right">${m.count_7d}</td>
+           </tr>`).join('');
+        body.innerHTML = `<table class="usage-table" style="width:100%;border-collapse:collapse;font-size:13px">
+             <thead><tr><th style="text-align:left">Member</th><th style="text-align:left">Role</th><th style="text-align:right">Last 24h</th><th style="text-align:right">Last 7d</th></tr></thead>
+             <tbody>${rows}</tbody>
+           </table>`;
+      } catch (err) {
+        console.error('Failed to load usage:', err);
+        body.innerHTML = `<p class="help-text" style="margin:0">Couldn't load usage: ${escapeHtml(err.message)}</p>`;
+      }
+    };
+
+    window.closeEnterpriseUsageModal = function() {
+      document.getElementById('enterprise-usage-modal').hidden = true;
+    };
+
+    window.createEnterpriseJoinLink = async function() {
+      const outputEl = document.getElementById('enterprise-join-link-output');
+      outputEl.innerHTML = '<p class="help-text" style="margin:0">Generating…</p>';
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        const response = await fetch('/api/enterprise/create-join-link', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${session?.access_token || ''}` },
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(body?.error?.message || `Request failed (${response.status})`);
+        }
+        outputEl.innerHTML = `<input type="text" readonly value="${escapeHtml(body.url)}" style="width:100%;padding:6px 8px;font-size:13px;border:1px solid #d8d2c6;border-radius:6px;margin-bottom:6px" onclick="this.select()">
+           <button class="auth-btn" onclick="navigator.clipboard.writeText('${escapeHtml(body.url)}').then(() => { const s = document.getElementById('enterprise-join-link-copied'); if (s) { s.hidden = false; setTimeout(() => s.hidden = true, 2000); } })">Copy link</button>
+           <span id="enterprise-join-link-copied" class="help-text" hidden style="margin-left:8px">Copied!</span>`;
+      } catch (err) {
+        console.error('Failed to create join link:', err);
+        outputEl.innerHTML = `<p class="help-text" style="margin:0">Couldn't generate a link: ${escapeHtml(err.message)}</p>`;
+      }
+    };
+
+    window.toggleOrgAutoRenew = async function(currentlyOn) {
+      const btn = document.getElementById('enterprise-auto-renew-btn');
+      const statusEl = document.getElementById('enterprise-auto-renew-status');
+      if (btn) btn.disabled = true;
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        const response = await fetch('/api/enterprise/toggle-auto-renew', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token || ''}`,
+          },
+          body: JSON.stringify({ enabled: !currentlyOn }),
+        });
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(body?.error?.message || `Request failed (${response.status})`);
+        }
+        await renderSettingsEnterpriseRow();
+      } catch (err) {
+        console.error('Failed to toggle auto-renew:', err);
+        if (statusEl) statusEl.textContent = `Couldn't update auto-renew: ${err.message}`;
+        if (btn) btn.disabled = false;
+      }
+    };
 
     window.openCancelPremiumModal = function() {
       document.getElementById('cancel-premium-modal').hidden = false;
@@ -1044,6 +1508,34 @@
       } catch (err) {
         sessList.innerHTML = `<div class="empty">Couldn't load sessions: ${escapeHtml(err.message)}</div>`;
       }
+
+      // Dataset Library — only shown to org members whose org has enabled
+      // at least one template (most users have no org at all, so this stays
+      // hidden for them rather than showing an empty section).
+      const librarySection = document.getElementById('cloud-library-section');
+      const libraryList = document.getElementById('cloud-library-list');
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        const response = await fetch('/api/enterprise/org-status', {
+          headers: { 'Authorization': `Bearer ${session?.access_token || ''}` },
+        });
+        const status = await response.json();
+        const enabledTemplates = response.ok ? (status.enabledTemplates || []) : [];
+        if (enabledTemplates.length) {
+          librarySection.hidden = false;
+          libraryList.innerHTML = enabledTemplates.map((t) => `
+            <div class="cloud-item">
+              <span>${escapeHtml(t.name)}</span>
+              <button class="cloud-load-btn" onclick="loadEnterpriseTemplate('${t.id}', '${escapeHtml(t.name)}')">Load</button>
+            </div>`).join('');
+        } else {
+          librarySection.hidden = true;
+        }
+      } catch (err) {
+        // Non-critical section — fail silently rather than block the two
+        // lists above, which is the actual reason someone opened this panel.
+        librarySection.hidden = true;
+      }
     };
 
     window.closeCloudPanel = function() {
@@ -1287,6 +1779,8 @@
 
     let premiumCheckoutStarted = false;
     let mountedCheckoutForm = null;
+    let enterpriseCheckoutStarted = false;
+    let mountedEnterpriseCheckoutForm = null;
 
     window.openPremiumPanel = function() {
       if (!currentUser) {
@@ -1320,6 +1814,31 @@
 
     window.closePremiumSigninModal = function() {
       document.getElementById('premium-signin-modal').hidden = true;
+    };
+
+    window.openEnterprisePanel = function() {
+      if (!currentUser) {
+        document.getElementById('premium-signin-modal').hidden = false;
+        return;
+      }
+      document.getElementById('enterprise-modal').hidden = false;
+      if (!enterpriseCheckoutStarted) {
+        enterpriseCheckoutStarted = true;
+        startEnterpriseCheckout();
+      }
+    };
+
+    window.closeEnterprisePanel = function() {
+      document.getElementById('enterprise-modal').hidden = true;
+      // Same reason as closePremiumPanel: the embedded Stripe form isn't a
+      // real child of the modal's hidden state, so it has to be unmounted
+      // explicitly or it keeps floating on the page.
+      if (mountedEnterpriseCheckoutForm) {
+        try { mountedEnterpriseCheckoutForm.unmount(); } catch (err) { console.error('Failed to unmount enterprise checkout form:', err); }
+        mountedEnterpriseCheckoutForm = null;
+      }
+      document.getElementById('enterprise-checkout-form').innerHTML = '';
+      enterpriseCheckoutStarted = false;
     };
 
     window.signInThenGoPremium = function() {
@@ -1408,6 +1927,85 @@
         console.error('Stripe checkout error:', err);
         statusEl.textContent = `Couldn't start checkout: ${err.message}`;
         premiumCheckoutStarted = false; // allow retry on next open
+      }
+    }
+
+    async function startEnterpriseCheckout() {
+      const statusEl = document.getElementById('enterprise-checkout-status');
+
+      if (!stripeClient) {
+        statusEl.textContent = 'Checkout isn\'t configured yet. Set a real Stripe publishable key (see STRIPE_INTEGRATION_TODO.md).';
+        return;
+      }
+
+      try {
+        // The server derives the org domain from this token's verified
+        // email — it doesn't trust anything from the client body.
+        const { data: { session } } = await sb.auth.getSession();
+        const clientSecretPromise = fetch('/api/enterprise/create-checkout-session', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token || ''}`
+          },
+        })
+          .then(async (response) => {
+            if (!response.ok) {
+              const body = await response.json().catch(() => ({}));
+              throw new Error(body?.error?.message || `Checkout session request failed (${response.status})`);
+            }
+            return response.json();
+          })
+          .then((json) => json.client_secret);
+
+        // See the matching comment in startPremiumCheckout above —
+        // initCheckoutFormSdk doesn't reject on a failed clientSecretPromise
+        // on its own, so this is what turns a failed fetch into visible
+        // status text instead of a silent unhandled rejection.
+        clientSecretPromise.catch((err) => {
+          statusEl.textContent = `Couldn't start checkout: ${err.message}`;
+          enterpriseCheckoutStarted = false;
+        });
+
+        const appearance = {
+          theme: 'flat',
+          labels: 'auto',
+          inputs: 'spaced',
+          variables: {
+            borderRadius: '4px',
+            colorBackground: '#ffffff',
+            colorDanger: '#df1b41',
+            colorPrimary: '#0570de',
+            colorSuccess: '#00c853',
+            colorText: '#30313d',
+            fontFamily: 'Inter',
+            fontSizeBase: '16px',
+            spacingUnit: '4px',
+          },
+        };
+
+        const checkout = await stripeClient.initCheckoutFormSdk({ clientSecret: clientSecretPromise, appearance });
+        statusEl.textContent = '';
+
+        const form = checkout.createForm({ layout: 'expanded' });
+        form.mount('#enterprise-checkout-form');
+        mountedEnterpriseCheckoutForm = form;
+
+        const loadActionsResult = await checkout.loadActions();
+        if (loadActionsResult.type === 'success') {
+          form.on('confirm', async (event) => {
+            try {
+              await loadActionsResult.actions.confirm({ formConfirmEvent: event });
+            } catch (error) {
+              console.error('Payment confirmation error:', error);
+              statusEl.textContent = 'Something went wrong confirming payment. Please try again.';
+            }
+          });
+        }
+      } catch (err) {
+        console.error('Stripe enterprise checkout error:', err);
+        statusEl.textContent = `Couldn't start checkout: ${err.message}`;
+        enterpriseCheckoutStarted = false; // allow retry on next open
       }
     }
 
@@ -1746,6 +2344,135 @@
       } catch (err) {
         hideLoadingOverlay();
         alert('Failed to load workspace: ' + err.message);
+      }
+    };
+
+    // Loads a dataset-library template (see api/enterprise/load-template.js)
+    // as a brand-new saved workspace. Mirrors loadCloudWorkspace's tail
+    // (same in-browser SQLite setup, same final UI calls) and the "save
+    // workspace" flow's upload pattern (same sb.storage.from('csvs').upload
+    // + sb.from('datasets').insert calls) — a loaded template becomes a
+    // completely normal workspace the user owns, indistinguishable from one
+    // built by manually uploading these same CSVs.
+    window.loadEnterpriseTemplate = async function(templateId, templateName) {
+      closeCloudPanel();
+      showLoadingOverlay();
+
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        const response = await fetch('/api/enterprise/load-template', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token || ''}`,
+          },
+          body: JSON.stringify({ template_id: templateId }),
+        });
+        const templateData = await response.json();
+        if (!response.ok) throw new Error(templateData?.error?.message || `Request failed (${response.status})`);
+
+        const { data: ws, error: wsErr } = await sb.from('workspaces')
+          .insert({ user_id: currentUser.id, name: templateData.template.name })
+          .select().single();
+        if (wsErr) throw wsErr;
+        const workspaceId = ws.id;
+
+        db = new SQL.Database();
+        tables = [];
+        activeTableName = null;
+
+        for (const t of templateData.tables) {
+          const fetched = await fetch(t.url);
+          if (!fetched.ok) throw new Error(`Couldn't download ${t.table_name} (${fetched.status})`);
+          const blob = await fetched.blob();
+          const text = await blob.text();
+          const { headers, rows } = await parseCSVText(text);
+
+          const columnDefs = headers.map(h => `"${h}" TEXT`).join(', ');
+          db.run(`CREATE TABLE "${t.table_name}" (${columnDefs})`);
+          const stmt = db.prepare(`INSERT INTO "${t.table_name}" VALUES (${headers.map(() => '?').join(', ')})`);
+          rows.forEach(row => {
+            if (row.length === headers.length) stmt.run(row);
+            else if (row.length < headers.length) stmt.run([...row, ...Array(headers.length - row.length).fill('')]);
+            else stmt.run(row.slice(0, headers.length));
+          });
+          stmt.free();
+
+          tables.push({ name: t.table_name, fileName: `${t.table_name}.csv`, rowCount: rows.length, columns: headers });
+
+          // Persist into the member's own workspace exactly like a manual
+          // upload would — this is what makes the loaded template a normal,
+          // fully-owned workspace afterward (reloadable, renameable,
+          // deletable) instead of something special-cased.
+          const path = `${currentUser.id}/${workspaceId}/${t.table_name}.csv`;
+          const { error: upErr } = await sb.storage.from('csvs').upload(path, blob, { upsert: true, contentType: 'text/csv' });
+          if (upErr) throw upErr;
+          const { error: dsErr } = await sb.from('datasets').insert({
+            user_id: currentUser.id,
+            workspace_id: workspaceId,
+            filename: `${t.table_name}.csv`,
+            table_name: t.table_name,
+            storage_path: path,
+            row_count: rows.length,
+            columns: headers,
+          });
+          if (dsErr) throw dsErr;
+        }
+
+        activeTableName = tables[0].name;
+        focusedTableNames = new Set([activeTableName]);
+
+        relationships = templateData.relationships.map(r => ({
+          id: `${r.from_table}.${r.from_column}|${r.to_table}.${r.to_column}`,
+          fromTable: r.from_table,
+          fromColumn: r.from_column,
+          toTable: r.to_table,
+          toColumn: r.to_column,
+          confirmed: true,
+          manual: true,
+          cardinality: null,
+        }));
+        rejectedRelationshipKeys = new Set();
+
+        if (relationships.length) {
+          const { error: relErr } = await sb.from('workspace_relationships').insert(
+            relationships.map(r => ({
+              workspace_id: workspaceId,
+              from_table: r.fromTable,
+              from_column: r.fromColumn,
+              to_table: r.toTable,
+              to_column: r.toColumn,
+            }))
+          );
+          if (relErr) throw relErr;
+        }
+
+        currentWorkspaceId = workspaceId;
+        currentWorkspaceName = ws.name;
+        currentCSVFile = null;
+        csvLoaded = true;
+
+        const statusEl = document.getElementById('file-info');
+        statusEl.textContent = `Workspace "${ws.name}" (${tables.length} table${tables.length === 1 ? '' : 's'})`;
+        statusEl.classList.remove('error');
+        statusEl.classList.add('loaded');
+
+        document.getElementById('query-input').value = `SELECT * FROM ${activeTableName} LIMIT 100`;
+
+        markWorkspaceSynced();
+        renderTableChips();
+        recomputeRelationships();
+        populateManualFkTableSelects();
+        updateAIState();
+        renderTableView();
+
+        runLoadingAnimation(() => {
+          revealApp();
+          resetQueryInputView();
+        });
+      } catch (err) {
+        hideLoadingOverlay();
+        alert('Failed to load dataset: ' + err.message);
       }
     };
 
@@ -3957,6 +4684,8 @@
     // editingQueryId, tablePendingDelete, etc. — still runs.
     const MODAL_CLOSE_FN = {
       'premium-modal': 'closePremiumPanel',
+      'enterprise-modal': 'closeEnterprisePanel',
+      'enterprise-usage-modal': 'closeEnterpriseUsageModal',
       'premium-signin-modal': 'closePremiumSigninModal',
       'signin-required-modal': 'closeSigninRequiredModal',
       'forgot-password-modal': 'closeForgotPasswordModal',
@@ -5730,6 +6459,19 @@
       font-size: 18px;
       cursor: pointer;
       line-height: 1;
+    }
+
+    /* Same layout as .premium-success-banner, reused for the join-link
+       result banner, which — unlike the payment-success banner — can also
+       report an error (a bad/expired token, a domain mismatch). */
+    .premium-success-banner.is-error {
+      background: #fbeaea;
+      border-bottom-color: #e3a9a9;
+      color: #8a2c2c;
+    }
+
+    .premium-success-banner.is-error button {
+      color: #8a2c2c;
     }
 
     .upload-btn {
@@ -7727,6 +8469,11 @@
     <button onclick="dismissPremiumSuccessBanner()" aria-label="Dismiss">&times;</button>
   </div>
 
+  <div id="enterprise-join-banner" class="premium-success-banner" hidden>
+    <span id="enterprise-join-banner-text"></span>
+    <button onclick="dismissEnterpriseJoinBanner()" aria-label="Dismiss">&times;</button>
+  </div>
+
   <div id="premium-modal" class="modal-overlay" hidden>
     <div class="modal">
       <div class="modal-header">
@@ -7833,8 +8580,46 @@
         <label class="field-label">Plan</label>
         <div id="settings-premium-row"></div>
       </div>
+      <div class="modal-section">
+        <label class="field-label">Synth Enterprise</label>
+        <div id="settings-enterprise-row"></div>
+      </div>
       <div class="modal-section modal-section-signout">
         <button class="auth-btn" onclick="signOutUser()">Sign out</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="enterprise-modal" class="modal-overlay" hidden>
+    <div class="modal">
+      <div class="modal-header">
+        <div class="section-label">Synth Enterprise</div>
+        <button class="modal-close" onclick="closeEnterprisePanel()">&times;</button>
+      </div>
+      <div class="modal-section">
+        <ul class="premium-feature-list">
+          <li>Every verified member of your domain gets Premium for free via a join link</li>
+          <li>Admin console: turn AI on/off for everyone, see usage across your org</li>
+          <li>Workrooms: organize members into classes/teams with a manager role</li>
+          <li>A curated, joinable university dataset for practicing real SQL joins</li>
+        </ul>
+        <p class="premium-onetime-note">Billed yearly, per organization — not per seat.</p>
+      </div>
+      <div class="modal-section">
+        <div id="enterprise-checkout-status" class="help-text"></div>
+        <div id="enterprise-checkout-form"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="enterprise-usage-modal" class="modal-overlay" hidden>
+    <div class="modal">
+      <div class="modal-header">
+        <div class="section-label">Member AI usage</div>
+        <button class="modal-close" onclick="closeEnterpriseUsageModal()">&times;</button>
+      </div>
+      <div class="modal-section">
+        <div id="enterprise-usage-body"></div>
       </div>
     </div>
   </div>
@@ -7865,6 +8650,10 @@
       <div class="modal-section">
         <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#128172;</span> Saved Chat Sessions</div>
         <div id="cloud-sessions-list" class="cloud-list"></div>
+      </div>
+      <div id="cloud-library-section" class="modal-section" hidden>
+        <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#128218;</span> Dataset Library</div>
+        <div id="cloud-library-list" class="cloud-list"></div>
       </div>
     </div>
   </div>

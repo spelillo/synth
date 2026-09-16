@@ -31,9 +31,24 @@ export async function checkAndRecordAiUsage(userId) {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('is_premium')
+    .select('is_premium, org_id')
     .eq('id', userId)
     .maybeSingle();
+
+  // An org admin can turn AI off for every member — this overrides
+  // is_premium entirely (an org member with organization-granted Premium
+  // still gets blocked), so it's checked first, before either rate limit.
+  if (profile?.org_id) {
+    const { data: org } = await supabase
+      .from('organizations')
+      .select('ai_enabled')
+      .eq('id', profile.org_id)
+      .maybeSingle();
+    if (org && org.ai_enabled === false) {
+      return { allowed: false, message: 'AI has been disabled by your organization admin.' };
+    }
+  }
+
   const dailyLimit = profile?.is_premium ? DAILY_LIMIT_PREMIUM : DAILY_LIMIT_FREE;
 
   const now = Date.now();

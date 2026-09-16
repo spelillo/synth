@@ -1,6 +1,69 @@
 # Stripe Integration — TODO
 
-This is the single source of truth for what's left before Premium checkout can go live. Synth had no existing Stripe code, so this was a from-scratch integration (Scenario B) using an embedded Checkout Form (Stripe-hosted iframe via `initCheckoutFormSdk`), not a redirect-based Checkout.
+This is the single source of truth for what's left before checkout can go live. Synth now has **two independent Checkout flows**: personal Premium ($9.99 one-time, documented below) and Synth Enterprise (yearly subscription, documented in its own section further down). Both use the same embedded Checkout Form pattern (Stripe-hosted iframe via `initCheckoutFormSdk`), not a redirect-based Checkout.
+
+## Synth Enterprise checkout (yearly subscription)
+
+**Scenario A** — an existing Checkout Session call was found ([api/enterprise/create-checkout-session.js](api/enterprise/create-checkout-session.js), built earlier in this same session for the Synth Enterprise epic — see [SYNTH_ENTERPRISE_SPEC.md](SYNTH_ENTERPRISE_SPEC.md)), so only its parameters were updated to match the freshly re-configured Checkout Studio setup, per your instruction to make this a yearly subscription.
+
+**Pricing model reversal — flag before going live.** [SYNTH_ENTERPRISE_SPEC.md §3](SYNTH_ENTERPRISE_SPEC.md) locked Enterprise as a flat one-time fee specifically to avoid subscription lifecycle work. This checkout is now `mode: "subscription"` per your explicit instruction, which reopens that gap: **nothing in [api/stripe-webhook.js](api/stripe-webhook.js) reacts to a lapsed subscription.** If a school's card fails or they cancel, `organizations.ai_enabled` stays `true` and every member's `profiles.is_premium` stays `true` forever — there's no code path that disables an org. Before charging a real school annually, add handling for `invoice.payment_failed` and `customer.subscription.deleted` that flips something on the `organizations` row (e.g. a new `subscription_status` column) and gates `org_members`' premium off it. Not built now — this was scoped as a minimal parameter update to an existing call, not a new subscription-lifecycle feature.
+
+### Values to Replace
+
+None — `STRIPE_ENTERPRISE_PRICE_ID` is already set (you added it to Vercel's shared environment variables). Nothing in [api/enterprise/create-checkout-session.js](api/enterprise/create-checkout-session.js) is a placeholder.
+
+**On "couldn't add it in Project Variables":** functionally this doesn't matter — a Vercel **Shared Environment Variable** still resolves to `process.env.STRIPE_ENTERPRISE_PRICE_ID` inside the function exactly like a project-level one, as long as it's linked/enabled for this project (Vercel prompts you to select which projects a shared var applies to when you create or edit it). The most common reasons the Project Variables tab itself refused the add: a variable with that exact name already exists in this project at a conflicting scope (Production/Preview/Development), or your role on the team is below "can manage environment variables" for that project. Worth a quick check in Project Settings → Environment Variables → confirm `STRIPE_ENTERPRISE_PRICE_ID` shows up there (inherited from the shared var) before deploying — if it's not listed as available to this project, the shared var isn't actually linked yet.
+
+### Configured Parameters
+
+These parameters were configured in Checkout Studio and are already set correctly in [api/enterprise/create-checkout-session.js](api/enterprise/create-checkout-session.js):
+
+| Parameter | Value |
+|-----------|-------|
+| `mode` | `"subscription"` — changed from `"payment"` per your instruction to make Enterprise a yearly subscription instead of the spec's original one-time fee. |
+| `ui_mode` | `"form"` (Stripe SDK `^22.6.2` is ≥ 21.0.0) |
+| `billing_address_collection` | `"auto"` |
+| `phone_number_collection` | `{ enabled: false }` |
+| `automatic_tax` | `{ enabled: false }` |
+| `payment_method_collection` | `"always"` — added because it's only valid (and only meaningful) in `mode: "subscription"`; wasn't present before since the checkout was one-time. |
+| `submit_type` | `"auto"` |
+| `integration_identifier` | `"custom_embedded_web_0003"` — bumped from `"custom_embedded_web_0002"` to match the current Checkout Studio config. |
+
+API version bumped to `2026-08-26.dahlia; custom_checkout_payment_form_preview=v1` in **[api/enterprise/create-checkout-session.js](api/enterprise/create-checkout-session.js) only** — deliberately **not** changed in [api/create-checkout-session.js](api/create-checkout-session.js) or [api/stripe-webhook.js](api/stripe-webhook.js), which stay pinned to `2026-03-25.dahlia` for the personal Premium flow. Stripe versions each webhook endpoint independently of whatever API version was used to create a given session, so the two checkouts running different pinned versions is safe.
+
+**Untouched, kept as-is:** `return_url` and `client_reference_id` — same reasoning as the personal Premium checkout below: neither is a Checkout Studio appearance/behavior knob, both are load-bearing integration wiring (`client_reference_id` here points at a `pending_organizations` row, not a user id — see the comment at the top of the file for why).
+
+### Setup and next steps
+
+**Client-side (done):** [synth.html](synth.html) now has an "Set up Synth Enterprise" button in Account Settings, an `#enterprise-modal` with `#enterprise-checkout-form`/`#enterprise-checkout-status`, and `openEnterprisePanel()`/`closeEnterprisePanel()`/`startEnterpriseCheckout()` — an exact mirror of the personal Premium checkout's `initCheckoutFormSdk` → `createForm` → `mount` → `loadActions` → `confirm` wiring, pointed at `/api/enterprise/create-checkout-session` instead.
+
+**Update — the lifecycle gap above is now closed.** Per your follow-up instructions (3-month/1-month/1-week renewal notices, cancel-anytime-keep-access-until-period-end, wipe org data — not logins — on actual lapse), the full subscription lifecycle is now built:
+
+- `supabase/migrations/20260918000000_org_subscription_lifecycle.sql` — adds `stripe_customer_id`, `stripe_subscription_id`, `current_period_end`, `cancel_at_period_end`, and the three `notice_*_sent_at` columns to `organizations`.
+- [api/_mailer.js](api/_mailer.js) — Gmail SMTP + app password (`nodemailer`), added to `package.json`.
+- [api/cron/enterprise-renewal-notices.js](api/cron/enterprise-renewal-notices.js) — daily Vercel Cron (see `vercel.json`), emails the admin once per threshold per billing period.
+- [api/enterprise/toggle-auto-renew.js](api/enterprise/toggle-auto-renew.js) — admin-only, wraps Stripe's `cancel_at_period_end`.
+- [api/enterprise/org-status.js](api/enterprise/org-status.js) — lets the client show renewal date/auto-renew state.
+- [api/stripe-webhook.js](api/stripe-webhook.js) — now handles `customer.subscription.updated` (tracks renewal, resets notice flags on an actual renewal) and `customer.subscription.deleted` (revokes every member's org-granted Premium, then deletes the `organizations` row — cascades to `org_members`/`org_join_links`/`workrooms`; does **not** touch anyone's login).
+- `synth.html` — Account Settings' Enterprise section is now dynamic (`renderSettingsEnterpriseRow()`): shows renewal date + an auto-renew toggle for the admin.
+
+See [SYNTH_ENTERPRISE_SPEC.md §17](SYNTH_ENTERPRISE_SPEC.md) for the full design writeup.
+
+**Price confirmed:** $499/year, set up as a recurring Stripe Price for `STRIPE_ENTERPRISE_PRICE_ID`.
+
+**Still needed before this is live:**
+1. Double check `STRIPE_ENTERPRISE_PRICE_ID` in the Dashboard is actually `recurring: { interval: "year" }`, not one-time — `mode: "subscription"` will reject a one-time Price at checkout-creation time with a Stripe error.
+2. Run the new migration: `supabase db push` (or paste `20260918000000_org_subscription_lifecycle.sql` into the SQL Editor).
+3. `npm install` — `nodemailer` was added to `package.json` but isn't installed yet.
+4. Set new env vars in Vercel: `GMAIL_USER` (the sending Gmail address), `GMAIL_APP_PASSWORD` (a 16-character [Gmail app password](https://support.google.com/accounts/answer/185833), not your real password), and `CRON_SECRET` (any random string — Vercel sends it back as a bearer token on each cron invocation; the cron route refuses to run without it configured).
+5. In Stripe's Dashboard, subscribe the webhook endpoint to `customer.subscription.updated` and `customer.subscription.deleted` in addition to the three already recommended (`checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`) — the code now handles both but Stripe won't send them until the endpoint is subscribed.
+6. Test end-to-end with the Stripe CLI: `stripe trigger customer.subscription.updated` and `stripe trigger customer.subscription.deleted` against a real test-mode Enterprise org to confirm the renewal-tracking and teardown paths actually fire — `stripe listen --forward-to localhost:3000/api/stripe-webhook` first if testing locally.
+7. Note: Gmail SMTP has sending-volume limits meant for personal use (roughly 500/day) — fine at current Enterprise scale (at most 3 emails/org/year), worth switching to a real transactional provider (Resend, SendGrid) if Enterprise ever has more than a handful of orgs.
+8. This entry point (Account Settings → "Set up Synth Enterprise") is a placeholder location — no dedicated Enterprise marketing/landing page exists yet. Fine for testing, worth revisiting before a real sales motion.
+
+---
+
+## Personal Premium checkout ($9.99 one-time)
 
 ## Checkout reconfigured (Scenario A update)
 

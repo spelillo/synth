@@ -1,0 +1,51 @@
+Student ID,First Name,Last Name,City,State,College,Major,Minor,Grade,GPA,Scholarship,Scholarship Amount,Tuition Total
+-STD 1001,Liam,Smith,Raleigh,NC,Art,Fine Arts,None,Freshman,2.71,Y,7500,24000
+-STD 1002,Emma,Johnson,Miami,FL,Business,Accounting,Philosophy,Senior,3.5,Y,5000,32000
+-STD 1003,Noah,Williams,Philadelphia,PA,Science,Chemistry,None,Freshman,3.46,Y,12500,28000
+-STD 1004,Olivia,Brown,Atlanta,GA,History,Ancient Civilizations,Philosophy,Sophomore,3.56,Y,5000,24000
+-STD 1005,Ethan,Jones,Phoenix,AZ,History,Ancient Civilizations,Economics,Sophomore,3.86,N,0,32000
+-STD 1006,Ava,Garcia,San Francisco,CA,Engineering,Electrical Engineering,Data Science,Senior,2.84,Y,5000,32000
+-STD 1007,Mason,Miller,Salt Lake City,UT,History,Archival Studies,Data Science,Junior,2.94,Y,12500,36000
+-STD 1008,Sophia,Davis,Boston,MA,Business,Finance,Psychology,Sophomore,3.7,Y,12500,24000
+-STD 1009,Logan,Rodriguez,Charlotte,NC,History,Archival Studies,Creative Writing,Junior,3.94,Y,15000,24000
+-STD 1010,Isabella,Martinez,Indianapolis,IN,Art,Music Performance,Economics,Junior,3.23,Y,3500,32000
+-STD 1011,Lucas,Hernandez,Dallas,TX,Science,Computer Science,None,Junior,3.77,N,0,28000
+-STD 1012,Mia,Lopez,Denver,CO,Art,Fine Arts,Sociology,Freshman,3.45,Y,3500,24000
+-STD 1013,Jackson,Gonzalez,Philadelphia,PA,Art,Fine Arts,None,Sophomore,3.82,Y,3500,36000
+-STD 1014,Charlotte,Wilson,Boston,MA,Law,Pre-Law / Political Science,Psychology,Senior,3.91,Y,7500,36000
+-STD 1015,Aiden,Anderson,San Francisco,CA,Law,Criminology,None,Sophomore,3.6,Y,15000,32000
+-STD 1016,Amelia,Thomas,Minneapolis,MN,Law,Legal Studies,Economics,Sophomore,2.95,Y,3500,28000
+-STD 1017,Oliver,Taylor,Salt Lake City,UT,Science,Computer Science,Economics,Freshman,2.95,Y,7500,24000
+-STD 1018,Harper,Moore,Dallas,TX,Science,Chemistry,None,Senior,2.93,Y,15000,36000
+-STD 1019,Jacob,Jackson,Miami,FL,History,Ancient Civilizations,Statistics,Freshman,2.78,Y,7500,36000
+-STD 1020,Evelyn,Martin,Portland,OR,History,Archival Studies,None,Freshman,2.73,N,0,32000
+-STD 1021,Elijah,Lee,Seattle,WA,Science,Biology,Statistics,Senior,2.84,Y,7500,36000
+-STD 1022,Abigail,Perez,Miami,FL,Business,Accounting,Sociology,Freshman,2.72,N,0,24000
+-STD 1023,James,Thompson,Boston,MA,Science,Biology,Data Science,Senior,3.29,Y,3500,28000
+-STD 1024,Emily,White,Charlotte,NC,Business,Accounting,Philosophy,Senior,3.03,N,0,36000
+-STD 1025,Benjamin,Harris,Denver,CO,Science,Chemistry,Statistics,Freshman,3.42,N,0,24000
+-STD 1026,Elizabeth,Sanchez,Phoenix,AZ,Business,Finance,Mathematics,Senior,3.32,N,0,28000
+-STD 1027,Alexander,Clark,Chicago,IL,Law,Pre-Law / Political Science,Psychology,Freshman,3.44,N,0,28000
+-STD 1028,Mila,Ramirez,Charlotte,NC,Business,Marketing,Mathematics,Freshman,3.47,Y,15000,32000
+-STD 1029,Sebastian,Lewis,Columbus,OH,Science,Chemistry,Statistics,Junior,3.18,N,0,32000
+-STD 1030,Ella,Robinson,Minneapolis,MN,Art,Graphic Design,None,Senior,3.48,N,0,24000
+-STD 1031,Henry,Walker,Boston,MA,Law,Pre-Law / Political Science,Sociology,Junior,2.83,Y,3500,28000
+-STD 1032,Avery,Young,Philadelphia,PA,Art,Fine Arts,Creative Writing,Junior,3.46,N,0,24000
+-STD 1033,Daniel,Allen,Indianapolis,IN,Art,Graphic Design,Psychology,Junior,2.8,Y,15000,28000
+-STD 1034,Sofia,King,Columbus,OH,Art,Fine Arts,None,Junior,2.92,N,0,32000
+-STD 1035,Matthew,Wright,Dallas,TX,History,Ancient Civilizations,None,Freshman,3.49,Y,3500,24000
+-STD 1036,Camila,Scott,Phoenix,AZ,Science,Chemistry,Psychology,Senior,3.38,Y,12500,24000
+-STD 1037,Samuel,Torres,Seattle,WA,Business,Marketing,Sociology,Freshman,3.76,N,0,28000
+-STD 1038,Aria,Nguyen,Portland,OR,Science,Computer Science,Philosophy,Junior,3.85,Y,7500,28000
+-STD 1039,David,Hill,Miami,FL,Engineering,Mechanical Engineering,Spanish,Senior,3.95,N,0,28000
+-STD 1040,Scarlett,Flores,Miami,FL,Science,Biology,Data Science,Freshman,2.89,Y,10000,28000
+-STD 1041,Joseph,Green,Columbus,OH,Science,Computer Science,Data Science,Freshman,3.79,Y,5000,36000
+-STD 1042,Victoria,Adams,Philadelphia,PA,Art,Fine Arts,Statistics,Freshman,3.53,Y,7500,32000
+-STD 1043,Carter,Nelson,Boston,MA,Art,Music Performance,None,Senior,3.55,N,0,32000
+-STD 1044,Madison,Baker,Austin,TX,Business,Business Analytics,Psychology,Junior,2.7,N,0,36000
+-STD 1045,Owen,Hall,Philadelphia,PA,Engineering,Electrical Engineering,Data Science,Freshman,3.16,N,0,28000
+-STD 1046,Luna,Rivera,Columbus,OH,Business,Accounting,None,Sophomore,3.13,Y,15000,32000
+-STD 1047,Wyatt,Campbell,Raleigh,NC,Art,Graphic Design,None,Junior,3.32,N,0,36000
+-STD 1048,Grace,Mitchell,Phoenix,AZ,History,Archival Studies,Philosophy,Sophomore,2.91,N,0,36000
+-STD 1049,John,Carter,Atlanta,GA,Law,Criminology,Philosophy,Senior,3.38,Y,7500,32000
+-STD 1050,Chloe,Roberts,San Francisco,CA,History,Archival Studies,Mathematics,Junior,3.27,Y,15000,28000

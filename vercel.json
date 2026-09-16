@@ -6,5 +6,8 @@
     { "source": "/privacy", "destination": "/privacy.html" },
     { "source": "/pricing", "destination": "/pricing.html" },
     { "source": "/query-csv-with-sql", "destination": "/query-csv-with-sql.html" }
+  ],
+  "crons": [
+    { "path": "/api/cron/enterprise-renewal-notices", "schedule": "0 13 * * *" }
   ]
 }
