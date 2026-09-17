@@ -59,8 +59,8 @@ export default async function handler(req, res) {
       // Ties this session back to a Supabase user — the webhook reads this
       // to know whose profiles.is_premium to flip on.
       client_reference_id: userId,
-      // Synth Premium — $9.99 one-time (price_1UEAIYRqXDpXXBnZ1F8tb0r7, test mode)
-      line_items: [{ price: 'price_1UEAIYRqXDpXXBnZ1F8tb0r7', quantity: 1 }],
+      // Synth Premium — $9.99 one-time (price_1UGhnpRsooZUyqKON1Pm4aXY, live mode)
+      line_items: [{ price: 'price_1UGhnpRsooZUyqKON1Pm4aXY', quantity: 1 }],
       billing_address_collection: 'auto',
       phone_number_collection: { enabled: false },
       automatic_tax: { enabled: false },

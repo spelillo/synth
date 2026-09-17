@@ -6,7 +6,7 @@ Synth is a browser-based SQL/AI query tool for CSV files. Two tiers, no trial pe
 
 - Real SQL or plain-English AI queries
 - Single-table workspaces
-- CSVs up to 50,000 rows
+- CSVs up to 100,000 rows
 - Save queries locally in the browser
 - No sign-in required to start (Lite Mode); optional free sign-in syncs workspaces across devices (Normal Mode)
 

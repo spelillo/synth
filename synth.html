@@ -96,7 +96,7 @@
     // build-time env var: this is a static page with no bundler, so
     // there's no "browser-accessible env var" mechanism to plug into.
     // Get the real value from https://dashboard.stripe.com/test/apikeys.
-    const STRIPE_PUBLISHABLE_KEY = 'pk_test_51UE9ruRqXDpXXBnZCSxSuLRXb4eEBfDoNnOTP2nqFR2nFps4R4bkzwdAEq17VReeuUcx3vaHyjzg9n1cAe8Ocbto00tZ4ezyyk';
+    const STRIPE_PUBLISHABLE_KEY = 'pk_live_51UE9raRsooZUyqKOw6fAtTrMBdbjzeC8c4pZP2mg7tGxRXfthrT43J6jexAtBZNy293eztbHPtlU8ejXyureXqdW00Iw8YcLPY';
 
     let stripeClient = null;
     if (STRIPE_PUBLISHABLE_KEY !== 'pk_test_...' && window.Stripe) {
@@ -203,6 +203,33 @@
       const clean = window.location.pathname + (params.toString() ? '?' + params.toString() : '') + window.location.hash;
       window.history.replaceState({}, '', clean);
     }
+
+    // Lite Mode's pitch is "no account needed to start" — so the nudge to
+    // save comes AFTER someone has already run a query and seen the product
+    // work, not before. Shown once ever (not once per session) so it reads
+    // as a single well-timed suggestion, never a nag.
+    const SAVE_SESSION_NUDGE_SEEN_KEY = 'synth_save_session_nudge_seen_v1';
+
+    function maybeShowSaveSessionBanner() {
+      if (currentUser) return;
+      if (localStorage.getItem(SAVE_SESSION_NUDGE_SEEN_KEY)) return;
+      document.getElementById('save-session-nudge-banner').hidden = false;
+    }
+
+    window.dismissSaveSessionNudgeBanner = function() {
+      localStorage.setItem(SAVE_SESSION_NUDGE_SEEN_KEY, '1');
+      document.getElementById('save-session-nudge-banner').hidden = true;
+    };
+
+    window.signInFromSaveSessionNudge = function(event) {
+      window.dismissSaveSessionNudgeBanner();
+      toggleAuthPanel();
+      // The document-level click-outside listener that closes #auth-panel
+      // (near the end of this script) only exempts #auth-panel itself and
+      // #sign-in-btn — without this, this same click keeps bubbling after
+      // toggleAuthPanel() opens the panel and immediately closes it again.
+      event?.stopPropagation();
+    };
 
     window.dismissPremiumSuccessBanner = function() {
       document.getElementById('premium-success-banner').hidden = true;
@@ -810,7 +837,7 @@
         if (!response.ok) {
           throw new Error(body?.error?.message || `Request failed (${response.status})`);
         }
-        outputEl.innerHTML = `<input type="text" readonly value="${escapeHtml(body.url)}" style="width:100%;padding:6px 8px;font-size:13px;border:1px solid #d8d2c6;border-radius:6px;margin-bottom:6px" onclick="this.select()">
+        outputEl.innerHTML = `<input type="text" readonly value="${escapeAttr(body.url)}" style="width:100%;padding:6px 8px;font-size:13px;border:1px solid #d8d2c6;border-radius:6px;margin-bottom:6px" onclick="this.select()">
            <button class="auth-btn" onclick="navigator.clipboard.writeText('${escapeHtml(body.url)}').then(() => { const s = document.getElementById('enterprise-join-link-copied'); if (s) { s.hidden = false; setTimeout(() => s.hidden = true, 2000); } })">Copy link</button>
            <span id="enterprise-join-link-copied" class="help-text" hidden style="margin-left:8px">Copied!</span>`;
       } catch (err) {
@@ -1392,10 +1419,14 @@
       updateSignInButtonAvailability();
     };
 
-    // Normal Mode is the default landing state now — Lite Mode is still
-    // available, but only if someone actively picks it via the toggle.
+    // Lite Mode is the default landing state — nobody evaluating a new tool
+    // wants to create an account before they've seen it do anything. Normal
+    // Mode (saved history, cross-device sync) is still one click away via
+    // the toggle; a returning signed-in user still lands unlocked regardless
+    // of this default (see confirmLandingSignIn, called from handleAuthChange
+    // before a user ever looks at the toggle).
     function initLandingMode() {
-      selectLandingMode('normal');
+      selectLandingMode('lite');
     }
 
     window.signOutUser = async function() {
@@ -1721,7 +1752,7 @@
             <div class="workspace-sessions-label">Saved chats</div>
             ${sessions.map(s => `
               <div class="workspace-session-row">
-                <span class="workspace-session-title" title="${escapeHtml(s.title)}">${escapeHtml(s.title)}</span>
+                <span class="workspace-session-title" title="${escapeAttr(s.title)}">${escapeHtml(s.title)}</span>
                 <button onclick="requestOpenSession('${s.id}')">Open</button>
               </div>
             `).join('')}
@@ -3740,9 +3771,9 @@
       const colId = (table, col) => `erd-col-${cssEscapeId(table)}-${cssEscapeId(col)}`;
 
       canvas.innerHTML = tables.map(t => `
-        <div class="erd-table-box" data-table="${escapeHtml(t.name)}">
+        <div class="erd-table-box" data-table="${escapeAttr(t.name)}">
           <div class="erd-table-name">${escapeHtml(t.name)}</div>
-          ${t.columns.map(c => `<div class="erd-col-row" id="${colId(t.name, c)}" data-table="${escapeHtml(t.name)}" data-column="${escapeHtml(c)}" onmousedown="startRelationshipDrag(event)">${escapeHtml(c)}</div>`).join('')}
+          ${t.columns.map(c => `<div class="erd-col-row" id="${colId(t.name, c)}" data-table="${escapeAttr(t.name)}" data-column="${escapeAttr(c)}" onmousedown="startRelationshipDrag(event)">${escapeHtml(c)}</div>`).join('')}
         </div>
       `).join('') + '<svg class="erd-svg-overlay"></svg>';
 
@@ -4486,6 +4517,7 @@
         }
 
         renderTable('results', 'results', result);
+        maybeShowSaveSessionBanner();
 
       } catch (err) {
         resultsEl.innerHTML = '';
@@ -6812,6 +6844,26 @@
       color: #8a2c2c;
     }
 
+    /* Same layout again, for the post-query "sign in to save" nudge —
+       neutral/blue rather than success-green or error-red since dismissing
+       it isn't an error state, just a suggestion the user can ignore. */
+    .premium-success-banner.is-neutral {
+      background: #eaf4fb;
+      border-bottom-color: #b9dbf5;
+      color: #0b4a78;
+    }
+
+    .premium-success-banner.is-neutral button {
+      color: #0b4a78;
+    }
+
+    .save-session-nudge-link {
+      font: inherit;
+      font-weight: 700;
+      text-decoration: underline;
+      padding: 0;
+    }
+
     .upload-btn {
       background: #ff4f00;
       color: #fffefb;
@@ -8823,6 +8875,11 @@
   <div id="enterprise-join-banner" class="premium-success-banner" hidden>
     <span id="enterprise-join-banner-text"></span>
     <button onclick="dismissEnterpriseJoinBanner()" aria-label="Dismiss">&times;</button>
+  </div>
+
+  <div id="save-session-nudge-banner" class="premium-success-banner is-neutral" hidden>
+    <span>Like what you see? <button type="button" class="save-session-nudge-link" onclick="signInFromSaveSessionNudge(event)">Sign in</button> to save this session and pick it up on another device.</span>
+    <button onclick="dismissSaveSessionNudgeBanner()" aria-label="Dismiss">&times;</button>
   </div>
 
   <div id="premium-modal" class="modal-overlay" hidden>

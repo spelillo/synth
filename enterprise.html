@@ -426,7 +426,7 @@
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd1a3hwaWt0aHJ5YXN5bWZ1aGdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwMDAyNTQsImV4cCI6MjEwNDU3NjI1NH0.NFhryLa7MLSvjRGnT75EfxH_4M9tACdbVWOlmaLSXbw';
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  const STRIPE_PUBLISHABLE_KEY = 'pk_test_51UE9ruRqXDpXXBnZCSxSuLRXb4eEBfDoNnOTP2nqFR2nFps4R4bkzwdAEq17VReeuUcx3vaHyjzg9n1cAe8Ocbto00tZ4ezyyk';
+  const STRIPE_PUBLISHABLE_KEY = 'pk_live_51UE9raRsooZUyqKOw6fAtTrMBdbjzeC8c4pZP2mg7tGxRXfthrT43J6jexAtBZNy293eztbHPtlU8ejXyureXqdW00Iw8YcLPY';
   let stripeClient = null;
   if (STRIPE_PUBLISHABLE_KEY !== 'pk_test_...' && window.Stripe) {
     stripeClient = window.Stripe(STRIPE_PUBLISHABLE_KEY, { betas: ['custom_checkout_payment_form_1'] });
