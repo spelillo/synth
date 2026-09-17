@@ -6,7 +6,14 @@
     { "source": "/privacy", "destination": "/privacy.html" },
     { "source": "/pricing", "destination": "/pricing.html" },
     { "source": "/enterprise", "destination": "/enterprise.html" },
-    { "source": "/query-csv-with-sql", "destination": "/query-csv-with-sql.html" }
+    { "source": "/query-csv-with-sql", "destination": "/query-csv-with-sql.html" },
+    { "source": "/guides", "destination": "/guides.html" },
+    { "source": "/query-json-with-sql", "destination": "/query-json-with-sql.html" },
+    { "source": "/sql-cheat-sheet", "destination": "/sql-cheat-sheet.html" },
+    { "source": "/ask-data-questions-in-plain-english", "destination": "/ask-data-questions-in-plain-english.html" },
+    { "source": "/csv-to-sqlite-in-browser", "destination": "/csv-to-sqlite-in-browser.html" },
+    { "source": "/join-two-csv-files-with-sql", "destination": "/join-two-csv-files-with-sql.html" },
+    { "source": "/privacy-first-data-analysis", "destination": "/privacy-first-data-analysis.html" }
   ],
   "crons": [
     { "path": "/api/cron/enterprise-renewal-notices", "schedule": "0 13 * * *" }

@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Privacy-First Data Analysis: Nothing Leaves Your Browser | Synth</title>
+<meta name="description" content="Query sensitive CSV or JSON files without uploading them anywhere. Synth runs entirely client-side — no account required, and even the AI assistant only ever sees your schema.">
+<link rel="canonical" href="https://synth-sql.com/privacy-first-data-analysis">
+<meta property="og:title" content="Privacy-First Data Analysis: Nothing Leaves Your Browser">
+<meta property="og:description" content="Query sensitive CSV or JSON files without uploading them anywhere — Synth runs entirely client-side.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://synth-sql.com/privacy-first-data-analysis">
+<meta property="og:image" content="https://synth-sql.com/synth-og-card.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="synthfavicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="marketing.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Article",
+      "headline": "Privacy-First Data Analysis: Nothing Leaves Your Browser",
+      "description": "Query sensitive CSV or JSON files without uploading them anywhere. Synth runs entirely client-side — no account required, and even the AI assistant only ever sees your schema.",
+      "url": "https://synth-sql.com/privacy-first-data-analysis",
+      "dateModified": "2026-09-17",
+      "author": { "@type": "Organization", "name": "Synth" },
+      "publisher": { "@type": "Organization", "name": "Synth", "logo": "https://synth-sql.com/synth-logo.png" }
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Does Synth upload my file to a server?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Not by default. In Lite Mode, your file is parsed and loaded into a SQLite database entirely inside your browser tab — nothing is sent anywhere. It's only uploaded if you explicitly sign in and choose to save your workspace to the cloud." }
+        },
+        {
+          "@type": "Question",
+          "name": "Do I need to create an account to analyze my data privately?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No. Lite Mode requires no sign-in at all — upload a file and start querying immediately. Signing in (Normal Mode) is an optional upgrade for saving your session across devices, never a requirement to start." }
+        },
+        {
+          "@type": "Question",
+          "name": "Does the AI assistant see my actual data?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No. Only your table's schema — column names, types, and row count — is sent to generate a response. Your actual row values never leave your browser, in either AI mode." }
+        },
+        {
+          "@type": "Question",
+          "name": "What happens to my data if I close the tab in Lite Mode?",
+          "acceptedAnswer": { "@type": "Answer", "text": "It's gone, by design — Lite Mode keeps everything in browser memory for that session only. If you want your workspace to persist across sessions or devices, sign in and save it (Normal Mode); nothing is saved automatically." }
+        }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+
+<header class="site-header">
+  <a href="/" class="site-header-logo-link">
+    <img src="synth-logo.png" alt="Synth" class="site-header-logo">
+  </a>
+  <nav class="site-header-nav">
+    <a href="/pricing">Pricing</a>
+    <a href="/about">About</a>
+    <a href="/" class="cta">Open Synth</a>
+  </nav>
+</header>
+
+<main>
+  <div class="kicker">Guide</div>
+  <h1 class="page-title">Privacy-first data analysis: nothing leaves your browser</h1>
+
+  <p class="lede">If a file has customer names, internal numbers, or anything you'd rather not hand to a third-party server, the safest way to analyze it is to never upload it in the first place. That's the default in Synth, not an opt-in setting.</p>
+
+  <h2>Lite Mode: no account, nothing sent anywhere</h2>
+  <p>Open Synth and you're in Lite Mode by default. Upload a CSV or JSON file and it's parsed directly into a real SQLite database running in your browser tab's memory — there's no server in the loop at all. No sign-in, no account, and nothing about the file or its contents is transmitted anywhere.</p>
+
+  <div style="overflow-x:auto;">
+    <table class="compare">
+      <thead>
+        <tr><th></th><th>Lite Mode</th><th>Normal Mode</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Account needed</td><td class="yes">No</td><td>Yes (free)</td></tr>
+        <tr><td>Where your file lives</td><td class="yes">Your browser tab only</td><td>Your browser, plus cloud if you save</td></tr>
+        <tr><td>Session persists after closing tab</td><td>No</td><td class="yes">Yes, if saved</td></tr>
+        <tr class="highlight"><td>Best for</td><td class="yes">A one-time, sensitive, or throwaway file</td><td>A dataset you'll come back to</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Switching to Normal Mode — a free sign-in — is there when you actually want to save a workspace and pick it up on another device. It's never required to start.</p>
+
+  <h2>The AI assistant follows the same rule</h2>
+  <p>Turning on the built-in AI assistant doesn't change this. In either SQL Mode or General Mode, only your table's <em>schema</em> — column names, types, and row count — is sent to generate a response. Your actual row values are never included in that request, and every query still executes locally against the SQLite database in your tab. See <a href="/ask-data-questions-in-plain-english">how the AI assistant works</a> for the full detail.</p>
+
+  <h2>What "saving to the cloud" actually means</h2>
+  <p>If you do sign in and explicitly save a workspace, that file's contents move to Synth's cloud storage so you can reopen it on another device — this is opt-in, and clearly a different action from analyzing the file, which never requires it. Nothing about querying, the AI assistant, or exploring your data pushes you toward saving unless you choose to.</p>
+
+  <h2>Who this matters for</h2>
+  <ul>
+    <li>Analyzing an HR, payroll, or customer export you shouldn't be uploading to a random web tool</li>
+    <li>Working with data under an NDA or compliance requirement that restricts where it can go</li>
+    <li>Just not wanting a one-off file to sit on someone else's server after you're done with it</li>
+  </ul>
+
+  <h2>Frequently asked questions</h2>
+  <details class="faq-item">
+    <summary>Does Synth upload my file to a server?</summary>
+    <p>Not by default. In Lite Mode, your file is parsed and loaded into a SQLite database entirely inside your browser tab — nothing is sent anywhere. It's only uploaded if you explicitly sign in and choose to save your workspace to the cloud.</p>
+  </details>
+  <details class="faq-item">
+    <summary>Do I need to create an account to analyze my data privately?</summary>
+    <p>No. Lite Mode requires no sign-in at all — upload a file and start querying immediately. Signing in (Normal Mode) is an optional upgrade for saving your session across devices, never a requirement to start.</p>
+  </details>
+  <details class="faq-item">
+    <summary>Does the AI assistant see my actual data?</summary>
+    <p>No. Only your table's schema — column names, types, and row count — is sent to generate a response. Your actual row values never leave your browser, in either AI mode.</p>
+  </details>
+  <details class="faq-item">
+    <summary>What happens to my data if I close the tab in Lite Mode?</summary>
+    <p>It's gone, by design — Lite Mode keeps everything in browser memory for that session only. If you want your workspace to persist across sessions or devices, sign in and save it (Normal Mode); nothing is saved automatically.</p>
+  </details>
+
+  <div class="related-guides">
+    <h2>More guides</h2>
+    <ul>
+      <li><a href="/ask-data-questions-in-plain-english">Ask your data questions in plain English</a></li>
+      <li><a href="/csv-to-sqlite-in-browser">Turn a CSV into a SQLite database, no install</a></li>
+      <li><a href="/query-json-with-sql">Query JSON files with SQL</a></li>
+      <li><a href="/guides">All guides →</a></li>
+    </ul>
+  </div>
+
+  <div class="cta-band">
+    <h2>Try it without signing in</h2>
+    <p>Lite Mode is the default. Upload a file and go.</p>
+    <a href="/" class="cta-btn">Open Synth</a>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="site-footer-inner">
+    <div class="site-footer-brand">Synth</div>
+    <nav class="site-footer-links">
+      <a href="/pricing">Pricing</a>
+      <a href="/about">About</a>
+      <a href="/guides">Guides</a>
+      <a href="/terms">Terms of Service</a>
+      <a href="/privacy">Privacy Policy</a>
+    </nav>
+    <div class="site-footer-copyright">&copy; 2026 Synth. All rights reserved.</div>
+  </div>
+</footer>
+
+</body>
+</html>

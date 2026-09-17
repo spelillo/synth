@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How to Join Two CSV Files with SQL | Synth</title>
+<meta name="description" content="Load two CSV files as separate tables and join them with real SQL — no VLOOKUP, no manual copy-paste. Synth auto-suggests the join columns for you.">
+<link rel="canonical" href="https://synth-sql.com/join-two-csv-files-with-sql">
+<meta property="og:title" content="How to Join Two CSV Files with SQL">
+<meta property="og:description" content="Load two CSV files as separate tables and join them with real SQL — no VLOOKUP, no manual copy-paste.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://synth-sql.com/join-two-csv-files-with-sql">
+<meta property="og:image" content="https://synth-sql.com/synth-og-card.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="synthfavicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="marketing.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Article",
+      "headline": "How to Join Two CSV Files with SQL",
+      "description": "Load two CSV files as separate tables and join them with real SQL — no VLOOKUP, no manual copy-paste. Synth auto-suggests the join columns for you.",
+      "url": "https://synth-sql.com/join-two-csv-files-with-sql",
+      "dateModified": "2026-09-17",
+      "author": { "@type": "Organization", "name": "Synth" },
+      "publisher": { "@type": "Organization", "name": "Synth", "logo": "https://synth-sql.com/synth-logo.png" }
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "How do I join two CSV files?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Upload both CSV files into the same Synth workspace as separate tables, then write a standard SQL JOIN across them on a shared column — the same way you'd join two tables in any relational database." }
+        },
+        {
+          "@type": "Question",
+          "name": "Can Synth detect which columns to join on automatically?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. Synth's relationship detection suggests likely foreign-key relationships between tables by matching column names and values, shown as dashed lines you can confirm or reject before the AI assistant uses them as join hints." }
+        },
+        {
+          "@type": "Question",
+          "name": "Is this better than VLOOKUP in Excel or Google Sheets?",
+          "acceptedAnswer": { "@type": "Answer", "text": "For anything beyond a simple one-to-one lookup, yes — a real SQL JOIN handles one-to-many and many-to-many relationships, multiple join conditions, and aggregation after the join natively, where VLOOKUP or INDEX/MATCH need increasingly awkward workarounds." }
+        },
+        {
+          "@type": "Question",
+          "name": "How many CSV files can I join at once?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Synth's Premium tier supports up to 10 tables in one workspace, joinable in any combination a single SQL query supports." }
+        }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+
+<header class="site-header">
+  <a href="/" class="site-header-logo-link">
+    <img src="synth-logo.png" alt="Synth" class="site-header-logo">
+  </a>
+  <nav class="site-header-nav">
+    <a href="/pricing">Pricing</a>
+    <a href="/about">About</a>
+    <a href="/" class="cta">Open Synth</a>
+  </nav>
+</header>
+
+<main>
+  <div class="kicker">Guide</div>
+  <h1 class="page-title">How to join two CSV files with SQL</h1>
+
+  <p class="lede">A VLOOKUP works until you need a one-to-many match, a multi-column join, or an aggregate on top of it — then it turns into a mess of helper columns. Load both files into Synth as separate tables instead, and join them with one real SQL query.</p>
+
+  <h2>Upload both files</h2>
+  <p>Upload your first CSV to start a workspace, then use <strong>+ Add table</strong> to load the second one alongside it. Each file becomes its own table, queryable on its own or together.</p>
+
+  <h2>Write the join</h2>
+  <p>Say you have an <code class="inline-code">orders.csv</code> and a <code class="inline-code">customers.csv</code>, related by a customer ID column in both:</p>
+  <pre class="code-block"><code>SELECT customers.name, orders.total, orders.status
+FROM orders
+JOIN customers ON orders.customer_id = customers.id;</code></pre>
+  <p>That's a standard inner join — only rows with a match in both tables. Need every order even without a matching customer row, or vice versa?</p>
+  <pre class="code-block"><code>SELECT customers.name, orders.total
+FROM orders
+LEFT JOIN customers ON orders.customer_id = customers.id;</code></pre>
+
+  <h2>Let Synth suggest the join for you</h2>
+  <p>Once you have two or more tables loaded, open the <strong>Relationships</strong> tab. Synth compares column names and values across your tables and suggests likely relationships automatically, shown as dashed lines between matching columns. Confirm the real ones — shown solid once confirmed — and the AI assistant uses them as join hints the next time you ask it a cross-table question, so it writes the JOIN correctly without you specifying it every time.</p>
+
+  <h2>Aggregate across the join</h2>
+  <p>The real advantage over a spreadsheet lookup shows up once you need to aggregate after joining — a total per customer across every one of their orders, for example:</p>
+  <pre class="code-block"><code>SELECT customers.name, COUNT(orders.id) AS order_count, SUM(orders.total) AS lifetime_value
+FROM orders
+JOIN customers ON orders.customer_id = customers.id
+GROUP BY customers.name
+ORDER BY lifetime_value DESC;</code></pre>
+  <p>See the <a href="/sql-cheat-sheet">SQL cheat sheet</a> for more join and aggregation patterns.</p>
+
+  <h2>Frequently asked questions</h2>
+  <details class="faq-item">
+    <summary>How do I join two CSV files?</summary>
+    <p>Upload both CSV files into the same Synth workspace as separate tables, then write a standard SQL JOIN across them on a shared column — the same way you'd join two tables in any relational database.</p>
+  </details>
+  <details class="faq-item">
+    <summary>Can Synth detect which columns to join on automatically?</summary>
+    <p>Yes. Synth's relationship detection suggests likely foreign-key relationships between tables by matching column names and values, shown as dashed lines you can confirm or reject before the AI assistant uses them as join hints.</p>
+  </details>
+  <details class="faq-item">
+    <summary>Is this better than VLOOKUP in Excel or Google Sheets?</summary>
+    <p>For anything beyond a simple one-to-one lookup, yes — a real SQL JOIN handles one-to-many and many-to-many relationships, multiple join conditions, and aggregation after the join natively, where VLOOKUP or INDEX/MATCH need increasingly awkward workarounds.</p>
+  </details>
+  <details class="faq-item">
+    <summary>How many CSV files can I join at once?</summary>
+    <p>Synth's Premium tier supports up to 10 tables in one workspace, joinable in any combination a single SQL query supports.</p>
+  </details>
+
+  <div class="related-guides">
+    <h2>More guides</h2>
+    <ul>
+      <li><a href="/sql-cheat-sheet">SQL cheat sheet for CSV &amp; JSON analysis</a></li>
+      <li><a href="/query-csv-with-sql">Query a CSV file with SQL</a></li>
+      <li><a href="/ask-data-questions-in-plain-english">Ask your data questions in plain English</a></li>
+      <li><a href="/guides">All guides →</a></li>
+    </ul>
+  </div>
+
+  <div class="cta-band">
+    <h2>Join your own files</h2>
+    <p>Free to start, no sign-in required.</p>
+    <a href="/" class="cta-btn">Open Synth</a>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="site-footer-inner">
+    <div class="site-footer-brand">Synth</div>
+    <nav class="site-footer-links">
+      <a href="/pricing">Pricing</a>
+      <a href="/about">About</a>
+      <a href="/guides">Guides</a>
+      <a href="/terms">Terms of Service</a>
+      <a href="/privacy">Privacy Policy</a>
+    </nav>
+    <div class="site-footer-copyright">&copy; 2026 Synth. All rights reserved.</div>
+  </div>
+</footer>
+
+</body>
+</html>

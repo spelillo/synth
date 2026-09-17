@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SQL Cheat Sheet for CSV &amp; JSON Analysis | Synth</title>
+<meta name="description" content="Copy-paste SQL patterns for filtering, aggregating, sorting, and joining CSV and JSON files — SQLite syntax, ready to run in Synth.">
+<link rel="canonical" href="https://synth-sql.com/sql-cheat-sheet">
+<meta property="og:title" content="SQL Cheat Sheet for CSV & JSON Analysis">
+<meta property="og:description" content="Copy-paste SQL patterns for filtering, aggregating, sorting, and joining CSV and JSON files.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://synth-sql.com/sql-cheat-sheet">
+<meta property="og:image" content="https://synth-sql.com/synth-og-card.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="synthfavicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="marketing.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Article",
+      "headline": "SQL Cheat Sheet for CSV & JSON Analysis",
+      "description": "Copy-paste SQL patterns for filtering, aggregating, sorting, and joining CSV and JSON files — SQLite syntax, ready to run in Synth.",
+      "url": "https://synth-sql.com/sql-cheat-sheet",
+      "dateModified": "2026-09-17",
+      "author": { "@type": "Organization", "name": "Synth" },
+      "publisher": { "@type": "Organization", "name": "Synth", "logo": "https://synth-sql.com/synth-logo.png" }
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What SQL dialect does Synth use?",
+          "acceptedAnswer": { "@type": "Answer", "text": "SQLite. Every query you run in Synth is standard SQLite SQL — the same syntax you'd use with SQLite anywhere else, including joins, window functions, CTEs, and SQLite's own JSON functions." }
+        },
+        {
+          "@type": "Question",
+          "name": "Can I use window functions in Synth?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. Synth runs a real SQLite database, and SQLite supports window functions (ROW_NUMBER, RANK, LAG, LEAD, running totals via OVER) directly." }
+        },
+        {
+          "@type": "Question",
+          "name": "How do I join two CSV files together?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Upload both files as separate tables in the same workspace (Premium supports multiple tables), then write a normal SQL JOIN across them using a shared column, exactly as you would across two tables in any relational database." }
+        },
+        {
+          "@type": "Question",
+          "name": "Why are all my numeric columns treated as text?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Synth stores every uploaded column as TEXT so it never guesses a type incorrectly — cast a column explicitly with CAST(column AS REAL) or CAST(column AS INTEGER) when you need numeric comparisons, sums, or averages." }
+        }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+
+<header class="site-header">
+  <a href="/" class="site-header-logo-link">
+    <img src="synth-logo.png" alt="Synth" class="site-header-logo">
+  </a>
+  <nav class="site-header-nav">
+    <a href="/pricing">Pricing</a>
+    <a href="/about">About</a>
+    <a href="/" class="cta">Open Synth</a>
+  </nav>
+</header>
+
+<main>
+  <div class="kicker">Guide</div>
+  <h1 class="page-title">SQL cheat sheet for CSV &amp; JSON analysis</h1>
+
+  <p class="lede">Every query below is standard SQLite syntax — the exact SQL Synth runs against your uploaded CSV or JSON file. Copy any of these into the query editor, swap in your own table and column names, and run it.</p>
+
+  <h2>Look at your data</h2>
+  <pre class="code-block"><code>SELECT * FROM orders LIMIT 10;</code></pre>
+  <pre class="code-block"><code>SELECT COUNT(*) FROM orders;</code></pre>
+
+  <h2>Filter rows</h2>
+  <pre class="code-block"><code>SELECT * FROM orders
+WHERE status = 'shipped'
+  AND total > 100;</code></pre>
+  <pre class="code-block"><code>SELECT * FROM customers
+WHERE email IS NULL OR email = '';</code></pre>
+
+  <h2>Sort and limit</h2>
+  <pre class="code-block"><code>SELECT * FROM orders
+ORDER BY total DESC
+LIMIT 20;</code></pre>
+
+  <h2>Aggregate with GROUP BY</h2>
+  <pre class="code-block"><code>SELECT customer_id, COUNT(*) AS order_count, SUM(total) AS total_spent
+FROM orders
+GROUP BY customer_id
+ORDER BY total_spent DESC;</code></pre>
+  <pre class="code-block"><code>SELECT status, AVG(total) AS avg_order_value
+FROM orders
+GROUP BY status;</code></pre>
+
+  <h2>Join two tables</h2>
+  <p>Once you've uploaded two files as separate tables (see <a href="/join-two-csv-files-with-sql">how to join two CSV files</a>), join them like any two relational tables:</p>
+  <pre class="code-block"><code>SELECT customers.name, orders.total, orders.status
+FROM orders
+JOIN customers ON orders.customer_id = customers.id;</code></pre>
+
+  <h2>Window functions</h2>
+  <pre class="code-block"><code>SELECT
+  customer_id,
+  total,
+  RANK() OVER (PARTITION BY customer_id ORDER BY total DESC) AS rank_by_value
+FROM orders;</code></pre>
+  <pre class="code-block"><code>SELECT
+  order_date,
+  total,
+  SUM(total) OVER (ORDER BY order_date) AS running_total
+FROM orders;</code></pre>
+
+  <h2>Cast text to a number</h2>
+  <p>Every uploaded column is stored as TEXT, so numeric operations need an explicit cast:</p>
+  <pre class="code-block"><code>SELECT customer_id, CAST(total AS REAL) AS total_numeric
+FROM orders
+ORDER BY total_numeric DESC;</code></pre>
+  <p>If a column has thousands-separator commas (like <code class="inline-code">"1,200"</code>), strip them before casting:</p>
+  <pre class="code-block"><code>SELECT CAST(REPLACE(total, ',', '') AS REAL) AS total_numeric
+FROM orders;</code></pre>
+
+  <h2>Dates and strings</h2>
+  <pre class="code-block"><code>SELECT * FROM orders
+WHERE order_date >= date('now', '-30 days');</code></pre>
+  <pre class="code-block"><code>SELECT * FROM customers
+WHERE name LIKE '%acme%';</code></pre>
+
+  <h2>Pull a value out of a JSON column</h2>
+  <p>If you uploaded a <a href="/query-json-with-sql">JSON file</a> with an array-valued field, use SQLite's own JSON functions directly:</p>
+  <pre class="code-block"><code>SELECT id, json_extract(tags, '$[0]') AS first_tag
+FROM orders
+WHERE tags != '';</code></pre>
+
+  <h2>Frequently asked questions</h2>
+  <details class="faq-item">
+    <summary>What SQL dialect does Synth use?</summary>
+    <p>SQLite. Every query you run in Synth is standard SQLite SQL — the same syntax you'd use with SQLite anywhere else, including joins, window functions, CTEs, and SQLite's own JSON functions.</p>
+  </details>
+  <details class="faq-item">
+    <summary>Can I use window functions in Synth?</summary>
+    <p>Yes. Synth runs a real SQLite database, and SQLite supports window functions (ROW_NUMBER, RANK, LAG, LEAD, running totals via OVER) directly.</p>
+  </details>
+  <details class="faq-item">
+    <summary>How do I join two CSV files together?</summary>
+    <p>Upload both files as separate tables in the same workspace (Premium supports multiple tables), then write a normal SQL JOIN across them using a shared column, exactly as you would across two tables in any relational database.</p>
+  </details>
+  <details class="faq-item">
+    <summary>Why are all my numeric columns treated as text?</summary>
+    <p>Synth stores every uploaded column as TEXT so it never guesses a type incorrectly — cast a column explicitly with <code class="inline-code">CAST(column AS REAL)</code> or <code class="inline-code">CAST(column AS INTEGER)</code> when you need numeric comparisons, sums, or averages.</p>
+  </details>
+
+  <div class="related-guides">
+    <h2>More guides</h2>
+    <ul>
+      <li><a href="/join-two-csv-files-with-sql">How to join two CSV files with SQL</a></li>
+      <li><a href="/query-json-with-sql">Query JSON files with SQL</a></li>
+      <li><a href="/ask-data-questions-in-plain-english">Ask your data questions in plain English</a></li>
+      <li><a href="/guides">All guides →</a></li>
+    </ul>
+  </div>
+
+  <div class="cta-band">
+    <h2>Run these on your own file</h2>
+    <p>Free to start, no sign-in required.</p>
+    <a href="/" class="cta-btn">Open Synth</a>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="site-footer-inner">
+    <div class="site-footer-brand">Synth</div>
+    <nav class="site-footer-links">
+      <a href="/pricing">Pricing</a>
+      <a href="/about">About</a>
+      <a href="/guides">Guides</a>
+      <a href="/terms">Terms of Service</a>
+      <a href="/privacy">Privacy Policy</a>
+    </nav>
+    <div class="site-footer-copyright">&copy; 2026 Synth. All rights reserved.</div>
+  </div>
+</footer>
+
+</body>
+</html>

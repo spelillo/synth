@@ -11,7 +11,42 @@
     <priority>0.9</priority>
   </url>
   <url>
+    <loc>https://synth-sql.com/guides</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
     <loc>https://synth-sql.com/query-csv-with-sql</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://synth-sql.com/query-json-with-sql</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://synth-sql.com/sql-cheat-sheet</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://synth-sql.com/ask-data-questions-in-plain-english</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://synth-sql.com/csv-to-sqlite-in-browser</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://synth-sql.com/join-two-csv-files-with-sql</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://synth-sql.com/privacy-first-data-analysis</loc>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
   </url>
@@ -19,6 +54,11 @@
     <loc>https://synth-sql.com/about</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://synth-sql.com/enterprise</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://synth-sql.com/terms</loc>

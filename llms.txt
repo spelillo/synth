@@ -1,27 +1,35 @@
 # Synth
 
-Synth lets you query any CSV file with real SQL, or in plain English,
-directly in your browser. No database setup, no SQL Server, no
-installation — upload a CSV and it becomes a live SQLite database
+Synth lets you query any CSV or JSON file with real SQL, or in plain
+English, directly in your browser. No database setup, no SQL Server, no
+installation — upload a file and it becomes a live SQLite database
 running client-side, entirely in your browser tab.
 
 ## Who it's for
 
 - People who know SQL and don't want to set up a server for one file
 - People who don't know SQL and want to ask questions in plain English
-- Analysts working with CSVs up to 500,000 rows
+- Analysts working with CSV or JSON files up to 500,000 rows
 
 ## Key facts
 
 - Runs 100% client-side via SQLite compiled to WebAssembly (sql.js) — your data never leaves your browser unless you sign in and explicitly save it to the cloud
-- Free tier: single-table workspaces, up to 50,000 rows, no sign-in required
-- Premium: $9.99, paid once (not a subscription) — multi-table workspaces (up to 10 tables), table renaming, cross-table AI joins, relationship detection, and CSVs up to 500,000 rows
+- Supports CSV, and JSON (a single array of objects, or newline-delimited JSON) — nested objects flatten into dot-notation columns (e.g. address.city), arrays store as JSON text queryable with SQLite's json_extract()
+- Free tier: single-table workspaces, up to 100,000 rows, no sign-in required
+- Premium: $9.99, paid once (not a subscription) — multi-table workspaces (up to 10 tables), table renaming, cross-table AI joins, relationship detection, and files up to 500,000 rows
 - Built-in AI assistant supports two modes: SQL Mode (returns a runnable SQL query) and General Mode (returns a plain-English answer, no SQL)
 
 ## Key pages
 
 - App: https://synth-sql.com/
 - Pricing: https://synth-sql.com/pricing
+- All guides: https://synth-sql.com/guides
 - Guide — querying a CSV with SQL, no server required: https://synth-sql.com/query-csv-with-sql
+- Guide — querying a JSON file with SQL: https://synth-sql.com/query-json-with-sql
+- Guide — SQL cheat sheet for CSV & JSON analysis: https://synth-sql.com/sql-cheat-sheet
+- Guide — asking data questions in plain English (no SQL): https://synth-sql.com/ask-data-questions-in-plain-english
+- Guide — converting a CSV to SQLite in the browser: https://synth-sql.com/csv-to-sqlite-in-browser
+- Guide — joining two CSV files with SQL: https://synth-sql.com/join-two-csv-files-with-sql
+- Guide — privacy-first data analysis (Lite Mode): https://synth-sql.com/privacy-first-data-analysis
 - About: https://synth-sql.com/about
 - Machine-readable pricing: https://synth-sql.com/pricing.md

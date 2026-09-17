@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Query JSON Files with SQL in Your Browser | Synth</title>
+<meta name="description" content="Load a JSON array or newline-delimited JSON (NDJSON) file into a real SQLite database and query it with SQL — no import script, no server, right in your browser.">
+<link rel="canonical" href="https://synth-sql.com/query-json-with-sql">
+<meta property="og:title" content="Query JSON Files with SQL in Your Browser">
+<meta property="og:description" content="Load a JSON array or NDJSON file into a real SQLite database and query it with SQL — no import script, no server.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://synth-sql.com/query-json-with-sql">
+<meta property="og:image" content="https://synth-sql.com/synth-og-card.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="synthfavicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="marketing.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Article",
+      "headline": "Query JSON Files with SQL in Your Browser",
+      "description": "Load a JSON array or newline-delimited JSON (NDJSON) file into a real SQLite database and query it with SQL — no import script, no server.",
+      "url": "https://synth-sql.com/query-json-with-sql",
+      "dateModified": "2026-09-17",
+      "author": { "@type": "Organization", "name": "Synth" },
+      "publisher": { "@type": "Organization", "name": "Synth", "logo": "https://synth-sql.com/synth-logo.png" }
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Can I query a JSON file with SQL?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. Synth loads a JSON array of objects, or a newline-delimited JSON (NDJSON) file, directly into a real SQLite database that runs in your browser tab, so you can write standard SQL against it immediately." }
+        },
+        {
+          "@type": "Question",
+          "name": "What JSON shapes does Synth support?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Two shapes: a single JSON array of objects (the common shape for API responses), and newline-delimited JSON, one object per line, which is how most log exports and streaming data dumps are formatted. A single bare JSON object is also accepted as a one-row table." }
+        },
+        {
+          "@type": "Question",
+          "name": "What happens to nested objects in my JSON?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Nested objects flatten into columns using dot notation — a record like {\"address\": {\"city\": \"NYC\"}} becomes a column named address.city. This keeps every value queryable with plain SQL instead of hiding it inside a JSON blob." }
+        },
+        {
+          "@type": "Question",
+          "name": "What happens to arrays inside my JSON records?",
+          "acceptedAnswer": { "@type": "Answer", "text": "An array value is stored as its JSON text in a single column, rather than being split into extra columns or rows. You can pull values out of it with SQLite's own json_extract() and json_each() functions in your SQL." }
+        },
+        {
+          "@type": "Question",
+          "name": "Do I need MongoDB or a NoSQL database to query JSON?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No. Synth loads the JSON directly into a real SQL database (SQLite) running in your browser tab, so you get standard SQL — joins, GROUP BY, window functions — without installing or hosting any database at all." }
+        }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+
+<header class="site-header">
+  <a href="/" class="site-header-logo-link">
+    <img src="synth-logo.png" alt="Synth" class="site-header-logo">
+  </a>
+  <nav class="site-header-nav">
+    <a href="/pricing">Pricing</a>
+    <a href="/about">About</a>
+    <a href="/" class="cta">Open Synth</a>
+  </nav>
+</header>
+
+<main>
+  <div class="kicker">Guide</div>
+  <h1 class="page-title">How to query a JSON file with SQL</h1>
+
+  <p class="lede">Synth loads a JSON file directly into a real SQLite database running in your browser tab — no import script, no MongoDB, nothing to install. Upload a JSON array or a newline-delimited JSON file and start writing SQL against it immediately, or just ask in plain English if you'd rather skip SQL.</p>
+
+  <h2>The two JSON shapes Synth understands</h2>
+  <p>Real JSON data comes in two shapes in practice — an API response, and a log or export dump — and Synth reads both directly:</p>
+
+  <h3>A single array of objects</h3>
+  <pre class="code-block"><code>[
+  { "id": 1, "customer": "Acme Corp", "total": 482.50 },
+  { "id": 2, "customer": "Globex Inc", "total": 129.00 }
+]</code></pre>
+
+  <h3>Newline-delimited JSON (NDJSON)</h3>
+  <p>One JSON object per line — the shape most API export tools, log pipelines, and streaming dumps actually use:</p>
+  <pre class="code-block"><code>{ "id": 1, "customer": "Acme Corp", "total": 482.50 }
+{ "id": 2, "customer": "Globex Inc", "total": 129.00 }</code></pre>
+
+  <p>Both load into the same kind of table. Synth checks whether the file parses as one JSON document first, and falls back to reading it line-by-line as NDJSON if it doesn't — you don't have to tell it which shape you're uploading.</p>
+
+  <h2>What happens to nested objects and arrays</h2>
+  <p>JSON gets to nest data in ways a flat table can't represent directly, so Synth makes an explicit, consistent choice for each case:</p>
+  <ul>
+    <li><strong>Nested objects flatten into dot-notation columns.</strong> A record like <code class="inline-code">{"address": {"city": "NYC", "zip": "10001"}}</code> becomes two columns, <code class="inline-code">address.city</code> and <code class="inline-code">address.zip</code> — queryable directly, no unpacking required.</li>
+    <li><strong>Arrays store as JSON text in a single column.</strong> A record like <code class="inline-code">{"tags": ["urgent", "billing"]}</code> keeps <code class="inline-code">tags</code> as one column holding the text <code class="inline-code">["urgent","billing"]</code>. Turning it into extra rows or columns would explode the schema for no benefit — instead, pull values out of it with SQLite's own JSON functions:</li>
+  </ul>
+  <pre class="code-block"><code>SELECT id, json_extract(tags, '$[0]') AS first_tag
+FROM orders
+WHERE tags != '';</code></pre>
+
+  <h2>Where JSON like this actually comes from</h2>
+  <p>This isn't a hypothetical format choice — it's the shape real exports already arrive in:</p>
+  <ul>
+    <li>REST API responses (most return a JSON array of records)</li>
+    <li>Log aggregation and event-stream exports (almost always NDJSON, one event per line)</li>
+    <li>MongoDB or Firestore collection exports</li>
+    <li>Webhook payload dumps saved for later analysis</li>
+  </ul>
+  <p>Normally, analyzing any of these means writing a script to flatten and load them into a database first. Synth skips that step entirely.</p>
+
+  <h2>How it works</h2>
+  <ol class="steps">
+    <li>Upload a <code class="inline-code">.json</code>, <code class="inline-code">.ndjson</code>, or <code class="inline-code">.jsonl</code> file — click to browse. No account required.</li>
+    <li>It becomes a real SQLite database, instantly, running in your browser tab.</li>
+    <li>Write SQL yourself, or ask the AI assistant in plain English — then sort, filter, and export your results.</li>
+  </ol>
+
+  <h2>Frequently asked questions</h2>
+  <details class="faq-item">
+    <summary>Can I query a JSON file with SQL?</summary>
+    <p>Yes. Synth loads a JSON array of objects, or a newline-delimited JSON (NDJSON) file, directly into a real SQLite database that runs in your browser tab, so you can write standard SQL against it immediately.</p>
+  </details>
+  <details class="faq-item">
+    <summary>What JSON shapes does Synth support?</summary>
+    <p>Two shapes: a single JSON array of objects (the common shape for API responses), and newline-delimited JSON, one object per line, which is how most log exports and streaming data dumps are formatted. A single bare JSON object is also accepted as a one-row table.</p>
+  </details>
+  <details class="faq-item">
+    <summary>What happens to nested objects in my JSON?</summary>
+    <p>Nested objects flatten into columns using dot notation — a record like <code class="inline-code">{"address": {"city": "NYC"}}</code> becomes a column named <code class="inline-code">address.city</code>. This keeps every value queryable with plain SQL instead of hiding it inside a JSON blob.</p>
+  </details>
+  <details class="faq-item">
+    <summary>What happens to arrays inside my JSON records?</summary>
+    <p>An array value is stored as its JSON text in a single column, rather than being split into extra columns or rows. You can pull values out of it with SQLite's own <code class="inline-code">json_extract()</code> and <code class="inline-code">json_each()</code> functions in your SQL.</p>
+  </details>
+  <details class="faq-item">
+    <summary>Do I need MongoDB or a NoSQL database to query JSON?</summary>
+    <p>No. Synth loads the JSON directly into a real SQL database (SQLite) running in your browser tab, so you get standard SQL — joins, GROUP BY, window functions — without installing or hosting any database at all.</p>
+  </details>
+
+  <div class="related-guides">
+    <h2>More guides</h2>
+    <ul>
+      <li><a href="/sql-cheat-sheet">SQL cheat sheet for CSV &amp; JSON analysis</a></li>
+      <li><a href="/ask-data-questions-in-plain-english">Ask your data questions in plain English</a></li>
+      <li><a href="/privacy-first-data-analysis">Privacy-first data analysis: nothing leaves your browser</a></li>
+      <li><a href="/guides">All guides →</a></li>
+    </ul>
+  </div>
+
+  <div class="cta-band">
+    <h2>Try it on your own JSON file</h2>
+    <p>Free to start, no sign-in required.</p>
+    <a href="/" class="cta-btn">Open Synth</a>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="site-footer-inner">
+    <div class="site-footer-brand">Synth</div>
+    <nav class="site-footer-links">
+      <a href="/pricing">Pricing</a>
+      <a href="/about">About</a>
+      <a href="/guides">Guides</a>
+      <a href="/terms">Terms of Service</a>
+      <a href="/privacy">Privacy Policy</a>
+    </nav>
+    <div class="site-footer-copyright">&copy; 2026 Synth. All rights reserved.</div>
+  </div>
+</footer>
+
+</body>
+</html>
