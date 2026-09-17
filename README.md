@@ -2,7 +2,7 @@
 
 Query any CSV or JSON file with real SQL, or in plain English, entirely in your browser. No database to install, no server to host — upload a file and it becomes a live SQLite database running client-side in your browser tab.
 
-![Synth](synth-og-card.png)
+
 
 **Live app:** [synth-sql.com](https://www.synth-sql.com/)
 
