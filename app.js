@@ -2000,7 +2000,7 @@
 
       bar.hidden = false;
       bar.innerHTML = tables.map(t => `
-        <div class="table-chip${t.name === activeTableName ? ' active' : ''}" data-table="${t.name}" onclick="handleChipClick(event, '${t.name}')">
+        <div class="table-chip${t.name === activeTableName ? ' active' : ''}" data-table="${t.name}" role="group" aria-label="Table: ${escapeAttr(t.name)}${t.name === activeTableName ? ' (selected)' : ''}" tabindex="0" onclick="handleChipClick(event, '${t.name}')" onkeydown="handleChipKeydown(event, '${t.name}')">
           <span class="chip-name" data-table="${t.name}">${escapeHtml(t.name)}</span>
           <span class="chip-rows">${t.rowCount.toLocaleString()}</span>
           <button class="chip-rename" title="Rename table" onclick="startRenameChip(event, '${t.name}')">✎</button>
@@ -2136,6 +2136,17 @@
 
     window.handleChipClick = function(event, name) {
       if (event.target.closest('.chip-rename') || event.target.closest('.chip-delete') || event.target.isContentEditable) return;
+      setActiveTable(name);
+    };
+
+    // The chip itself is a div (role="button"), not a real <button>, since
+    // it contains its own nested rename/delete buttons — a <button> can't
+    // contain interactive children. Enter/Space only fires this when the
+    // chip itself (not a nested control) has keyboard focus, so no target
+    // guard is needed here the way handleChipClick above needs one for clicks.
+    window.handleChipKeydown = function(event, name) {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
       setActiveTable(name);
     };
 
@@ -2900,6 +2911,88 @@
       const authPanel = document.getElementById('auth-panel');
       if (authPanel && !authPanel.hidden) authPanel.hidden = true;
     });
+
+    // ---- Modal accessibility: focus trap + aria wiring ----
+    // Wired centrally off the `hidden` attribute instead of from each of
+    // the ~20 open*/close* function pairs throughout this file, auth.js,
+    // and checkout.js — a MutationObserver means none of them needs to
+    // remember to call anything, and a modal added later gets this for
+    // free just by using the .modal-overlay/.modal markup convention.
+    (function setupModalAccessibility() {
+      const FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+      const isVisible = (el) => el.offsetParent !== null;
+
+      // A stack, not a single slot: closing an inner modal opened from
+      // within an outer one (e.g. a delete confirmation) should hand Tab-
+      // trapping back to the outer modal, not drop it entirely.
+      const trapStack = [];
+
+      function trapKeydown(e) {
+        if (e.key !== 'Tab' || trapStack.length === 0) return;
+        const overlay = trapStack[trapStack.length - 1].overlay;
+        const focusables = Array.from(overlay.querySelectorAll(FOCUSABLE_SELECTOR)).filter(isVisible);
+        if (focusables.length === 0) {
+          e.preventDefault();
+          return;
+        }
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+
+      function activateModal(overlay) {
+        trapStack.push({ overlay, trigger: document.activeElement });
+        if (trapStack.length === 1) document.addEventListener('keydown', trapKeydown, true);
+
+        const focusables = Array.from(overlay.querySelectorAll(FOCUSABLE_SELECTOR)).filter(isVisible);
+        const target = overlay.querySelector('[autofocus]') || focusables[0];
+        if (target) {
+          target.focus();
+        } else {
+          const card = overlay.querySelector('.modal') || overlay;
+          if (!card.hasAttribute('tabindex')) card.setAttribute('tabindex', '-1');
+          card.focus();
+        }
+      }
+
+      function deactivateModal(overlay) {
+        const i = trapStack.findIndex(t => t.overlay === overlay);
+        if (i === -1) return;
+        const [{ trigger }] = trapStack.splice(i, 1);
+        if (trapStack.length === 0) document.removeEventListener('keydown', trapKeydown, true);
+        if (trigger && typeof trigger.focus === 'function' && document.body.contains(trigger)) {
+          trigger.focus();
+        }
+      }
+
+      function wireOverlay(overlay) {
+        if (overlay.dataset.a11yWired) return;
+        overlay.dataset.a11yWired = 'true';
+        if (!overlay.hasAttribute('role')) overlay.setAttribute('role', 'dialog');
+        overlay.setAttribute('aria-modal', 'true');
+        new MutationObserver((mutations) => {
+          for (const m of mutations) {
+            if (m.attributeName !== 'hidden') continue;
+            if (overlay.hidden) deactivateModal(overlay);
+            else activateModal(overlay);
+          }
+        }).observe(overlay, { attributes: true, attributeFilter: ['hidden'] });
+        if (!overlay.hidden) activateModal(overlay);
+      }
+
+      // This script runs in <head>, before the modal markup in <body>
+      // exists — same reason the click-delegation listener just below
+      // waits for `document` rather than querying elements directly.
+      document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.modal-overlay').forEach(wireOverlay);
+      });
+    })();
 
     // Delegated from document (not attached per-element) since this script
     // runs in <head>, before the modal markup in <body> exists yet — a
