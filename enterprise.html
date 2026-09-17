@@ -18,6 +18,9 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <!-- Loaded directly from Stripe, never bundled/self-hosted (PCI requirement) — same as synth.html. -->
   <script src="https://js.stripe.com/dahlia/stripe.js"></script>
+  <!-- Shared with synth.html: STRIPE_PUBLISHABLE_KEY, stripeClient, and the
+       startEmbeddedCheckout() helper both pages' checkout flows call. -->
+  <script src="checkout.js"></script>
   <style>
     /* Palette lifted directly from archive/DESIGN-zapier.md: warm cream
        canvas, coffee ink, single orange accent — the same tokens the rest
@@ -426,11 +429,8 @@
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd1a3hwaWt0aHJ5YXN5bWZ1aGdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwMDAyNTQsImV4cCI6MjEwNDU3NjI1NH0.NFhryLa7MLSvjRGnT75EfxH_4M9tACdbVWOlmaLSXbw';
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  const STRIPE_PUBLISHABLE_KEY = 'pk_live_51UE9raRsooZUyqKOw6fAtTrMBdbjzeC8c4pZP2mg7tGxRXfthrT43J6jexAtBZNy293eztbHPtlU8ejXyureXqdW00Iw8YcLPY';
-  let stripeClient = null;
-  if (STRIPE_PUBLISHABLE_KEY !== 'pk_test_...' && window.Stripe) {
-    stripeClient = window.Stripe(STRIPE_PUBLISHABLE_KEY, { betas: ['custom_checkout_payment_form_1'] });
-  }
+  // STRIPE_PUBLISHABLE_KEY, stripeClient, and startEmbeddedCheckout() come
+  // from checkout.js (shared with synth.html) — see the <script> tag below.
 
   let currentUser = null;
   let orgStatus = null; // last org_status response
@@ -755,61 +755,31 @@
   }
 
   let orgCheckoutStarted = false;
+  // Mounts the embedded form via checkout.js's shared startEmbeddedCheckout()
+  // — see that file for why fetchClientSecret returns a promise Stripe
+  // consumes directly rather than one this function awaits first.
   async function startOrgCheckout() {
-    if (orgCheckoutStarted) return;
-    orgCheckoutStarted = true;
     const statusEl = document.getElementById('org-checkout-status');
-
-    if (!stripeClient) {
-      statusEl.classList.add('is-error');
-      statusEl.textContent = 'Checkout isn\'t configured yet.';
-      orgCheckoutStarted = false;
-      return;
-    }
-
-    let clientSecret;
-    try {
-      const json = await authedFetch('/api/enterprise/create-checkout-session', { method: 'POST' });
-      clientSecret = json.client_secret;
-    } catch (err) {
-      statusEl.classList.add('is-error');
-      statusEl.textContent = `Couldn't start checkout: ${err.message}`;
-      orgCheckoutStarted = false;
-      return;
-    }
-
-    try {
-      const appearance = {
+    await startEmbeddedCheckout({
+      stripeClient,
+      fetchClientSecret: async () => {
+        const json = await authedFetch('/api/enterprise/create-checkout-session', { method: 'POST' });
+        return json.client_secret;
+      },
+      containerId: 'org-checkout-form',
+      statusEl,
+      appearance: {
         theme: 'flat', labels: 'auto', inputs: 'spaced',
         variables: {
           borderRadius: '8px', colorBackground: '#17121d', colorDanger: '#e8836a',
           colorPrimary: '#b98ee0', colorSuccess: '#5fbf8a', colorText: '#f4eef8',
           fontFamily: 'Inter', fontSizeBase: '15px', spacingUnit: '4px',
         },
-      };
-      const checkout = await stripeClient.initCheckoutFormSdk({ clientSecret, appearance });
-      statusEl.textContent = '';
-      const form = checkout.createForm({ layout: 'expanded' });
-      form.mount('#org-checkout-form');
-
-      const loadActionsResult = await checkout.loadActions();
-      if (loadActionsResult.type === 'success') {
-        form.on('confirm', async (event) => {
-          try {
-            await loadActionsResult.actions.confirm({ formConfirmEvent: event });
-          } catch (error) {
-            console.error('Payment confirmation error:', error);
-            statusEl.classList.add('is-error');
-            statusEl.textContent = 'Something went wrong confirming payment. Please try again.';
-          }
-        });
-      }
-    } catch (err) {
-      console.error('Stripe checkout error:', err);
-      statusEl.classList.add('is-error');
-      statusEl.textContent = `Couldn't start checkout: ${err.message}`;
-      orgCheckoutStarted = false;
-    }
+      },
+      getGuard: () => orgCheckoutStarted,
+      setGuard: (v) => { orgCheckoutStarted = v; },
+      notConfiguredMessage: 'Checkout isn\'t configured yet.',
+    });
   }
 
   function renderJoinPanel(body) {
