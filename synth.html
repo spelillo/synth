@@ -3147,6 +3147,7 @@
         db = new SQL.Database();
         tables = [];
         activeTableName = null;
+        columnStatsCache = null;
 
         const effectiveMax = maxTablesForTier();
         if (files.length > 1 && !canUseFeature('multiCsv')) requireFeature('multiCsv');
@@ -3560,6 +3561,7 @@
       db.run(`DROP TABLE "${name}"`);
       tables = tables.filter(t => t.name !== name);
       focusedTableNames.delete(name);
+      if (columnStatsCache && columnStatsCache.tableName === name) columnStatsCache = null;
       relationships = relationships.filter(r => r.fromTable !== name && r.toTable !== name);
 
       if (activeTableName === name) {
@@ -4636,7 +4638,7 @@
         // A query that isn't a read (INSERT/UPDATE/DELETE/etc.) changes
         // the data sql.js holds in-browser, which the cloud copy — if
         // any — now no longer matches.
-        if (!/^\s*(SELECT|PRAGMA|EXPLAIN|WITH)\b/i.test(query)) markWorkspaceDirty();
+        if (!/^\s*(SELECT|PRAGMA|EXPLAIN|WITH)\b/i.test(query)) { markWorkspaceDirty(); columnStatsCache = null; }
 
         if (result.length === 0) {
           resultsEl.innerHTML = '<div class="empty">No results</div>';
@@ -4648,6 +4650,7 @@
 
         renderTable('results', 'results', result);
         maybeShowSaveSessionBanner();
+        if (!document.getElementById('results-chart-panel').hidden) renderResultsChart();
 
       } catch (err) {
         resultsEl.innerHTML = '';
@@ -4940,6 +4943,289 @@
       viewStates.tableview.search = value;
       viewStates.tableview.page = 0;
       updateTable('table-view-results', 'tableview');
+    };
+
+    // ---- Column stats (Table View) ----
+    // Lazily computed per table and cached until the table's underlying
+    // data actually changes (see the columnStatsCache = null resets in
+    // uploadCSV, confirmDeleteTableSubmit, and runQuery's mutating-query
+    // branch below) — a 500k-row table makes "recompute on every render"
+    // the wrong tradeoff.
+    let columnStatsCache = null; // { tableName, html }
+
+    // Every column is stored as TEXT (see loadFileAsTable), so "is this
+    // numeric" has to be inferred from the values themselves. Same
+    // "every non-empty value must qualify" classification
+    // normalizeThousandsSeparators already uses, so a column reads as
+    // numeric here exactly when it would there.
+    const STATS_NUMBER_RE = /^-?\d+(\.\d+)?$/;
+
+    async function computeColumnStats(tableName) {
+      const result = db.exec(`SELECT * FROM "${tableName}"`);
+      if (!result.length) return [];
+      const columns = result[0].columns;
+      const rows = result[0].values;
+      const colCount = columns.length;
+
+      // Pass 1: a column only counts as numeric if EVERY non-empty value in
+      // it qualifies — one stray "N/A" makes the whole column text.
+      const isNumeric = new Array(colCount).fill(true);
+      for (let start = 0; start < rows.length; start += CSV_CHUNK_SIZE) {
+        const end = Math.min(start + CSV_CHUNK_SIZE, rows.length);
+        for (let i = start; i < end; i++) {
+          const row = rows[i];
+          for (let c = 0; c < colCount; c++) {
+            if (!isNumeric[c]) continue;
+            const val = row[c];
+            if (val === null || val === undefined || val === '') continue;
+            if (!STATS_NUMBER_RE.test(String(val))) isNumeric[c] = false;
+          }
+        }
+        if (end < rows.length) await yieldToUI();
+      }
+
+      // Pass 2: compute the real stats now that every column's type is
+      // known. Min/max/sum are running aggregates, not collected arrays —
+      // Math.min(...vals) on a 500k-element array risks blowing the call
+      // stack, and a value-count Map is only built for text columns.
+      const nullCount = new Array(colCount).fill(0);
+      const numericCount = new Array(colCount).fill(0);
+      const min = new Array(colCount).fill(Infinity);
+      const max = new Array(colCount).fill(-Infinity);
+      const sum = new Array(colCount).fill(0);
+      const valueCounts = columns.map(() => new Map());
+
+      for (let start = 0; start < rows.length; start += CSV_CHUNK_SIZE) {
+        const end = Math.min(start + CSV_CHUNK_SIZE, rows.length);
+        for (let i = start; i < end; i++) {
+          const row = rows[i];
+          for (let c = 0; c < colCount; c++) {
+            const val = row[c];
+            if (val === null || val === undefined || val === '') { nullCount[c]++; continue; }
+            if (isNumeric[c]) {
+              const num = parseFloat(val);
+              numericCount[c]++;
+              sum[c] += num;
+              if (num < min[c]) min[c] = num;
+              if (num > max[c]) max[c] = num;
+            } else {
+              const str = String(val);
+              valueCounts[c].set(str, (valueCounts[c].get(str) || 0) + 1);
+            }
+          }
+        }
+        if (end < rows.length) await yieldToUI();
+      }
+
+      return columns.map((name, c) => {
+        if (isNumeric[c] && numericCount[c] > 0) {
+          return {
+            name, nullCount: nullCount[c], totalRows: rows.length, type: 'numeric',
+            min: min[c], max: max[c], mean: sum[c] / numericCount[c],
+          };
+        }
+        let mostCommon = null, mostCommonCount = 0;
+        valueCounts[c].forEach((count, value) => {
+          if (count > mostCommonCount) { mostCommon = value; mostCommonCount = count; }
+        });
+        return {
+          name, nullCount: nullCount[c], totalRows: rows.length, type: 'text',
+          distinctCount: valueCounts[c].size, mostCommon, mostCommonCount,
+        };
+      });
+    }
+
+    function formatStatNumber(n) {
+      if (!isFinite(n)) return '—';
+      return (Math.round(n * 100) / 100).toLocaleString();
+    }
+
+    function truncateForStats(str, maxLen = 40) {
+      const s = String(str);
+      return s.length > maxLen ? s.slice(0, maxLen) + '…' : s;
+    }
+
+    // ---- Query results chart ----
+    // Scoped deliberately narrow: exactly 2 columns (a label and a number),
+    // the shape a GROUP BY / aggregate query actually produces. A raw
+    // multi-column row dump isn't a chart-worthy shape, so this declines
+    // rather than guessing which columns to plot.
+    const MAX_CHART_BARS = 30;
+
+    function getChartableRows(stateKey) {
+      const state = viewStates[stateKey];
+      if (!state || !state.columns || state.columns.length !== 2) {
+        return { error: 'Chart needs a 2-column result — a label and a number. Try a query like SELECT region, SUM(total) FROM orders GROUP BY region.' };
+      }
+
+      const rows = getVisibleRows(stateKey);
+      const parsed = [];
+      for (const row of rows) {
+        const raw = row[1];
+        if (raw === null || raw === undefined || raw === '') continue;
+        const num = parseFloat(raw);
+        if (isNaN(num)) continue;
+        parsed.push({ label: row[0] === null || row[0] === undefined ? '' : String(row[0]), value: num });
+      }
+      if (parsed.length === 0) {
+        return { error: `The second column ("${state.columns[1]}") needs to be numeric to chart it.` };
+      }
+      return { rows: parsed, truncated: parsed.length > MAX_CHART_BARS, total: parsed.length };
+    }
+
+    function renderBarChartSVG(rows) {
+      const width = 640;
+      const height = 320;
+      const paddingLeft = 56;
+      const paddingBottom = 64;
+      const paddingTop = 24;
+      const paddingRight = 20;
+      const chartWidth = width - paddingLeft - paddingRight;
+      const chartHeight = height - paddingTop - paddingBottom;
+
+      const maxVal = Math.max(...rows.map(r => r.value), 0);
+      const minVal = Math.min(...rows.map(r => r.value), 0);
+      const range = (maxVal - minVal) || 1;
+      const zeroY = paddingTop + chartHeight * (maxVal / range);
+
+      const barGap = 8;
+      const barWidth = Math.max(4, (chartWidth - barGap * (rows.length - 1)) / rows.length);
+
+      let bars = '';
+      let labels = '';
+      rows.forEach((r, i) => {
+        const x = paddingLeft + i * (barWidth + barGap);
+        const barHeight = Math.max(Math.abs(r.value) / range * chartHeight, r.value === 0 ? 0 : 1);
+        const y = r.value >= 0 ? zeroY - barHeight : zeroY;
+        const labelX = (x + barWidth / 2).toFixed(1);
+        bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barHeight.toFixed(1)}" fill="#ff4f00" rx="2"></rect>`;
+        bars += `<text x="${labelX}" y="${(y - 4).toFixed(1)}" font-size="10" text-anchor="middle" fill="#201515" font-family="'JetBrains Mono', monospace">${escapeHtml(formatStatNumber(r.value))}</text>`;
+        const labelY = (height - paddingBottom + 14).toFixed(1);
+        labels += `<text x="${labelX}" y="${labelY}" font-size="10" text-anchor="end" fill="#56534a" transform="rotate(-40 ${labelX} ${labelY})">${escapeHtml(truncateForStats(r.label, 14))}</text>`;
+      });
+
+      return `<svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" font-family="Inter, sans-serif">
+        <rect x="0" y="0" width="${width}" height="${height}" fill="#fffefb"></rect>
+        <line x1="${paddingLeft}" y1="${zeroY.toFixed(1)}" x2="${width - paddingRight}" y2="${zeroY.toFixed(1)}" stroke="#c5c0b1" stroke-width="1"></line>
+        ${bars}
+        ${labels}
+      </svg>`;
+    }
+
+    function renderResultsChart() {
+      const panel = document.getElementById('results-chart-panel');
+      if (!panel) return;
+      const data = getChartableRows('results');
+      if (data.error) {
+        panel.innerHTML = `<div class="empty">${escapeHtml(data.error)}</div>`;
+        return;
+      }
+      const shown = data.rows.slice(0, MAX_CHART_BARS);
+      const svg = renderBarChartSVG(shown);
+      const note = data.truncated
+        ? `<div class="chart-note">Showing the first ${MAX_CHART_BARS} of ${data.total.toLocaleString()} rows.</div>`
+        : '';
+      panel.innerHTML = `
+        <div class="chart-toolbar">
+          <button class="save-btn" onclick="downloadChartSVG()">Download SVG</button>
+        </div>
+        <div id="results-chart-svg-wrap">${svg}</div>
+        ${note}
+      `;
+    }
+
+    window.toggleResultsChart = function() {
+      const panel = document.getElementById('results-chart-panel');
+      const btn = document.getElementById('results-chart-toggle-btn');
+      if (!panel.hidden) {
+        panel.hidden = true;
+        btn.setAttribute('aria-expanded', 'false');
+        return;
+      }
+      panel.hidden = false;
+      btn.setAttribute('aria-expanded', 'true');
+      renderResultsChart();
+    };
+
+    window.downloadChartSVG = function() {
+      const svgEl = document.querySelector('#results-chart-svg-wrap svg');
+      if (!svgEl) return;
+      const serialized = new XMLSerializer().serializeToString(svgEl);
+      const blob = new Blob([serialized], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'chart.svg';
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+
+    function renderColumnStatsCard(stat) {
+      const nullPct = stat.totalRows > 0 ? ((stat.nullCount / stat.totalRows) * 100).toFixed(1) : '0.0';
+      const nullMetric = `<div class="stat-metric"><span class="stat-metric-label">Nulls</span><span class="stat-metric-value">${stat.nullCount.toLocaleString()} (${nullPct}%)</span></div>`;
+
+      if (stat.type === 'numeric') {
+        return `
+          <div class="stat-card">
+            <div class="stat-card-name">${escapeHtml(stat.name)}</div>
+            <div class="stat-card-type">Numeric</div>
+            <div class="stat-card-metrics">
+              <div class="stat-metric"><span class="stat-metric-label">Min</span><span class="stat-metric-value">${formatStatNumber(stat.min)}</span></div>
+              <div class="stat-metric"><span class="stat-metric-label">Max</span><span class="stat-metric-value">${formatStatNumber(stat.max)}</span></div>
+              <div class="stat-metric"><span class="stat-metric-label">Mean</span><span class="stat-metric-value">${formatStatNumber(stat.mean)}</span></div>
+              ${nullMetric}
+            </div>
+          </div>`;
+      }
+
+      const mostCommonText = stat.mostCommon !== null
+        ? `${escapeHtml(truncateForStats(stat.mostCommon))} (${stat.mostCommonCount.toLocaleString()})`
+        : '—';
+      return `
+        <div class="stat-card">
+          <div class="stat-card-name">${escapeHtml(stat.name)}</div>
+          <div class="stat-card-type">Text</div>
+          <div class="stat-card-metrics">
+            <div class="stat-metric"><span class="stat-metric-label">Distinct</span><span class="stat-metric-value">${stat.distinctCount.toLocaleString()}</span></div>
+            <div class="stat-metric"><span class="stat-metric-label">Most common</span><span class="stat-metric-value" title="${escapeAttr(stat.mostCommon !== null ? String(stat.mostCommon) : '')}">${mostCommonText}</span></div>
+            ${nullMetric}
+          </div>
+        </div>`;
+    }
+
+    window.toggleColumnStats = async function() {
+      const panel = document.getElementById('table-view-stats-panel');
+      const btn = document.getElementById('table-stats-toggle-btn');
+      if (!panel.hidden) {
+        panel.hidden = true;
+        btn.setAttribute('aria-expanded', 'false');
+        return;
+      }
+
+      panel.hidden = false;
+      btn.setAttribute('aria-expanded', 'true');
+
+      if (!activeTableName) {
+        panel.innerHTML = '<div class="empty">Upload a file first.</div>';
+        return;
+      }
+
+      if (columnStatsCache && columnStatsCache.tableName === activeTableName) {
+        panel.innerHTML = columnStatsCache.html;
+        return;
+      }
+
+      const requestedTable = activeTableName;
+      panel.innerHTML = '<div class="loading">Computing column stats…</div>';
+      const stats = await computeColumnStats(requestedTable);
+      const html = `<div class="stat-card-grid">${stats.map(renderColumnStatsCard).join('')}</div>`;
+
+      // The table could have changed while this was computing (fast table
+      // switch, or the panel got closed) — don't clobber a newer state
+      // with a stale result.
+      if (activeTableName !== requestedTable || panel.hidden) return;
+      columnStatsCache = { tableName: requestedTable, html };
+      panel.innerHTML = html;
     };
 
     function renderTableView() {
@@ -8896,6 +9182,106 @@
       min-height: 0;
     }
 
+    .table-view-stats-panel[hidden] { display: none; }
+
+    .table-view-stats-panel {
+      flex: 0 0 auto;
+      max-height: 260px;
+      overflow-y: auto;
+      border: 1px solid #c5c0b1;
+      border-radius: 10px;
+      padding: 14px;
+      background: #f8f6f0;
+    }
+
+    .stat-card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 10px;
+    }
+
+    .stat-card {
+      background: #fffefb;
+      border: 1px solid #c5c0b1;
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+
+    .stat-card-name {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: 12.5px;
+      color: #201515;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .stat-card-type {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #939084;
+      margin: 2px 0 8px;
+    }
+
+    .stat-card-metrics {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .stat-metric {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+    }
+
+    .stat-metric-label {
+      color: #56534a;
+    }
+
+    .stat-metric-value {
+      font-family: 'JetBrains Mono', monospace;
+      color: #201515;
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 60%;
+    }
+
+    .results-chart-panel[hidden] { display: none; }
+
+    .results-chart-panel {
+      border: 1px solid #c5c0b1;
+      border-radius: 10px;
+      padding: 14px;
+      background: #f8f6f0;
+      margin-bottom: 12px;
+    }
+
+    .chart-toolbar {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 8px;
+    }
+
+    #results-chart-svg-wrap svg {
+      width: 100%;
+      height: auto;
+      max-height: 360px;
+    }
+
+    .chart-note {
+      font-size: 12px;
+      color: #939084;
+      margin-top: 6px;
+      text-align: center;
+    }
+
     @media (max-width: 1024px) {
       #app-view {
         overflow: auto;
@@ -9583,8 +9969,12 @@
             <div class="results-section">
               <div class="results-header">
                 <div class="section-label">Query Results</div>
-                <button class="save-btn" id="export-results-csv-btn" hidden onclick="exportResultsCSV('results')">Download CSV</button>
+                <div class="table-view-toolbar-right">
+                  <button class="save-btn" id="results-chart-toggle-btn" onclick="toggleResultsChart()" aria-expanded="false">Chart</button>
+                  <button class="save-btn" id="export-results-csv-btn" hidden onclick="exportResultsCSV('results')">Download CSV</button>
+                </div>
               </div>
+              <div id="results-chart-panel" class="results-chart-panel" hidden></div>
               <div id="error"></div>
               <div id="results-scroll-top" class="results-scroll-top">
                 <div id="results-scroll-top-inner"></div>
@@ -9651,9 +10041,11 @@
             <input type="text" id="table-search" placeholder="Search all columns...">
             <div class="table-view-toolbar-right">
               <div id="table-view-meta"></div>
+              <button class="save-btn" id="table-stats-toggle-btn" onclick="toggleColumnStats()" aria-expanded="false">Column Stats</button>
               <button class="save-btn" id="export-tableview-csv-btn" hidden onclick="exportResultsCSV('tableview')">Download CSV</button>
             </div>
           </div>
+          <div id="table-view-stats-panel" class="table-view-stats-panel" hidden></div>
           <div id="table-view-scroll-top" class="results-scroll-top">
             <div id="table-view-scroll-top-inner"></div>
           </div>
