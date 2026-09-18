@@ -7,7 +7,7 @@
   <meta name="description" content="Query any CSV file with real SQL, or plain English. Runs as a local SQLite database in your browser. No install, no sign-in required.">
   <link rel="canonical" href="https://synth-sql.com/">
   <meta property="og:title" content="Synth: Instantly query any CSV file with SQL">
-  <meta property="og:description" content="Query any CSV file with real SQL, or plain English. Runs as a local SQLite database right in your browser tab — no install required.">
+  <meta property="og:description" content="Query any CSV file with real SQL, or plain English. Runs as a local SQLite database right in your browser tab, no install required.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://synth-sql.com/">
   <meta property="og:image" content="https://synth-sql.com/synth-og-card.png">
@@ -15,7 +15,7 @@
   <meta property="og:image:height" content="630">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Synth: Instantly query any CSV file with SQL">
-  <meta name="twitter:description" content="Query any CSV file with real SQL, or plain English. Runs as a local SQLite database right in your browser tab — no install required.">
+  <meta name="twitter:description" content="Query any CSV file with real SQL, or plain English. Runs as a local SQLite database right in your browser tab, no install required.">
   <meta name="twitter:image" content="https://synth-sql.com/synth-og-card.png">
   <link rel="icon" href="synthfavicon.png">
   <script type="application/ld+json">
@@ -39,10 +39,9 @@
         "applicationCategory": "BusinessApplication",
         "operatingSystem": "Web",
         "url": "https://synth-sql.com/",
-        "description": "Synth lets you run real SQL directly on a CSV file, or ask questions in plain English. No SQL Server, no Postgres, no database to install or host — your file loads into a live SQLite database running entirely in your browser tab.",
+        "description": "Synth lets you run real SQL directly on a CSV file, or ask questions in plain English. No SQL Server, no Postgres, no database to install or host. Your file loads into a live SQLite database running entirely in your browser tab.",
         "offers": [
-          { "@type": "Offer", "name": "Free", "price": "0", "priceCurrency": "USD" },
-          { "@type": "Offer", "name": "Premium", "price": "9.99", "priceCurrency": "USD" }
+          { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
         ]
       }
     ]
@@ -4022,8 +4021,8 @@
     </a>
     <div class="header-right">
       <div class="auth-area">
-        <button id="go-premium-btn" class="auth-btn auth-btn-premium" onclick="openPremiumPanel()" title="$9.99 once, early-adopter price — not a subscription">Go Premium</button>
-        <button id="enterprise-nav-btn" class="auth-btn auth-btn-enterprise" onclick="openEnterpriseEntry()" title="For schools and companies">Enterprise</button>
+        <button id="go-premium-btn" class="auth-btn auth-btn-premium" onclick="openPremiumPanel()" hidden>Go Premium</button>
+        <button id="enterprise-nav-btn" class="auth-btn auth-btn-enterprise" onclick="openEnterpriseEntry()" hidden>Enterprise</button>
         <button id="dashboard-nav-btn" class="auth-btn auth-btn-premium" onclick="openDashboard()" hidden>Go to Dashboard</button>
         <button id="sign-in-btn" class="auth-btn" onclick="toggleAuthPanel()">Sign in</button>
         <button id="my-projects-btn" class="auth-btn auth-btn-primary" onclick="openCloudPanel()" hidden>Load Sessions</button>
@@ -4180,11 +4179,11 @@
         <div id="settings-email" class="help-text"></div>
         <div id="settings-member-since" class="help-text settings-member-since"></div>
       </div>
-      <div class="modal-section">
+      <div class="modal-section" id="settings-premium-section" hidden>
         <label class="field-label">Plan</label>
         <div id="settings-premium-row"></div>
       </div>
-      <div class="modal-section">
+      <div class="modal-section" id="settings-enterprise-section" hidden>
         <label class="field-label">Synth Enterprise</label>
         <div id="settings-enterprise-row"></div>
       </div>
@@ -4300,23 +4299,21 @@
       </div>
       <div class="modal-section">
         <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#128190;</span> Saving queries</div>
-        <p class="help-text"><strong>Save Query</strong> and <strong>Load Query</strong> keep a personal list of queries for the current file, stored in this browser. They don't sync across devices. Saving a query requires a free account — Lite Mode can fill out the Save Query form, but signs you in before it actually saves.</p>
+        <p class="help-text"><strong>Save Query</strong> and <strong>Load Query</strong> keep a personal list of queries for the current file, stored in this browser. They don't sync across devices.</p>
       </div>
       <div class="modal-section">
         <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#9729;</span> Saved workspaces &amp; chat sessions</div>
         <p class="help-text">If you're signed in on Normal Mode, <strong>Save to cloud</strong> and <strong>Save session</strong> (in the AI panel) store the current workspace and chat history to your account. Open <strong>Load Sessions</strong>, top right, to reopen anything you've saved, from any device. Lite Mode never touches the cloud, so nothing here happens unless you sign in and click Save.</p>
       </div>
       <div class="modal-section">
-        <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#9733;</span> Premium features</div>
+        <div class="modal-subhead"><span class="subhead-icon" aria-hidden="true">&#9733;</span> Workspaces</div>
         <ul class="premium-feature-list">
-          <li>Multi-table workspaces: up to 10 tables in one workspace instead of one</li>
+          <li>Multi-table workspaces: up to 10 tables in one workspace</li>
           <li>Table renaming: give a table a cleaner name than its raw filename</li>
           <li>Cross-table AI queries: the assistant writes joins across your tables</li>
-          <li>More AI usage: 5x the daily limit on a free account</li>
           <li>Relationship detection: auto-suggested foreign keys you can confirm in the Relationships tab</li>
-          <li>Large files: load CSVs up to 500,000 rows instead of 100,000</li>
+          <li>Large files: load CSVs up to 500,000 rows</li>
         </ul>
-        <p class="premium-onetime-note">&#10003; <strong>$9.99, paid once.</strong> Not a subscription, so there's nothing to cancel later. Early-adopter price while Synth is in beta.</p>
       </div>
     </div>
   </div>
@@ -4535,7 +4532,7 @@
         <div class="about-step">
           <div class="about-step-num">01</div>
           <div class="about-step-title">Pick a mode</div>
-          <div class="about-step-body">Lite Mode skips sign-in entirely. Normal Mode adds a free account (email + password) so datasets and chat sessions sync across devices.</div>
+          <div class="about-step-body">Lite Mode skips sign-in entirely. Normal Mode adds an account (email + password) so datasets and chat sessions sync across devices.</div>
         </div>
         <div class="about-step">
           <div class="about-step-num">02</div>
@@ -4554,7 +4551,6 @@
       <div class="landing-footer-inner">
         <div class="landing-footer-brand">Synth</div>
         <nav class="landing-footer-links">
-          <a href="/pricing">Pricing</a>
           <a href="/about">About</a>
           <a href="/guides">Guides</a>
           <a href="/terms">Terms of Service</a>

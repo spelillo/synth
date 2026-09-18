@@ -5,6 +5,11 @@
     // their own copy of the initCheckoutFormSdk -> createForm -> mount ->
     // loadActions -> confirm sequence.
 
+    // Every account clears every tier gate in this file. Kept as a single
+    // switch (rather than removing the gates themselves) so the tier system
+    // can be turned back on later without rebuilding it.
+    const ALL_TIERS_UNLOCKED = true;
+
     // ---- Premium checkout (Stripe) ----
     // Publishable keys are meant to be public, so — same as the Supabase
     // anon key above — this is hardcoded here rather than pulled from a
@@ -14,7 +19,7 @@
     const STRIPE_PUBLISHABLE_KEY = 'pk_live_51UE9raRsooZUyqKOw6fAtTrMBdbjzeC8c4pZP2mg7tGxRXfthrT43J6jexAtBZNy293eztbHPtlU8ejXyureXqdW00Iw8YcLPY';
 
     let stripeClient = null;
-    if (STRIPE_PUBLISHABLE_KEY !== 'pk_test_...' && window.Stripe) {
+    if (!ALL_TIERS_UNLOCKED && STRIPE_PUBLISHABLE_KEY !== 'pk_test_...' && window.Stripe) {
       stripeClient = window.Stripe(STRIPE_PUBLISHABLE_KEY, { betas: ['custom_checkout_payment_form_1'] });
     }
 
@@ -61,7 +66,9 @@
       // The header used to grow a redundant "Premium ✓" badge once
       // you'd upgraded, duplicating what the Settings popup (behind the
       // email button) already shows. Once premium, just hide it instead.
-      document.getElementById('go-premium-btn').hidden = isPremium;
+      document.getElementById('go-premium-btn').hidden = ALL_TIERS_UNLOCKED || isPremium;
+      const enterpriseNavBtn = document.getElementById('enterprise-nav-btn');
+      if (enterpriseNavBtn) enterpriseNavBtn.hidden = ALL_TIERS_UNLOCKED;
       document.getElementById('dashboard-nav-btn').hidden = !currentUser;
       renderSettingsPremiumRow();
       // Premium status can change mid-session (checkout completes without
@@ -79,6 +86,7 @@
     const TIER_RANK = { lite: 0, normal: 1, premium: 2 };
 
     function getUserTier() {
+      if (ALL_TIERS_UNLOCKED) return 'premium';
       if (!currentUser) return 'lite';
       return isPremium ? 'premium' : 'normal';
     }
