@@ -1547,6 +1547,11 @@
         tables = [];
         activeTableName = null;
 
+        // Row counts are already known from the saved dataset metadata, so
+        // the bar can be sized accurately before any downloading starts.
+        // *3: one parse pass, one normalizeThousandsSeparators pass, one insert pass.
+        addLoadProgressUnits(dsRows.reduce((sum, d) => sum + (d.row_count || 0), 0) * 3);
+
         for (const d of dsRows) {
           const { data: blob, error: dlErr } = await sb.storage.from('csvs').download(d.storage_path);
           if (dlErr) throw dlErr;
@@ -1555,17 +1560,10 @@
 
           // Load under the SAVED table_name, not a re-slugified filename —
           // a rename made before saving has to survive the round trip.
-          const columnDefs = headers.map(h => `"${h}" TEXT`).join(', ');
-          db.run(`CREATE TABLE "${d.table_name}" (${columnDefs})`);
-          const stmt = db.prepare(`INSERT INTO "${d.table_name}" VALUES (${headers.map(() => '?').join(', ')})`);
-          rows.forEach(row => {
-            if (row.length === headers.length) stmt.run(row);
-            else if (row.length < headers.length) stmt.run([...row, ...Array(headers.length - row.length).fill('')]);
-            else stmt.run(row.slice(0, headers.length));
-          });
-          stmt.free();
-
-          tables.push({ name: d.table_name, fileName: d.filename, rowCount: rows.length, columns: headers });
+          // loadFileAsTable's chunked, yielding insert also means a large
+          // saved workspace no longer blocks the tab for one long stretch
+          // the way this loop's own hand-rolled insert used to.
+          await loadFileAsTable({ name: d.filename }, headers, rows, d.table_name);
         }
 
         activeTableName = tables[0].name;
@@ -1602,7 +1600,7 @@
         updateAIState();
         renderTableView();
 
-        runLoadingAnimation(() => {
+        completeLoadProgress(() => {
           revealApp();
           resetQueryInputView();
         });
@@ -1741,7 +1739,7 @@
         updateAIState();
         renderTableView();
 
-        runLoadingAnimation(() => {
+        completeLoadProgress(() => {
           revealApp();
           resetQueryInputView();
         });
@@ -1832,9 +1830,12 @@
         const effectiveMax = maxTablesForTier();
         if (files.length > 1 && !canUseFeature('multiCsv')) requireFeature('multiCsv');
 
+        const filesToLoad = files.slice(0, effectiveMax);
+        const fileTexts = await sizeLoadProgress(filesToLoad);
+
         let loaded = [];
-        for (const file of files.slice(0, effectiveMax)) {
-          const text = await file.text();
+        for (const file of filesToLoad) {
+          const text = fileTexts.get(file);
           const { headers, rows } = await parseUploadedFile(file.name, text);
           assertRowCapOrThrow(rows.length);
           loaded.push(await loadFileAsTable(file, headers, rows, slugifyTableName(file.name)));
@@ -1869,7 +1870,7 @@
         updateAIState();
         renderTableView();
 
-        runLoadingAnimation(() => {
+        completeLoadProgress(() => {
           revealApp();
           document.getElementById('query-input').focus();
           resetQueryInputView();
@@ -1917,9 +1918,12 @@
 
       showLoadingOverlay();
       try {
+        const filesToLoad = files.slice(0, room);
+        const fileTexts = await sizeLoadProgress(filesToLoad);
+
         let loaded = [];
-        for (const file of files.slice(0, room)) {
-          const text = await file.text();
+        for (const file of filesToLoad) {
+          const text = fileTexts.get(file);
           const { headers, rows } = await parseUploadedFile(file.name, text);
           assertRowCapOrThrow(rows.length);
           loaded.push(await loadFileAsTable(file, headers, rows, slugifyTableName(file.name)));
@@ -1941,7 +1945,7 @@
         updateAIState();
         renderTableView();
 
-        runLoadingAnimation(() => {
+        completeLoadProgress(() => {
           document.getElementById('query-input').focus();
         });
       } catch (err) {
@@ -2661,44 +2665,87 @@
       fill.style.transition = 'none';
       fill.style.width = '0%';
       overlay.hidden = false;
-      // force reflow so the width reset above is committed before the first step animates
+      // force reflow so the width reset above is committed before the first update animates
       void fill.offsetWidth;
-      fill.style.transition = 'width 0.5s cubic-bezier(0.4, 0, 0.2, 1)';
+      fill.style.transition = 'width 150ms linear';
       document.body.classList.add('bg-blur');
-    }
-
-    // A real progress bar doesn't creep evenly - it jumps, stalls near the
-    // end, then snaps to 100 right as the work actually finishes. This
-    // mimics that shape instead of one flat linear fill.
-    const LOADING_STEPS = [
-      { pct: 50, transitionMs: 700, holdMs: 500 },
-      { pct: 75, transitionMs: 450, holdMs: 350 },
-      { pct: 97, transitionMs: 600, holdMs: 550 },
-      { pct: 100, transitionMs: 250, holdMs: 350 }
-    ];
-
-    function runLoadingAnimation(cb) {
-      const fill = document.getElementById('loading-fill');
-      let i = 0;
-
-      function nextStep() {
-        if (i >= LOADING_STEPS.length) {
-          hideLoadingOverlay();
-          if (cb) cb();
-          return;
-        }
-        const step = LOADING_STEPS[i++];
-        fill.style.transitionDuration = step.transitionMs + 'ms';
-        fill.style.width = step.pct + '%';
-        setTimeout(nextStep, step.transitionMs + step.holdMs);
-      }
-
-      nextStep();
+      resetLoadProgress();
     }
 
     function hideLoadingOverlay() {
       document.getElementById('loading-overlay').hidden = true;
       document.body.classList.remove('bg-blur');
+    }
+
+    // ---- Loading overlay progress, driven by real work instead of a fixed
+    // animation ----
+    //
+    // A caller sizes the bar upfront with addLoadProgressUnits() (see the
+    // pre-scan pass in uploadCSV/addTablesCSV/loadCloudWorkspace) before
+    // starting the real parse/insert work, then the chunked loops in
+    // csv-parser.js/json-parser.js call advanceLoadProgress() as each chunk
+    // actually finishes. The unit is deliberately rough (roughly "one row
+    // processed, in whichever phase"), not a byte-exact measure — that's
+    // fine because the fill is capped below 100% until completeLoadProgress()
+    // is called explicitly, so overestimating the total just means the bar
+    // holds a little below full instead of overshooting.
+    let loadProgressTotal = 0;
+    let loadProgressDone = 0;
+
+    function resetLoadProgress() {
+      loadProgressTotal = 0;
+      loadProgressDone = 0;
+      setLoadingFillPct(0);
+    }
+
+    function addLoadProgressUnits(n) {
+      loadProgressTotal += n;
+    }
+
+    function advanceLoadProgress(n) {
+      loadProgressDone += n;
+      const pct = loadProgressTotal > 0 ? (loadProgressDone / loadProgressTotal) * 100 : 0;
+      setLoadingFillPct(Math.min(99, pct));
+    }
+
+    function setLoadingFillPct(pct) {
+      const fill = document.getElementById('loading-fill');
+      if (fill) fill.style.width = pct + '%';
+    }
+
+    // Snaps to 100 and gives the fill a moment to actually paint that last
+    // stretch before tearing the overlay down, instead of jumping straight
+    // from "in progress" to gone.
+    function completeLoadProgress(cb) {
+      setLoadingFillPct(100);
+      setTimeout(() => {
+        hideLoadingOverlay();
+        if (cb) cb();
+      }, 200);
+    }
+
+    // Reads every file's text upfront (cheap — this is I/O, not the CPU-heavy
+    // part) so the progress bar's total is fixed before the real parse/insert
+    // work starts. Sizing it here, once, instead of letting each file add its
+    // own units as it's reached, avoids the bar jumping backward mid-upload
+    // when a later file's units get added on top of an already-mostly-done
+    // earlier one. Returns a Map of file -> text so callers don't re-read it.
+    async function sizeLoadProgress(files) {
+      const fileTexts = new Map();
+      for (const file of files) {
+        const text = await file.text();
+        fileTexts.set(file, text);
+        const lineCount = Math.max(1, text.split('\n').length);
+        // parseJSONText walks its records 3 times (flatten, then union the
+        // header keys, then build rows); parseCSVText walks its lines once.
+        // Both then pass through normalizeThousandsSeparators (1 more pass)
+        // and loadFileAsTable's insert (1 more). Weighting the estimate by
+        // phase count keeps JSON and CSV uploads proportional to each other
+        // instead of JSON always racing ahead of its real progress.
+        const phases = isJSONFile(file.name) ? 5 : 3;
+        addLoadProgressUnits(lineCount * phases);
+      }
+      return fileTexts;
     }
 
     function revealApp() {

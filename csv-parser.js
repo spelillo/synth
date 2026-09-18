@@ -84,6 +84,7 @@
           values.push(current.trim().replace(/^"|"$/g, ''));
           if (values.some(val => val)) rows.push(values);
         }
+        advanceLoadProgress(end - start);
         if (end < lines.length) await yieldToUI();
       }
 
@@ -121,6 +122,7 @@
             if (val.includes(',')) sawComma[colIndex] = true;
           }
         }
+        advanceLoadProgress(end - start);
         if (end < rows.length) await yieldToUI();
       }
 

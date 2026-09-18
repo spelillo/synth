@@ -82,6 +82,7 @@
           }
           flatRecords.push(flattenJSONRecord(records[i], '', {}));
         }
+        advanceLoadProgress(end - start);
         if (end < records.length) await yieldToUI();
       }
 
@@ -97,6 +98,7 @@
             if (!seenKeys.has(key)) { seenKeys.add(key); headerKeys.push(key); }
           }
         }
+        advanceLoadProgress(end - start);
         if (end < flatRecords.length) await yieldToUI();
       }
       const headers = headerKeys.map(k => sanitizeColumnName(k));
@@ -111,6 +113,7 @@
           const flat = flatRecords[i];
           rows.push(headerKeys.map(k => flat[k] ?? ''));
         }
+        advanceLoadProgress(end - start);
         if (end < flatRecords.length) await yieldToUI();
       }
 
@@ -153,6 +156,7 @@
             stmt.run(row.slice(0, headers.length));
           }
         }
+        advanceLoadProgress(end - start);
         if (end < rows.length) await yieldToUI();
       }
       stmt.free();
