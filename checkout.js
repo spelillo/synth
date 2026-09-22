@@ -69,7 +69,6 @@
       document.getElementById('go-premium-btn').hidden = ALL_TIERS_UNLOCKED || isPremium;
       const enterpriseNavBtn = document.getElementById('enterprise-nav-btn');
       if (enterpriseNavBtn) enterpriseNavBtn.hidden = ALL_TIERS_UNLOCKED;
-      document.getElementById('dashboard-nav-btn').hidden = !currentUser;
       renderSettingsPremiumRow();
       // Premium status can change mid-session (checkout completes without
       // a reload) — refresh the table-chip bar too, since its "+ Add
@@ -129,13 +128,7 @@
 
     window.signInFromRequiredModal = function() {
       document.getElementById('signin-required-modal').hidden = true;
-      // Deferred: this click's event is still bubbling up to the document-
-      // level "close auth-panel on outside click" listener (see bottom of
-      // file). Opening the panel synchronously here means that same click
-      // immediately closes it again since e.target is this modal's button,
-      // not the panel or its toggle — waiting a tick lets the click finish
-      // propagating first.
-      setTimeout(toggleAuthPanel, 0);
+      openAccountModal('signin');
     };
 
     window.openCancelPremiumModal = function() {
@@ -218,9 +211,7 @@
     // org_status's is_manager flag — not role alone — decides that branch.
     window.signInThenGoPremium = function() {
       document.getElementById('premium-signin-modal').hidden = true;
-      // Deferred for the same reason as signInFromRequiredModal above — see
-      // that comment.
-      setTimeout(toggleAuthPanel, 0);
+      openAccountModal('signin');
     };
 
     // Shared by synth.html's personal-Premium checkout and enterprise.html's

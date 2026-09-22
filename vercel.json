@@ -1,7 +1,7 @@
 {
   "rewrites": [
     { "source": "/", "destination": "/synth.html" },
-    { "source": "/about", "destination": "/about.html" },
+    { "source": "/welcome", "destination": "/welcome.html" },
     { "source": "/terms", "destination": "/terms.html" },
     { "source": "/privacy", "destination": "/privacy.html" },
     { "source": "/pricing", "destination": "/pricing.html" },
@@ -17,5 +17,9 @@
   ],
   "crons": [
     { "path": "/api/cron/enterprise-renewal-notices", "schedule": "0 13 * * *" }
+  ],
+  "redirects": [
+    { "source": "/about", "destination": "/welcome", "permanent": true },
+    { "source": "/about.html", "destination": "/welcome", "permanent": true }
   ]
 }

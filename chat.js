@@ -262,22 +262,6 @@
       document.getElementById('workspace-resizer').addEventListener('mousedown', (e) => startPaneDrag(e, 'v'));
       window.addEventListener('resize', clearPaneOverridesForMobile);
 
-      ['landing-email', 'landing-password'].forEach(id => {
-        document.getElementById(id).addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            landingAuthSubmit();
-          }
-        });
-      });
-
-      document.getElementById('auth-password').addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          authPanelSubmit();
-        }
-      });
-
       updateLineNumbers();
     });
 

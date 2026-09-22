@@ -9,7 +9,7 @@
 
     window.addEventListener('DOMContentLoaded', async () => {
       SQL = await initDB();
-      await initLandingMode();
+      initHome();
       initAuth();
       checkPremiumCheckoutReturn();
       checkEnterpriseJoinReturn();
@@ -533,75 +533,93 @@
       document.getElementById('save-session-btn').hidden = !(currentUser && chatHistory.length > 0);
     }
 
-    // ---- Landing mode: Lite (no sign-in, nothing saved) vs Normal (sign-in
-    // gated flow, unlocks cloud save). Lite Mode never calls Supabase at all
-    // — it just skips straight to unlockLandingUpload() instead of waiting
-    // on landingAuthSubmit() to do it.
-    let landingMode = 'lite';
+    // ---- Home view: upload drop zone + saved workspaces ----
 
-    // True only once a REAL Normal Mode sign-in has happened (set inside
-    // confirmLandingSignIn). Kept separate from the upload panel's
-    // `.unlocked` CSS class, which Lite Mode also toggles on as a visual
-    // side effect — conflating the two meant switching Lite -> Normal never
-    // re-locked the upload button.
-    let normalModeConfirmed = false;
+    const UPLOAD_EXTENSIONS = /\.(csv|json|ndjson|jsonl)$/i;
 
-    window.toggleLandingModeInfo = function() {
-      const btn = document.getElementById('landing-mode-info-btn');
-      const wrap = document.getElementById('landing-mode-compare-wrap');
-      const isOpen = wrap.classList.toggle('is-open');
-      btn.setAttribute('aria-expanded', isOpen);
-    };
+    function initHome() {
+      setActiveView('home');
+      renderDashboard();
 
-    window.selectLandingMode = function(mode) {
-      landingMode = mode;
-      document.getElementById('landing-mode-lite-btn').classList.toggle('is-active', mode === 'lite');
-      document.getElementById('landing-mode-normal-btn').classList.toggle('is-active', mode === 'normal');
-      document.getElementById('landing-mode-lite-btn').setAttribute('aria-selected', mode === 'lite');
-      document.getElementById('landing-mode-normal-btn').setAttribute('aria-selected', mode === 'normal');
-      document.getElementById('landing-view').classList.toggle('mode-lite', mode === 'lite');
-      document.getElementById('landing-view').classList.toggle('mode-normal', mode === 'normal');
+      const home = document.getElementById('home-view');
+      const zone = document.getElementById('home-dropzone');
+      let dragDepth = 0;
 
-      const compare = document.getElementById('landing-mode-compare');
-      compare.classList.toggle('active-lite', mode === 'lite');
-      compare.classList.toggle('active-normal', mode === 'normal');
+      zone.addEventListener('click', openFilePicker);
 
-      const panel = document.getElementById('landing-upload-panel');
-      const kicker = document.getElementById('landing-kicker-upload');
-      const label = document.getElementById('landing-upload-label');
+      // The whole home view accepts drops (not just the zone), so a file
+      // released a few pixels off-target still uploads instead of the
+      // browser navigating away to open it.
+      home.addEventListener('dragenter', (e) => {
+        if (!e.dataTransfer?.types?.includes('Files')) return;
+        e.preventDefault();
+        dragDepth++;
+        zone.classList.add('is-dragover');
+      });
+      home.addEventListener('dragover', (e) => {
+        if (!e.dataTransfer?.types?.includes('Files')) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+      });
+      home.addEventListener('dragleave', () => {
+        dragDepth = Math.max(0, dragDepth - 1);
+        if (dragDepth === 0) zone.classList.remove('is-dragover');
+      });
+      home.addEventListener('drop', (e) => {
+        if (!e.dataTransfer?.files?.length) return;
+        e.preventDefault();
+        dragDepth = 0;
+        zone.classList.remove('is-dragover');
+        uploadFromHome(Array.from(e.dataTransfer.files));
+      });
 
-      if (mode === 'lite') {
-        unlockLandingUpload();
-        kicker.hidden = true;
-        // A real Normal Mode sign-in that already happened stays unlocked
-        // with its own copy — Lite Mode never overwrites a genuine sign-in.
-        if (!normalModeConfirmed) {
-          document.getElementById('landing-upload-sub').textContent =
-            'No sign-in. Nothing saved to the cloud. Upload a file to jump right in.';
-        }
-      } else {
-        kicker.hidden = false;
-        if (normalModeConfirmed) {
-          document.getElementById('landing-upload-sub').textContent = 'Ready. Drop in any CSV to get started.';
-        } else {
-          panel.classList.remove('unlocked');
-          label.classList.add('is-locked');
-          label.classList.remove('is-pending');
-          document.getElementById('landing-upload-sub').textContent = 'Unlocks once you sign up or sign in.';
-        }
+      // ?auth=signin|signup opens the account modal on load (linked from
+      // /welcome's header).
+      const params = new URLSearchParams(window.location.search);
+      const authParam = params.get('auth');
+      if (authParam === 'signin' || authParam === 'signup') {
+        params.delete('auth');
+        const clean = window.location.pathname + (params.toString() ? '?' + params.toString() : '') + window.location.hash;
+        window.history.replaceState({}, '', clean);
+        // Deferred until the session check settles: a returning signed-in
+        // visitor shouldn't get a sign-in prompt.
+        setTimeout(() => { if (!currentUser) openAccountModal(authParam); }, 400);
       }
+    }
 
-      updateSignInButtonAvailability();
+    function uploadFromHome(files) {
+      const accepted = files.filter(f => UPLOAD_EXTENSIONS.test(f.name));
+      if (!accepted.length) {
+        setHomeUploadMessage('Synth reads .csv, .json, .ndjson, and .jsonl files.', true);
+        return;
+      }
+      setHomeUploadMessage('');
+      window.uploadCSV({ target: { files: accepted } });
+    }
+
+    function setHomeUploadMessage(text, isError) {
+      const el = document.getElementById('home-upload-message');
+      el.textContent = text;
+      el.classList.toggle('error', !!isError);
+    }
+
+    window.openFilePicker = function() {
+      const input = document.getElementById('file-upload');
+      // Cleared first so picking the same file again (after heading back
+      // home) still fires a change event.
+      input.value = '';
+      setHomeUploadMessage('');
+      input.click();
     };
 
-    // Lite Mode is the default landing state — nobody evaluating a new tool
-    // wants to create an account before they've seen it do anything. Normal
-    // Mode (saved history, cross-device sync) is still one click away via
-    // the toggle; a returning signed-in user still lands unlocked regardless
-    // of this default (see confirmLandingSignIn, called from handleAuthChange
-    // before a user ever looks at the toggle).
-    function initLandingMode() {
-      selectLandingMode('lite');
+    // Exactly one of home-view / app-view is visible. The header's
+    // "Workspaces" button only makes sense from inside the app.
+    function setActiveView(view) {
+      const onHome = view === 'home';
+      document.getElementById('home-view').hidden = !onHome;
+      document.getElementById('app-view').hidden = onHome;
+      document.getElementById('dashboard-nav-btn').hidden = onHome;
+      document.getElementById('home-return-btn').hidden = !(onHome && hasLoadedWorkspace());
     }
 
     function tableToCSVBlob(tableName) {
@@ -813,7 +831,6 @@
 
     // ---- Dashboard (any signed-in account's home base: every saved workspace, at a glance) ----
 
-    let dashboardPreviousView = null;
     let pendingDeleteWorkspaceId = null;
     let pendingOpenWorkspaceId = null;
     let pendingOpenSessionId = null;
@@ -830,31 +847,65 @@
       return new Date(dateStr).toLocaleDateString();
     }
 
-    window.openDashboard = async function() {
-      if (!requireFeature('dashboard')) return;
-      dashboardPreviousView = document.getElementById('landing-view').hidden ? 'app' : 'landing';
-      document.getElementById('landing-view').hidden = true;
-      document.getElementById('app-view').hidden = true;
-      document.getElementById('dashboard-view').hidden = false;
-      await renderDashboard();
+    window.openHome = function() {
+      setActiveView('home');
+      renderDashboard();
     };
 
-    window.closeDashboard = function() {
-      document.getElementById('dashboard-view').hidden = true;
-      if (dashboardPreviousView === 'app') {
-        document.getElementById('app-view').hidden = false;
-        // A rename in the Dashboard (of whichever workspace is currently
-        // open here) only touches currentWorkspaceName in memory — refresh
-        // so the toolbar's workspace switcher pill picks it up too.
-        renderTableChips();
-      } else {
-        document.getElementById('landing-view').hidden = false;
-      }
+    window.returnToWorkspace = function() {
+      if (!hasLoadedWorkspace()) return;
+      setActiveView('app');
+      // A rename on the home view (of the workspace that's currently open)
+      // only touches currentWorkspaceName in memory. Refresh so the
+      // toolbar's workspace switcher pill picks it up.
+      renderTableChips();
     };
+
+    // Called on every auth change. Only re-renders if home is showing;
+    // openHome() renders fresh whenever it's reopened anyway.
+    window.refreshHomeWorkspaces = function() {
+      if (!document.getElementById('home-view').hidden) renderDashboard();
+      updateHomeSaveCard();
+    };
+
+    function updateHomeSaveCard() {
+      const signedIn = !!currentUser;
+      document.getElementById('home-save-title').textContent = signedIn
+        ? 'Your work saves to your account'
+        : 'Sign in to save your work';
+      document.getElementById('home-save-body').textContent = signedIn
+        ? 'Use Save to cloud in any workspace to keep its files and chat sessions here.'
+        : 'Open your files, chats, and queries on any device. An account also turns on the AI tools and saves the queries behind your charts.';
+      document.getElementById('home-save-btn').hidden = signedIn;
+      document.getElementById('home-new-workspace-btn').hidden = !signedIn;
+    }
+
+    function homeEmptyState({ icon, title, body, actions = '', isError = false }) {
+      return `
+        <div class="home-empty${isError ? ' is-error' : ''}">
+          <div class="home-empty-icon"><i class="ph ${icon}" aria-hidden="true"></i></div>
+          <div class="home-empty-title">${title}</div>
+          <p class="home-empty-body">${body}</p>
+          ${actions ? `<div class="home-empty-actions">${actions}</div>` : ''}
+        </div>`;
+    }
 
     async function renderDashboard() {
       const body = document.getElementById('dashboard-body');
-      body.innerHTML = '<div class="empty">Loading your workspaces...</div>';
+      updateHomeSaveCard();
+
+      if (!currentUser || !sb) {
+        body.innerHTML = homeEmptyState({
+          icon: 'ph-folders',
+          title: 'Your saved workspaces live here',
+          body: 'Sign in to see your saved files, chat sessions, and queries from any device.',
+          actions: `<button type="button" class="home-dark-btn" onclick="openAccountModal('signin')">Sign in</button>
+                    <button type="button" class="home-text-link" onclick="openAccountModal('signup')">Create an account</button>`,
+        });
+        return;
+      }
+
+      body.innerHTML = '<div class="ws-skeleton"></div><div class="ws-skeleton"></div>';
 
       let workspaces, error;
       try {
@@ -863,19 +914,31 @@
           .select('*, datasets(id, table_name, row_count), chat_sessions(id, title, created_at)')
           .order('updated_at', { ascending: false }));
       } catch (err) {
-        // Belt and suspenders: a rejected fetch (network failure, blocked
-        // request) throws instead of resolving with {error}, and without
-        // this the loading message above would just sit there forever.
+        // A rejected fetch (network failure, blocked request) throws
+        // instead of resolving with {error}.
         error = err;
       }
 
+      // Signed out while the request was in flight.
+      if (!currentUser) return renderDashboard();
+
       if (error) {
-        body.innerHTML = `<div class="empty">Failed to load workspaces: ${escapeHtml(error.message)}</div>`;
+        body.innerHTML = homeEmptyState({
+          icon: 'ph-warning-circle',
+          title: "Couldn't load your workspaces",
+          body: escapeHtml(error.message || 'Check your connection and try again.'),
+          actions: `<button type="button" class="home-dark-btn" onclick="renderDashboard()"><i class="ph ph-arrow-clockwise" aria-hidden="true"></i> Try again</button>`,
+          isError: true,
+        });
         return;
       }
 
       if (!workspaces || !workspaces.length) {
-        body.innerHTML = '<div class="empty">No saved workspaces yet. Upload a CSV, then hit "Save to cloud" to see it here.</div>';
+        body.innerHTML = homeEmptyState({
+          icon: 'ph-folders',
+          title: 'No saved workspaces yet',
+          body: 'Upload a file, then use Save to cloud inside the workspace to keep it here.',
+        });
         return;
       }
 
@@ -911,12 +974,9 @@
         `;
       }).join('');
     }
+    window.renderDashboard = renderDashboard;
 
     window.startRenameWorkspace = function(workspaceId) {
-      // Dashboard access itself became a Normal+ feature (see openDashboard),
-      // which means renaming here is no longer gated as a side effect of
-      // Dashboard being Premium-only the way it used to be — needs its own
-      // explicit check now, same feature as renaming a table chip.
       if (!requireFeature('tableRename')) return;
       const label = document.querySelector(`.workspace-name[data-workspace-name="${CSS.escape(workspaceId)}"]`);
       if (!label) return;
@@ -1006,7 +1066,6 @@
         document.getElementById('switch-workspace-modal').hidden = false;
         return;
       }
-      document.getElementById('dashboard-view').hidden = true;
       window.loadCloudWorkspace(workspaceId);
     };
 
@@ -1017,7 +1076,6 @@
         document.getElementById('switch-workspace-modal').hidden = false;
         return;
       }
-      document.getElementById('dashboard-view').hidden = true;
       window.loadCloudSession(sessionId);
     };
 
@@ -1029,7 +1087,6 @@
 
     window.confirmSwitchWorkspace = function() {
       document.getElementById('switch-workspace-modal').hidden = true;
-      document.getElementById('dashboard-view').hidden = true;
       if (pendingOpenWorkspaceId) window.loadCloudWorkspace(pendingOpenWorkspaceId);
       else if (pendingOpenSessionId) window.loadCloudSession(pendingOpenSessionId);
       pendingOpenWorkspaceId = null;
@@ -1882,14 +1939,11 @@
         statusEl.classList.add('error');
         console.error(err);
 
-        // On a first upload from the landing page, app-view (and file-info
-        // inside it) is still hidden at this point — revealApp() only runs
-        // on success. Without this, the error above is real but invisible,
-        // and the upload just looks like it silently did nothing.
+        // On an upload from the home view, app-view (and file-info inside
+        // it) is still hidden here since revealApp() only runs on success.
+        // Without this the error is real but invisible.
         if (document.getElementById('app-view').hidden) {
-          const sub = document.getElementById('landing-upload-sub');
-          sub.textContent = err.message;
-          sub.classList.add('error');
+          setHomeUploadMessage(err.message, true);
         }
       }
     };
@@ -2099,27 +2153,10 @@
       btn.setAttribute('aria-expanded', 'false');
     }
 
-    window.changeWorkspace = async function() {
+    window.changeWorkspace = function() {
       closeWorkspaceSwitcher();
       if (!currentUser) { openSigninRequiredModal(); return; }
-
-      let count = 0;
-      try {
-        const { count: c, error } = await sb
-          .from('workspaces')
-          .select('id', { count: 'exact', head: true });
-        if (!error) count = c || 0;
-      } catch (err) {
-        console.error('Failed to check saved workspace count:', err);
-      }
-
-      if (count <= 1) {
-        showWorkspaceNotice(count === 0
-          ? 'You haven’t saved any workspaces yet — use "Save to cloud" first.'
-          : 'This is your only workspace.');
-        return;
-      }
-      openDashboard();
+      openHome();
     };
 
     window.closeWorkspaceNoticeModal = function() {
@@ -2749,14 +2786,7 @@
     }
 
     function revealApp() {
-      document.getElementById('landing-view').hidden = true;
-      document.getElementById('app-view').hidden = false;
-      // The header Sign in button is greyed out for Lite Mode on the
-      // landing page (see updateSignInButtonAvailability) — that's only
-      // meant to reinforce "no account needed to start", not to block
-      // signing in once you're actually using the app, where every
-      // Premium/Save-Query/Dashboard gate expects it to work.
-      updateSignInButtonAvailability();
+      setActiveView('app');
     }
 
     // Schema text for every table in the workspace — what the AI's system
@@ -2927,7 +2957,7 @@
       'enterprise-usage-modal': 'closeEnterpriseUsageModal',
       'premium-signin-modal': 'closePremiumSigninModal',
       'signin-required-modal': 'closeSigninRequiredModal',
-      'forgot-password-modal': 'closeForgotPasswordModal',
+      'account-modal': 'closeAccountModal',
       'workspace-notice-modal': 'closeWorkspaceNoticeModal',
       'settings-modal': 'closeSettingsPanel',
       'cancel-premium-modal': 'closeCancelPremiumModal',
@@ -2951,12 +2981,7 @@
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return;
       const openModal = document.querySelector('.modal-overlay:not([hidden])');
-      if (openModal) {
-        closeModalOverlay(openModal);
-        return;
-      }
-      const authPanel = document.getElementById('auth-panel');
-      if (authPanel && !authPanel.hidden) authPanel.hidden = true;
+      if (openModal) closeModalOverlay(openModal);
     });
 
     // ---- Modal accessibility: focus trap + aria wiring ----
@@ -3051,12 +3076,3 @@
       }
     });
 
-    // The sign-in dropdown isn't a .modal-overlay (no backdrop) — close it
-    // on any click outside the panel and its own toggle button.
-    document.addEventListener('click', (e) => {
-      const authPanel = document.getElementById('auth-panel');
-      const signInBtn = document.getElementById('sign-in-btn');
-      if (!authPanel || authPanel.hidden) return;
-      if (authPanel.contains(e.target) || signInBtn?.contains(e.target)) return;
-      authPanel.hidden = true;
-    });

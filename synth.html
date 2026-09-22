@@ -50,6 +50,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/regular/style.css">
   <script src="https://cdn.jsdelivr.net/npm/sql.js@1.8.0/dist/sql-wasm.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <!-- Loaded directly from Stripe, never bundled/self-hosted (PCI requirement). -->
@@ -133,7 +134,7 @@
     }
 
     body.bg-blur > .header,
-    body.bg-blur > #landing-view,
+    body.bg-blur > #home-view,
     body.bg-blur > #app-view {
       filter: blur(8px);
       transition: filter 0.2s ease;
@@ -330,26 +331,6 @@
         inset 0 2px 5px rgba(35, 15, 65, 0.5);
     }
 
-    .auth-panel {
-      position: absolute;
-      top: calc(100% + 8px);
-      right: 0;
-      background: var(--color-bg);
-      border: 1px solid var(--color-border);
-      border-radius: 12px;
-      padding: 16px;
-      min-width: 260px;
-      box-shadow: 0 4px 16px rgba(32, 21, 21, 0.12);
-      z-index: 20;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .auth-panel[hidden] {
-      display: none;
-    }
-
     .auth-panel-tabs {
       display: flex;
       gap: 4px;
@@ -380,8 +361,7 @@
       box-shadow: 0 1px 2px rgba(32, 21, 21, 0.12);
     }
 
-    .auth-input,
-    #auth-email {
+    .auth-input {
       width: 100%;
       padding: 8px 12px;
       border: 1px solid var(--color-border);
@@ -392,8 +372,7 @@
       color: var(--color-text);
     }
 
-    .auth-input:focus,
-    #auth-email:focus {
+    .auth-input:focus {
       outline: none;
       border-color: var(--color-accent);
     }
@@ -500,6 +479,12 @@
     .auth-message.success {
       color: #1a7a3c;
       font-weight: 600;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .auth-message.error { color: #ff8a7a; }
+      .auth-message.success { color: #4ade80; }
+      .home-upload-message.error, .home-empty.is-error .home-empty-icon { color: #ff8a7a; }
     }
 
     .save-btn {
@@ -856,9 +841,9 @@
       font-weight: 600;
     }
 
-    /* ---- Landing (gated split screen: email unlocks upload) ---- */
+    /* ---- Home: workspaces (left), upload (top right), how it works (bottom right) ---- */
 
-    #landing-view {
+    #home-view {
       flex: 1;
       overflow: auto;
       display: flex;
@@ -866,234 +851,742 @@
       min-height: 0;
     }
 
-    #landing-view[hidden] {
+    #home-view[hidden] {
       display: none;
     }
 
-    .landing-hero {
-      padding: 56px 64px 8px;
-      max-width: 900px;
-    }
-
-    .landing-hero-title {
-      font-size: 34px;
-      line-height: 1.2;
-      font-weight: 700;
-      color: var(--color-text);
-      letter-spacing: -0.01em;
-      margin: 0;
-    }
-
-    .landing-hero-sub {
-      margin: 14px 0 0;
-      font-size: 16px;
-      line-height: 1.5;
-      color: #6b665e;
-      max-width: 640px;
-    }
-
-    @media (max-width: 720px) {
-      .landing-hero { padding: 40px 24px 4px; }
-      .landing-hero-title { font-size: 26px; }
-    }
-
-    .landing-split {
-      flex: 1;
-      min-height: 540px;
+    .home-grid {
+      flex: 1 0 auto;
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-rows: minmax(320px, 1fr) auto;
+      grid-template-areas:
+        "work upload"
+        "work flow";
+      min-height: calc(100dvh - 65px);
     }
 
-    .landing-panel {
-      position: relative;
+    .home-section-title {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: var(--color-text);
+    }
+
+    .home-workspaces {
+      grid-area: work;
+      background: var(--color-surface);
+      border-right: 1px solid var(--color-border);
+      padding: 32px 40px 48px;
+    }
+
+    .home-section-head {
       display: flex;
       align-items: center;
-      padding: 64px;
-      overflow: hidden;
-    }
-
-    .landing-panel-inner {
-      position: relative;
-      z-index: 1;
-      width: 100%;
-      max-width: 420px;
-    }
-
-    .landing-panel-auth {
-      background: linear-gradient(165deg, var(--color-text) 0%, #2f2a26 100%);
-    }
-
-    .landing-watermark {
-      position: absolute;
-      right: -60px;
-      bottom: -150px;
-      font-size: 460px;
-      font-weight: 700;
-      line-height: 1;
-      color: var(--color-bg);
-      opacity: 0.04;
-      pointer-events: none;
-      user-select: none;
-    }
-
-    .landing-kicker {
-      font-size: 13px;
-      font-weight: 600;
-      letter-spacing: 1.5px;
-      text-transform: uppercase;
-      color: var(--color-accent-text);
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
       margin-bottom: 20px;
+      min-height: 36px;
     }
 
-    .landing-panel-title {
-      font-size: 36px;
-      font-weight: 500;
-      line-height: 1.15;
-      letter-spacing: -0.01em;
-      margin-bottom: 12px;
+    .home-section-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
     }
 
-    .landing-panel-auth .landing-panel-title { color: var(--color-bg); }
-    .landing-panel-upload .landing-panel-title { color: var(--color-text); }
-
-    .landing-panel-sub {
-      font-size: 16px;
-      line-height: 24px;
-      margin-bottom: 28px;
+    .home-ghost-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--color-bg);
+      border: 1px solid var(--color-border);
+      color: var(--color-text);
+      padding: 7px 12px;
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 13.5px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: border-color 0.15s, color 0.15s;
     }
 
-    .landing-panel-auth .landing-panel-sub { color: var(--color-border); }
-    .landing-panel-upload .landing-panel-sub { color: var(--color-text-muted-2); }
-    .landing-panel-upload .landing-panel-sub.error { color: #ff8a5c; }
+    .home-ghost-btn:hover {
+      border-color: var(--color-accent);
+      color: var(--color-accent-text);
+    }
 
-    .landing-auth-form {
+    .home-ghost-btn[hidden] { display: none; }
+
+    .home-workspaces-body {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 14px;
+    }
+
+    /* Signed-out, empty, and error states share one layout. */
+    .home-empty {
+      grid-column: 1 / -1;
+      border: 1.5px dashed var(--color-border);
+      border-radius: 16px;
+      padding: 36px 32px;
+      background: var(--color-bg);
+    }
+
+    .home-empty-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--color-surface-2);
+      color: var(--color-text-muted-2);
+      font-size: 22px;
+      margin-bottom: 16px;
+    }
+
+    .home-empty.is-error .home-empty-icon {
+      color: #bc3a2c;
+    }
+
+    .home-empty-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--color-text);
+      margin-bottom: 6px;
+    }
+
+    .home-empty-body {
+      font-size: 14.5px;
+      line-height: 1.55;
+      color: var(--color-text-muted-2);
+      max-width: 44ch;
+    }
+
+    .home-empty-actions {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-top: 20px;
+    }
+
+    .home-dark-btn {
+      background: var(--color-text);
+      color: var(--color-bg);
+      border: none;
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+
+    .home-dark-btn:hover { opacity: 0.88; }
+    .home-dark-btn:active { transform: translateY(1px); }
+
+    .home-text-link {
+      appearance: none;
+      background: none;
+      border: none;
+      padding: 0;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--color-accent-text);
+      cursor: pointer;
+    }
+
+    .home-text-link:hover { text-decoration: underline; }
+
+    .ws-skeleton {
+      height: 168px;
+      border-radius: 12px;
+      border: 1px solid var(--color-border);
+      background: linear-gradient(100deg, var(--color-bg) 30%, var(--color-surface-2) 50%, var(--color-bg) 70%);
+      background-size: 300% 100%;
+      animation: ws-shimmer 1.4s ease-in-out infinite;
+    }
+
+    @keyframes ws-shimmer {
+      from { background-position: 100% 0; }
+      to { background-position: 0 0; }
+    }
+
+    .home-upload {
+      grid-area: upload;
+      display: flex;
+      padding: 32px 40px 12px;
+    }
+
+    .home-dropzone {
+      flex: 1;
       display: flex;
       flex-direction: column;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 40px;
+      border-radius: 16px;
+      background: linear-gradient(155deg, rgba(255, 79, 0, 0.17) 0%, rgba(255, 79, 0, 0.06) 100%);
+      border: 1.5px dashed rgba(255, 79, 0, 0.5);
+      cursor: pointer;
+      transition: background 0.2s ease, border-color 0.2s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .home-dropzone:hover {
+      border-color: var(--color-accent);
+      background: linear-gradient(155deg, rgba(255, 79, 0, 0.21) 0%, rgba(255, 79, 0, 0.09) 100%);
+    }
+
+    .home-dropzone.is-dragover {
+      border-style: solid;
+      border-color: var(--color-accent);
+      background: rgba(255, 79, 0, 0.24);
+      transform: scale(1.01);
+    }
+
+    .home-dropzone-icon {
+      width: 52px;
+      height: 52px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--color-accent);
+      color: #fffefb;
+      font-size: 26px;
+      margin-bottom: 22px;
+      box-shadow: 0 10px 24px -8px rgba(255, 79, 0, 0.55);
+    }
+
+    .home-dropzone-title {
+      font-size: 32px;
+      line-height: 1.15;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--color-text);
+      margin-bottom: 10px;
+    }
+
+    .home-dropzone-sub {
+      font-size: 16px;
+      line-height: 1.5;
+      color: var(--color-text-muted-2);
+      max-width: 42ch;
+      margin-bottom: 24px;
+    }
+
+    .home-dropzone-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--color-accent);
+      color: #fffefb;
+      border: none;
+      padding: 12px 22px;
+      border-radius: 12px;
+      font-family: inherit;
+      font-size: 15.5px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    .home-dropzone-btn:hover { background: var(--color-accent-hover); }
+    .home-dropzone-btn:active { transform: translateY(1px) scale(0.99); }
+
+    .home-upload-message {
+      margin-top: 14px;
+      min-height: 20px;
+      font-size: 14px;
+      color: var(--color-text-muted-2);
+    }
+
+    .home-upload-message.error {
+      color: #bc3a2c;
+      font-weight: 600;
+    }
+
+    .home-flow {
+      grid-area: flow;
+      padding: 20px 40px 40px;
+    }
+
+    .home-flow .home-section-title {
+      margin-bottom: 14px;
+    }
+
+    .home-flow-steps {
+      list-style: none;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 12px;
     }
 
-    #landing-email,
-    #landing-password {
-      width: 100%;
-      padding: 14px 16px;
-      border: 1px solid rgba(255, 254, 251, 0.24);
+    .home-flow-step {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 16px;
+      border: 1px solid var(--color-border);
       border-radius: 12px;
-      background: rgba(255, 254, 251, 0.06);
-      color: var(--color-bg);
-      font-family: inherit;
-      font-size: 16px;
+      background: var(--color-bg);
     }
 
-    #landing-password {
-      padding-right: 46px;
-    }
-
-    #landing-email::placeholder,
-    #landing-password::placeholder {
+    .home-flow-num {
+      position: absolute;
+      top: 14px;
+      right: 16px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
       color: var(--color-text-muted);
     }
 
-    #landing-email:focus,
-    #landing-password:focus {
+    .home-flow-icon {
+      font-size: 22px;
+      color: var(--color-accent-text);
+      margin-bottom: 8px;
+    }
+
+    .home-flow-step strong {
+      font-size: 15px;
+      color: var(--color-text);
+    }
+
+    .home-flow-step span:not(.home-flow-num) {
+      font-size: 13.5px;
+      line-height: 1.45;
+      color: var(--color-text-muted-2);
+    }
+
+    .home-save-card {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-top: 12px;
+      padding: 18px 20px;
+      border-radius: 12px;
+      background: linear-gradient(165deg, #201515 0%, #2f2a26 100%);
+      color: #fffefb;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .home-save-card { box-shadow: inset 0 0 0 1px rgba(255, 95, 22, 0.35); }
+    }
+
+    .home-save-icon {
+      font-size: 28px;
+      color: var(--color-accent);
+      flex: none;
+    }
+
+    .home-save-copy {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .home-save-copy strong { font-size: 15.5px; }
+
+    .home-save-copy span {
+      font-size: 13.5px;
+      line-height: 1.45;
+      opacity: 0.8;
+    }
+
+    .home-save-btn {
+      flex: none;
+      background: var(--color-accent);
+      color: #fffefb;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    .home-save-btn:hover { background: var(--color-accent-hover); }
+    .home-save-btn:active { transform: translateY(1px); }
+    .home-save-btn[hidden] { display: none; }
+
+    .auth-btn .ph {
+      vertical-align: -2px;
+      margin-right: 2px;
+    }
+
+    @media (max-width: 900px) {
+      .home-grid {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: auto;
+        grid-template-areas:
+          "upload"
+          "work"
+          "flow";
+        min-height: 0;
+      }
+
+      .home-upload { padding: 20px 16px 12px; }
+      .home-dropzone { min-height: 280px; padding: 28px 24px; }
+      .home-dropzone-title { font-size: 26px; }
+
+      .home-workspaces {
+        border-right: none;
+        border-top: 1px solid var(--color-border);
+        border-bottom: 1px solid var(--color-border);
+        padding: 24px 16px 32px;
+      }
+
+      .home-flow { padding: 24px 16px 32px; }
+      .home-flow-steps { grid-template-columns: minmax(0, 1fr); }
+      .home-save-card { flex-wrap: wrap; }
+      .home-save-btn { width: 100%; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .ws-skeleton { animation: none; }
+      .home-dropzone, .home-dropzone.is-dragover { transition: none; transform: none; }
+    }
+
+    /* ---- Account modal: sign in, sign up, confirm email, reset password ---- */
+
+    .account-overlay {
+      z-index: 60;
+      padding: 16px;
+      backdrop-filter: blur(3px);
+      -webkit-backdrop-filter: blur(3px);
+    }
+
+    .modal.account-modal {
+      width: 820px;
+      max-width: 100%;
+      max-height: min(92dvh, 720px);
+      padding: 0;
+      display: grid;
+      grid-template-columns: 300px minmax(0, 1fr);
+      overflow: hidden;
+      border-radius: 20px;
+    }
+
+    .account-overlay:not([hidden]) .account-modal {
+      animation: account-in 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes account-in {
+      from { opacity: 0; transform: translateY(8px) scale(0.985); }
+      to { opacity: 1; transform: none; }
+    }
+
+    .account-pitch {
+      background: linear-gradient(165deg, #201515 0%, #2f2a26 100%);
+      color: #fffefb;
+      padding: 32px 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+    }
+
+    .account-pitch-logo {
+      height: 32px;
+      width: auto;
+      align-self: flex-start;
+    }
+
+    .account-pitch-title {
+      font-size: 22px;
+      line-height: 1.2;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .account-perks {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .account-perks li {
+      display: flex;
+      gap: 12px;
+    }
+
+    .account-perks .ph {
+      flex: none;
+      font-size: 22px;
+      color: #ff7a3d;
+      margin-top: 1px;
+    }
+
+    .account-perks strong {
+      display: block;
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+
+    .account-perks span {
+      display: block;
+      font-size: 13.5px;
+      line-height: 1.45;
+      color: #d8d3c9;
+    }
+
+    .account-main {
+      position: relative;
+      padding: 32px 36px 28px;
+      overflow-y: auto;
+    }
+
+    .account-close {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      border-radius: 10px;
+      background: none;
+      color: var(--color-text-muted);
+      font-size: 18px;
+      cursor: pointer;
+    }
+
+    .account-close:hover {
+      background: var(--color-surface);
+      color: var(--color-text);
+    }
+
+    .account-view[hidden] { display: none; }
+
+    .account-tabs {
+      display: inline-flex;
+      gap: 2px;
+      padding: 3px;
+      border: 1px solid var(--color-border);
+      border-radius: 10px;
+      background: var(--color-surface);
+    }
+
+    .account-tab {
+      appearance: none;
+      border: none;
+      background: none;
+      padding: 7px 16px;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--color-text-muted-2);
+      cursor: pointer;
+    }
+
+    .account-tab.is-active {
+      background: var(--color-bg);
+      color: var(--color-text);
+      box-shadow: 0 1px 2px rgba(32, 21, 21, 0.12);
+    }
+
+    .account-view-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 79, 0, 0.1);
+      color: var(--color-accent-text);
+      font-size: 22px;
+    }
+
+    .account-title {
+      font-size: 24px;
+      line-height: 1.2;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: var(--color-text);
+      margin: 20px 0 6px;
+    }
+
+    .account-sub {
+      font-size: 14.5px;
+      line-height: 1.5;
+      color: var(--color-text-muted-2);
+      margin-bottom: 20px;
+      max-width: 44ch;
+    }
+
+    .account-form {
+      display: grid;
+      gap: 14px;
+    }
+
+    .account-field {
+      display: grid;
+      gap: 6px;
+    }
+
+    .account-field label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--color-text);
+    }
+
+    .account-label-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .account-link-quiet {
+      font-size: 12.5px;
+      color: var(--color-text-muted);
+      text-decoration: none;
+    }
+
+    .account-link-quiet:hover { color: var(--color-accent-text); }
+    .account-link-quiet[hidden] { display: none; }
+
+    .account-input {
+      width: 100%;
+      padding: 11px 14px;
+      border: 1px solid var(--color-border);
+      border-radius: 10px;
+      background: var(--color-bg);
+      color: var(--color-text);
+      font-family: inherit;
+      font-size: 15px;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    .account-input::placeholder { color: var(--color-text-muted); }
+
+    .account-input:focus {
       outline: none;
       border-color: var(--color-accent);
-      background: rgba(255, 254, 251, 0.1);
+      box-shadow: 0 0 0 3px rgba(255, 79, 0, 0.18);
     }
 
-    .landing-auth-form .password-field .password-toggle-btn {
-      color: rgba(255, 254, 251, 0.55);
+    .account-input:-webkit-autofill,
+    .account-input:-webkit-autofill:hover,
+    .account-input:-webkit-autofill:focus {
+      -webkit-text-fill-color: var(--color-text);
+      -webkit-box-shadow: 0 0 0 1000px var(--color-bg) inset;
+      box-shadow: 0 0 0 1000px var(--color-bg) inset;
+      caret-color: var(--color-text);
+      transition: background-color 9999s ease-in-out 0s;
     }
 
-    .landing-auth-form .password-field .password-toggle-btn:hover {
-      color: var(--color-bg);
+    .account-input-code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 18px;
+      letter-spacing: 0.2em;
     }
 
-    .landing-auth-switch {
-      margin-top: 14px;
-      font-size: 13px;
+    .password-field .account-input { padding-right: 44px; }
+
+    .account-help {
+      font-size: 12.5px;
       color: var(--color-text-muted);
     }
 
-    .landing-auth-switch a {
-      color: #ffb27a;
+    .account-help[hidden] { display: none; }
+
+    .account-submit {
+      width: 100%;
+      margin-top: 4px;
+      background: var(--color-accent);
+      color: #fffefb;
+      border: none;
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 15.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s, opacity 0.15s;
+    }
+
+    .account-submit:hover { background: var(--color-accent-hover); }
+    .account-submit:active { transform: translateY(1px); }
+    .account-submit:disabled { opacity: 0.6; cursor: progress; }
+
+    .account-message {
+      min-height: 20px;
+      font-size: 13.5px;
+    }
+
+    .account-switch {
+      margin-top: 18px;
+      font-size: 13.5px;
+      color: var(--color-text-muted-2);
+    }
+
+    .account-switch a,
+    .account-links a {
+      color: var(--color-accent-text);
       font-weight: 600;
       text-decoration: none;
-      margin-left: 4px;
     }
 
-    .landing-auth-switch a:hover {
-      color: var(--color-accent-text);
+    .account-switch a { margin-left: 4px; }
+
+    .account-switch a:hover,
+    .account-links a:hover { text-decoration: underline; }
+
+    .account-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 20px;
+      margin-top: 16px;
+      font-size: 13.5px;
     }
 
-    .landing-auth-switch a.is-disabled {
+    .account-links a.is-disabled {
       pointer-events: none;
       opacity: 0.6;
     }
 
-    .landing-auth-forgot {
-      margin-top: 8px;
+    @media (max-width: 760px) {
+      .modal.account-modal {
+        grid-template-columns: minmax(0, 1fr);
+        overflow-y: auto;
+      }
+
+      .account-pitch {
+        padding: 20px 20px 18px;
+        gap: 12px;
+      }
+
+      .account-pitch-logo { display: none; }
+      .account-pitch-title { font-size: 17px; }
+      .account-perks { flex-direction: row; flex-wrap: wrap; gap: 8px 16px; }
+      .account-perks .ph { font-size: 18px; }
+      .account-perks strong { font-size: 13.5px; margin: 0; }
+      .account-perks span { display: none; }
+      .account-main { padding: 24px 20px 24px; overflow: visible; }
+      .account-close { top: 10px; right: 10px; }
     }
 
-    .landing-auth-forgot[hidden] {
-      display: none;
-    }
-
-    .landing-auth-forgot a {
-      font-size: 13px;
-      color: var(--color-text-muted);
-      text-decoration: none;
-    }
-
-    .landing-auth-forgot a:hover {
-      color: var(--color-accent-text);
-    }
-
-    .landing-magic-btn {
-      background: var(--color-accent);
-      color: var(--color-bg);
-      border: none;
-      padding: 14px 24px;
-      border-radius: 12px;
-      font-family: inherit;
-      font-weight: 600;
-      font-size: 16px;
-      cursor: pointer;
-      transition: background 0.15s;
-    }
-
-    .landing-magic-btn:hover {
-      background: var(--color-accent-hover);
-    }
-
-    .landing-magic-btn:active {
-      transform: translateY(1px);
-    }
-
-    .landing-magic-btn:disabled {
-      background: rgba(255, 79, 0, 0.35);
-      cursor: not-allowed;
-    }
-
-    #landing-email:disabled,
-    #landing-password:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-
-    /* Chrome forces its own light autofill background on recognized
-       email/password fields, ignoring our `background` entirely — the
-       fix is to paint over it with a huge inset box-shadow instead. */
-    #landing-email:-webkit-autofill,
-    #landing-email:-webkit-autofill:hover,
-    #landing-email:-webkit-autofill:focus,
-    #landing-password:-webkit-autofill,
-    #landing-password:-webkit-autofill:hover,
-    #landing-password:-webkit-autofill:focus {
-      -webkit-text-fill-color: var(--color-bg);
-      -webkit-box-shadow: 0 0 0 1000px #2a201c inset;
-      box-shadow: 0 0 0 1000px #2a201c inset;
-      caret-color: var(--color-bg);
-      transition: background-color 9999s ease-in-out 0s;
+    @media (prefers-reduced-motion: reduce) {
+      .account-overlay:not([hidden]) .account-modal { animation: none; }
     }
 
     .auth-input:-webkit-autofill,
@@ -1104,346 +1597,6 @@
       box-shadow: 0 0 0 1000px var(--color-bg) inset;
       caret-color: var(--color-text);
       transition: background-color 9999s ease-in-out 0s;
-    }
-
-    .landing-auth-message {
-      margin-top: 14px;
-      font-size: 14px;
-      color: var(--color-border);
-      min-height: 20px;
-    }
-
-    .landing-auth-message.error {
-      color: #ff8a5c;
-    }
-
-    .landing-auth-message.success {
-      color: #4ade80;
-      font-weight: 600;
-    }
-
-    .landing-mode-bar {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 12px;
-      padding: 28px 24px 20px;
-      background: var(--color-bg);
-    }
-
-    .landing-mode-row {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-
-    .landing-mode-toggle {
-      display: inline-flex;
-      padding: 4px;
-      border: 1px solid var(--color-text);
-      border-radius: 9999px;
-      background: var(--color-bg);
-    }
-
-    .landing-mode-info-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      appearance: none;
-      border: 1px solid transparent;
-      background: transparent;
-      color: var(--color-text-muted-2);
-      font-family: inherit;
-      font-size: 14px;
-      font-weight: 600;
-      padding: 8px 14px;
-      border-radius: 9999px;
-      cursor: pointer;
-      transition: background 0.15s ease, color 0.15s ease;
-    }
-
-    .landing-mode-info-btn:hover {
-      background: var(--color-surface);
-      color: var(--color-text);
-    }
-
-    .landing-mode-info-btn[aria-expanded="true"] {
-      color: var(--color-text);
-      background: var(--color-surface);
-    }
-
-    .landing-mode-info-chevron {
-      transition: transform 0.2s ease;
-      flex-shrink: 0;
-    }
-
-    .landing-mode-info-btn[aria-expanded="true"] .landing-mode-info-chevron {
-      transform: rotate(180deg);
-    }
-
-    .landing-mode-compare-wrap {
-      display: grid;
-      grid-template-rows: 0fr;
-      width: 100%;
-      transition: grid-template-rows 0.25s ease;
-    }
-
-    .landing-mode-compare-wrap.is-open {
-      grid-template-rows: 1fr;
-    }
-
-    .landing-mode-compare-inner {
-      overflow: hidden;
-      min-height: 0;
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .landing-mode-compare-wrap,
-      .landing-mode-info-chevron {
-        transition: none;
-      }
-    }
-
-    .landing-mode-btn {
-      appearance: none;
-      border: none;
-      background: transparent;
-      color: var(--color-text);
-      font-family: inherit;
-      font-size: 14.4px;
-      font-weight: 700;
-      letter-spacing: 0.144px;
-      padding: 10px 22px;
-      border-radius: 9999px;
-      cursor: pointer;
-      transition: background 0.15s ease, color 0.15s ease;
-    }
-
-    .landing-mode-btn.is-active {
-      background: var(--color-text);
-      color: var(--color-bg);
-    }
-
-    .landing-mode-btn:not(.is-active):hover {
-      background: var(--color-surface);
-    }
-
-    .landing-mode-compare {
-      width: 100%;
-      max-width: 760px;
-      margin: 4px auto 0;
-      background: var(--color-surface);
-      border-radius: 12px;
-      overflow: hidden;
-    }
-
-    .lmc-row {
-      display: grid;
-      grid-template-columns: 132px 1fr 1fr;
-      gap: 20px;
-      padding: 14px 24px;
-      border-top: 1px solid #e5e0d5;
-    }
-
-    .lmc-row:first-child {
-      border-top: none;
-    }
-
-    .lmc-cell {
-      font-size: 14px;
-      line-height: 20px;
-      color: var(--color-text);
-    }
-
-    .lmc-cell-label {
-      font-size: 13px;
-      font-weight: 700;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-      color: var(--color-accent-text);
-    }
-
-    .lmc-row-head .lmc-cell-lite,
-    .lmc-row-head .lmc-cell-normal {
-      font-size: 13px;
-      font-weight: 700;
-      color: var(--color-text);
-    }
-
-    .lmc-cell-lite,
-    .lmc-cell-normal {
-      transition: opacity 0.2s ease;
-    }
-
-    .landing-mode-compare.active-lite .lmc-row:not(.lmc-row-head) .lmc-cell-normal {
-      opacity: 0.45;
-    }
-
-    .landing-mode-compare.active-normal .lmc-row:not(.lmc-row-head) .lmc-cell-lite {
-      opacity: 0.45;
-    }
-
-    #landing-view.mode-lite .landing-panel-auth {
-      opacity: 0.35;
-      pointer-events: none;
-      transition: opacity 0.25s ease;
-    }
-
-    #landing-view.mode-normal .landing-panel-auth {
-      opacity: 1;
-      pointer-events: auto;
-      transition: opacity 0.25s ease;
-    }
-
-    @media (max-width: 767px) {
-      .landing-mode-bar { padding: 20px 20px 16px; }
-
-      .lmc-row {
-        grid-template-columns: 1fr;
-        gap: 6px;
-        padding: 16px 20px;
-      }
-
-      .lmc-row-head { display: none; }
-
-      .lmc-cell-lite::before,
-      .lmc-cell-normal::before {
-        content: attr(data-mode-label);
-        display: block;
-        font-weight: 700;
-        color: var(--color-text);
-        margin-bottom: 2px;
-      }
-
-      .landing-mode-compare.active-lite .lmc-row:not(.lmc-row-head) .lmc-cell-normal,
-      .landing-mode-compare.active-normal .lmc-row:not(.lmc-row-head) .lmc-cell-lite {
-        opacity: 1;
-      }
-    }
-
-    .landing-panel-upload {
-      background: var(--color-bg);
-      transition: background 0.3s ease;
-    }
-
-    .landing-panel-upload.unlocked {
-      background: var(--color-surface-2);
-    }
-
-    .landing-upload-btn {
-      display: inline-block;
-      background: var(--color-accent);
-      color: var(--color-bg);
-      padding: 16px 32px;
-      border-radius: 12px;
-      font-family: inherit;
-      font-weight: 600;
-      font-size: 18px;
-      line-height: 27px;
-      cursor: pointer;
-      transition: background 0.15s, transform 0.1s, opacity 0.2s;
-      box-shadow: 0 14px 32px rgba(255, 79, 0, 0.22);
-    }
-
-    .landing-upload-btn:hover {
-      background: var(--color-accent-hover);
-    }
-
-    .landing-upload-btn:active {
-      transform: translateY(1px) scale(0.99);
-    }
-
-    .landing-upload-btn.is-locked {
-      background: #e5e0d5;
-      color: #a39d8e;
-      pointer-events: none;
-      cursor: not-allowed;
-      box-shadow: none;
-    }
-
-    .landing-upload-btn.is-pending {
-      background: #f3ece1;
-      color: var(--color-accent-text);
-      border: 1.5px dashed rgba(255, 79, 0, 0.4);
-      pointer-events: none;
-      cursor: not-allowed;
-      box-shadow: none;
-      animation: landing-pending-pulse 1.6s ease-in-out infinite;
-    }
-
-    @keyframes landing-pending-pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.6; }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .landing-upload-btn.is-pending { animation: none; }
-    }
-
-    .landing-auth-message a {
-      color: var(--color-accent-text);
-      font-weight: 600;
-      text-decoration: underline;
-    }
-
-    .about-band {
-      background: var(--color-surface);
-      border-top: 1px solid var(--color-border);
-      padding: 48px 64px;
-      flex: 0 0 auto;
-    }
-
-    .about-band-title {
-      font-size: 24px;
-      font-weight: 600;
-      line-height: 30px;
-      letter-spacing: -0.6px;
-      color: var(--color-text);
-      margin-bottom: 32px;
-    }
-
-    .about-steps {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-    }
-
-    .about-step {
-      padding-right: 24px;
-      border-right: 1px solid var(--color-border);
-    }
-
-    .about-step + .about-step {
-      padding-left: 24px;
-    }
-
-    .about-step:last-child {
-      border-right: none;
-    }
-
-    .about-step-num {
-      font-size: 16px;
-      font-weight: 600;
-      line-height: 24px;
-      color: var(--color-accent-text);
-      margin-bottom: 10px;
-    }
-
-    .about-step-title {
-      font-size: 20px;
-      font-weight: 700;
-      line-height: 25px;
-      letter-spacing: -0.5px;
-      color: var(--color-text);
-      margin-bottom: 8px;
-    }
-
-    .about-step-body {
-      font-size: 16px;
-      font-weight: 400;
-      line-height: 24px;
-      color: var(--color-text-muted-2);
     }
 
     /* ---- Landing footer: About / Terms / Privacy ---- */
@@ -1500,14 +1653,6 @@
 
 
     @media (max-width: 900px) {
-      .landing-split { grid-template-columns: 1fr; }
-      .landing-panel { padding: 48px 24px; min-height: 420px; }
-      .landing-watermark { font-size: 260px; right: -40px; bottom: -80px; }
-      .about-band { padding: 40px 24px; }
-      .about-steps { grid-template-columns: 1fr; }
-      .about-step { border-right: none; border-bottom: 1px solid var(--color-border); padding: 0 0 24px; }
-      .about-step + .about-step { padding-left: 0; padding-top: 24px; }
-      .about-step:last-child { border-bottom: none; }
       .landing-footer { padding: 24px; }
       .landing-footer-inner { flex-direction: column; align-items: flex-start; }
     }
@@ -2353,48 +2498,6 @@
       color: var(--color-text-muted);
     }
 
-    /* ---- Dashboard (signed-in home base) ---- */
-
-    #dashboard-view {
-      min-height: 100vh;
-      background: var(--color-surface-2);
-      padding: 32px 40px 80px;
-    }
-
-    .dashboard-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 16px;
-      margin-bottom: 28px;
-    }
-
-    .dashboard-header h2 {
-      font-size: 24px;
-      margin: 0;
-      color: var(--color-text);
-    }
-
-    .dashboard-header-actions {
-      display: flex;
-      gap: 10px;
-    }
-
-    .dashboard-body {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-      gap: 18px;
-    }
-
-    .dashboard-body .empty {
-      grid-column: 1 / -1;
-      text-align: center;
-      padding: 60px 20px;
-      color: var(--color-text-muted);
-      font-size: 15px;
-    }
-
     .workspace-card {
       background: var(--color-bg);
       border: 1px solid var(--color-border);
@@ -2407,7 +2510,7 @@
     }
 
     .workspace-card:hover {
-      border-color: var(--color-blue);
+      border-color: var(--color-accent);
     }
 
     .workspace-card-head {
@@ -2426,7 +2529,7 @@
     }
 
     .workspace-name[contenteditable="true"] {
-      border-bottom: 1px dashed var(--color-blue);
+      border-bottom: 1px dashed var(--color-accent);
     }
 
     .workspace-rename-btn {
@@ -2439,7 +2542,7 @@
       padding: 2px 4px;
     }
 
-    .workspace-rename-btn:hover { color: var(--color-blue-dark); }
+    .workspace-rename-btn:hover { color: var(--color-accent-text); }
 
     .workspace-meta {
       font-size: 12.5px;
@@ -2457,14 +2560,14 @@
       font-size: 11.5px;
       font-family: 'JetBrains Mono', monospace;
       background: var(--color-surface-2);
-      border: 1px solid #e5e1d4;
+      border: 1px solid var(--color-border);
       border-radius: 5px;
       padding: 2px 7px;
       color: var(--color-text-muted-3);
     }
 
     .workspace-sessions {
-      border-top: 1px solid #ece9df;
+      border-top: 1px solid var(--color-border);
       padding-top: 10px;
       display: flex;
       flex-direction: column;
@@ -2490,7 +2593,7 @@
     .workspace-session-row button {
       background: none;
       border: none;
-      color: var(--color-blue-dark);
+      color: var(--color-accent-text);
       cursor: pointer;
       font-size: 12px;
       font-weight: 600;
@@ -2514,7 +2617,7 @@
 
     .workspace-open-btn {
       flex: 1;
-      background: var(--color-blue);
+      background: var(--color-text);
       color: var(--color-bg);
       border: none;
       border-radius: 8px;
@@ -2525,7 +2628,7 @@
       cursor: pointer;
     }
 
-    .workspace-open-btn:hover { background: #3689c9; }
+    .workspace-open-btn:hover { opacity: 0.88; }
 
     .workspace-delete-btn {
       background: var(--color-bg);
@@ -2540,6 +2643,11 @@
     }
 
     .workspace-delete-btn:hover { border-color: #bc3a2c; background: #fce7e3; }
+
+    @media (prefers-color-scheme: dark) {
+      .workspace-delete-btn { color: #ff8a7a; }
+      .workspace-delete-btn:hover { border-color: #ff8a7a; background: rgba(255, 138, 122, 0.1); }
+    }
 
     /* ---- Relationships / ERD ---- */
 
@@ -4023,41 +4131,11 @@
       <div class="auth-area">
         <button id="go-premium-btn" class="auth-btn auth-btn-premium" onclick="openPremiumPanel()" hidden>Go Premium</button>
         <button id="enterprise-nav-btn" class="auth-btn auth-btn-enterprise" onclick="openEnterpriseEntry()" hidden>Enterprise</button>
-        <button id="dashboard-nav-btn" class="auth-btn auth-btn-premium" onclick="openDashboard()" hidden>Go to Dashboard</button>
+        <button id="dashboard-nav-btn" class="auth-btn" onclick="openHome()" hidden>
+          <i class="ph ph-arrow-left" aria-hidden="true"></i> Workspaces
+        </button>
         <button id="sign-in-btn" class="auth-btn" onclick="toggleAuthPanel()">Sign in</button>
         <button id="my-projects-btn" class="auth-btn auth-btn-primary" onclick="openCloudPanel()" hidden>Load Sessions</button>
-        <div id="auth-panel" class="auth-panel" hidden>
-          <div id="auth-fields-step">
-            <div class="auth-panel-tabs">
-              <button type="button" class="auth-panel-tab is-active" id="auth-tab-signin" onclick="setAuthPanelMode('signin')">Sign in</button>
-              <button type="button" class="auth-panel-tab" id="auth-tab-signup" onclick="setAuthPanelMode('signup')">Sign up</button>
-            </div>
-            <input type="email" id="auth-email" class="auth-input" placeholder="you@example.com" autocomplete="email">
-            <div class="password-field">
-              <input type="password" id="auth-password" class="auth-input" placeholder="Password" autocomplete="current-password">
-              <button type="button" class="password-toggle-btn" onclick="togglePasswordField('auth-password', this)" aria-label="Show password">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/>
-                  <circle cx="12" cy="12" r="3"/>
-                  <line class="password-toggle-slash" x1="2" y1="2" x2="22" y2="22"/>
-                </svg>
-              </button>
-            </div>
-            <button class="auth-btn auth-btn-primary" id="auth-panel-submit-btn" onclick="authPanelSubmit()">Sign in</button>
-            <a href="#" id="auth-forgot-link" class="auth-forgot-link" onclick="openForgotPasswordFromHeader(); return false;">Forgot password?</a>
-            <div id="auth-message" class="auth-message"></div>
-          </div>
-          <div id="auth-confirm-step" hidden>
-            <p class="help-text" id="auth-confirm-copy" style="margin:0 0 12px"></p>
-            <input type="text" id="auth-confirm-code" class="auth-input" placeholder="Confirmation code" inputmode="numeric" autocomplete="one-time-code">
-            <button class="auth-btn auth-btn-primary" style="margin-top:10px;width:100%" id="auth-confirm-submit-btn" onclick="submitAuthConfirmCode()">Confirm</button>
-            <div class="auth-confirm-links">
-              <a href="#" id="auth-confirm-resend-link" onclick="resendAuthConfirmCode(); return false;">Resend code</a>
-              <a href="#" onclick="cancelAuthConfirmStep(); return false;">Use a different email</a>
-            </div>
-            <div id="auth-confirm-message" class="auth-message"></div>
-          </div>
-        </div>
       </div>
       <div id="status">Initializing...</div>
     </div>
@@ -4127,32 +4205,137 @@
     </div>
   </div>
 
-  <div id="forgot-password-modal" class="modal-overlay" hidden>
-    <div class="modal modal-small">
-      <div class="modal-header">
-        <div class="section-label">Reset password</div>
-        <button class="modal-close" onclick="closeForgotPasswordModal()">&times;</button>
-      </div>
-      <div class="modal-section" id="forgot-step-request">
-        <p class="help-text" style="margin:0 0 12px">Enter your email and we'll send you a password reset link.</p>
-        <input type="email" id="forgot-email" class="auth-input auth-input-block" placeholder="you@example.com" autocomplete="email">
-        <button class="modal-save-btn" style="margin-top:12px;width:100%" onclick="submitForgotPasswordRequest()">Send reset link</button>
-        <div id="forgot-request-message" class="auth-message" style="margin-top:10px"></div>
-      </div>
-      <div class="modal-section" id="forgot-step-reset" hidden>
-        <p class="help-text" style="margin:0 0 12px">Choose a new password for your account.</p>
-        <div class="password-field password-field-block">
-          <input type="password" id="forgot-new-password" class="auth-input" placeholder="New password" autocomplete="new-password">
-          <button type="button" class="password-toggle-btn" onclick="togglePasswordField('forgot-new-password', this)" aria-label="Show password">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/>
-              <circle cx="12" cy="12" r="3"/>
-              <line class="password-toggle-slash" x1="2" y1="2" x2="22" y2="22"/>
-            </svg>
-          </button>
+  <div id="account-modal" class="modal-overlay account-overlay" aria-label="Sign in or create an account" hidden>
+    <div class="modal account-modal">
+      <aside class="account-pitch">
+        <img src="synth-cream-orangediscs.png" alt="" class="account-pitch-logo">
+        <h2 class="account-pitch-title">With a free account, you can</h2>
+        <ul class="account-perks">
+          <li>
+            <i class="ph ph-cloud-check" aria-hidden="true"></i>
+            <div>
+              <strong>Save files and sessions</strong>
+              <span>Pick up any workspace, query, or chat on another device.</span>
+            </div>
+          </li>
+          <li>
+            <i class="ph ph-sparkle" aria-hidden="true"></i>
+            <div>
+              <strong>Access AI tools</strong>
+              <span>Ask questions in plain English and get SQL or answers back.</span>
+            </div>
+          </li>
+          <li>
+            <i class="ph ph-chart-bar" aria-hidden="true"></i>
+            <div>
+              <strong>Save the queries behind your charts</strong>
+              <span>Charting is free for everyone. Save a query to rebuild its chart later.</span>
+            </div>
+          </li>
+        </ul>
+      </aside>
+
+      <div class="account-main">
+        <button type="button" class="account-close" onclick="closeAccountModal()" aria-label="Close">
+          <i class="ph ph-x" aria-hidden="true"></i>
+        </button>
+
+        <div id="auth-fields-step" class="account-view">
+          <div class="account-tabs" role="tablist" aria-label="Sign in or create an account">
+            <button type="button" class="account-tab is-active" id="auth-tab-signin" role="tab" aria-selected="true" onclick="setAuthPanelMode('signin')">Sign in</button>
+            <button type="button" class="account-tab" id="auth-tab-signup" role="tab" aria-selected="false" onclick="setAuthPanelMode('signup')">Sign up</button>
+          </div>
+          <h2 class="account-title" id="account-title">Welcome back</h2>
+          <p class="account-sub" id="account-sub">Sign in to save files and sessions, use the AI tools, and keep the queries behind your charts.</p>
+          <form class="account-form" onsubmit="event.preventDefault(); authPanelSubmit();" novalidate>
+            <div class="account-field">
+              <label for="auth-email">Email</label>
+              <input type="email" id="auth-email" class="account-input" placeholder="you@example.com" autocomplete="email" required>
+            </div>
+            <div class="account-field">
+              <div class="account-label-row">
+                <label for="auth-password">Password</label>
+                <a href="#" id="auth-forgot-link" class="account-link-quiet" onclick="showForgotPassword(); return false;">Forgot password?</a>
+              </div>
+              <div class="password-field">
+                <input type="password" id="auth-password" class="account-input" autocomplete="current-password" aria-describedby="auth-password-help" required>
+                <button type="button" class="password-toggle-btn" onclick="togglePasswordField('auth-password', this)" aria-label="Show password">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                    <line class="password-toggle-slash" x1="2" y1="2" x2="22" y2="22"/>
+                  </svg>
+                </button>
+              </div>
+              <p class="account-help" id="auth-password-help" hidden>At least 8 characters.</p>
+            </div>
+            <button type="submit" class="account-submit" id="auth-panel-submit-btn">Sign in</button>
+            <div id="auth-message" class="auth-message account-message" role="status" aria-live="polite"></div>
+          </form>
+          <p class="account-switch">
+            <span id="auth-switch-text">New to Synth?</span>
+            <a href="#" id="auth-switch-link" onclick="setAuthPanelMode(authPanelModeOpposite()); return false;">Create an account</a>
+          </p>
         </div>
-        <button class="modal-save-btn" style="margin-top:12px;width:100%" onclick="submitForgotPasswordReset()">Set new password</button>
-        <div id="forgot-reset-message" class="auth-message" style="margin-top:10px"></div>
+
+        <div id="auth-confirm-step" class="account-view" hidden>
+          <div class="account-view-icon"><i class="ph ph-envelope-simple" aria-hidden="true"></i></div>
+          <h2 class="account-title">Check your email</h2>
+          <p class="account-sub" id="auth-confirm-copy"></p>
+          <form class="account-form" onsubmit="event.preventDefault(); submitAuthConfirmCode();" novalidate>
+            <div class="account-field">
+              <label for="auth-confirm-code">Confirmation code</label>
+              <input type="text" id="auth-confirm-code" class="account-input account-input-code" inputmode="numeric" autocomplete="one-time-code" required>
+            </div>
+            <button type="submit" class="account-submit" id="auth-confirm-submit-btn">Confirm email</button>
+            <div id="auth-confirm-message" class="auth-message account-message" role="status" aria-live="polite"></div>
+          </form>
+          <div class="account-links">
+            <a href="#" id="auth-confirm-resend-link" onclick="resendAuthConfirmCode(); return false;">Resend code</a>
+            <a href="#" onclick="cancelAuthConfirmStep(); return false;">Use a different email</a>
+          </div>
+        </div>
+
+        <div id="forgot-step-request" class="account-view" hidden>
+          <div class="account-view-icon"><i class="ph ph-key" aria-hidden="true"></i></div>
+          <h2 class="account-title">Reset your password</h2>
+          <p class="account-sub">Enter your account email and we'll send you a link to set a new password.</p>
+          <form class="account-form" onsubmit="event.preventDefault(); submitForgotPasswordRequest();" novalidate>
+            <div class="account-field">
+              <label for="forgot-email">Email</label>
+              <input type="email" id="forgot-email" class="account-input" placeholder="you@example.com" autocomplete="email" required>
+            </div>
+            <button type="submit" class="account-submit" id="forgot-request-submit-btn">Send reset link</button>
+            <div id="forgot-request-message" class="auth-message account-message" role="status" aria-live="polite"></div>
+          </form>
+          <div class="account-links">
+            <a href="#" onclick="showAccountView('fields'); setAuthPanelMode('signin'); return false;"><i class="ph ph-arrow-left" aria-hidden="true"></i> Back to sign in</a>
+          </div>
+        </div>
+
+        <div id="forgot-step-reset" class="account-view" hidden>
+          <div class="account-view-icon"><i class="ph ph-key" aria-hidden="true"></i></div>
+          <h2 class="account-title">Choose a new password</h2>
+          <p class="account-sub">Enter a new password for your account.</p>
+          <form class="account-form" onsubmit="event.preventDefault(); submitForgotPasswordReset();" novalidate>
+            <div class="account-field">
+              <label for="forgot-new-password">New password</label>
+              <div class="password-field">
+                <input type="password" id="forgot-new-password" class="account-input" autocomplete="new-password" aria-describedby="forgot-new-password-help" required>
+                <button type="button" class="password-toggle-btn" onclick="togglePasswordField('forgot-new-password', this)" aria-label="Show password">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                    <line class="password-toggle-slash" x1="2" y1="2" x2="22" y2="22"/>
+                  </svg>
+                </button>
+              </div>
+              <p class="account-help" id="forgot-new-password-help">At least 8 characters.</p>
+            </div>
+            <button type="submit" class="account-submit">Set new password</button>
+            <div id="forgot-reset-message" class="auth-message account-message" role="status" aria-live="polite"></div>
+          </form>
+        </div>
       </div>
     </div>
   </div>
@@ -4417,141 +4600,73 @@
   <input type="file" id="file-upload" accept=".csv,.json,.ndjson,.jsonl" multiple onchange="uploadCSV(event)">
   <input type="file" id="file-upload-add" accept=".csv,.json,.ndjson,.jsonl" multiple onchange="addTablesCSV(event)">
 
-  <div id="landing-view">
-    <div class="landing-hero">
-      <h1 class="landing-hero-title">Run SQL queries on your CSV files instantly</h1>
+  <div id="home-view">
+    <div class="home-grid">
+      <section class="home-workspaces" aria-labelledby="home-workspaces-title">
+        <div class="home-section-head">
+          <h2 id="home-workspaces-title" class="home-section-title">Your workspaces</h2>
+          <div class="home-section-actions">
+            <button type="button" id="home-return-btn" class="home-ghost-btn" onclick="returnToWorkspace()" hidden>
+              <i class="ph ph-arrow-left" aria-hidden="true"></i> Back to open workspace
+            </button>
+            <button type="button" id="home-new-workspace-btn" class="home-ghost-btn" onclick="openFilePicker()" hidden>
+              <i class="ph ph-plus" aria-hidden="true"></i> New workspace
+            </button>
+          </div>
+        </div>
+        <div id="dashboard-body" class="home-workspaces-body" aria-live="polite"></div>
+      </section>
+
+      <section class="home-upload" aria-labelledby="home-upload-title">
+        <div id="home-dropzone" class="home-dropzone">
+          <div class="home-dropzone-icon"><i class="ph ph-file-arrow-up" aria-hidden="true"></i></div>
+          <h1 id="home-upload-title" class="home-dropzone-title">Query any CSV with SQL</h1>
+          <p class="home-dropzone-sub">Drag a CSV or JSON file here. It loads into a SQLite database right in this tab.</p>
+          <button type="button" class="home-dropzone-btn" id="home-dropzone-btn">
+            <i class="ph ph-upload-simple" aria-hidden="true"></i> Choose a file
+          </button>
+          <p id="home-upload-message" class="home-upload-message" role="status" aria-live="polite"></p>
+        </div>
+      </section>
+
+      <section class="home-flow" aria-labelledby="home-flow-title">
+        <h2 id="home-flow-title" class="home-section-title">How it works</h2>
+        <ol class="home-flow-steps">
+          <li class="home-flow-step">
+            <span class="home-flow-num">1</span>
+            <i class="ph ph-upload-simple home-flow-icon" aria-hidden="true"></i>
+            <strong>Upload a file</strong>
+            <span>CSV, JSON, or NDJSON. Up to 10 tables per workspace.</span>
+          </li>
+          <li class="home-flow-step">
+            <span class="home-flow-num">2</span>
+            <i class="ph ph-database home-flow-icon" aria-hidden="true"></i>
+            <strong>Query it</strong>
+            <span>Write SQL yourself, or ask the AI in plain English.</span>
+          </li>
+          <li class="home-flow-step">
+            <span class="home-flow-num">3</span>
+            <i class="ph ph-chart-bar home-flow-icon" aria-hidden="true"></i>
+            <strong>View charts</strong>
+            <span>Chart any result, then sort and filter the grid.</span>
+          </li>
+        </ol>
+        <div class="home-save-card" id="home-save-card">
+          <i class="ph ph-cloud-check home-save-icon" aria-hidden="true"></i>
+          <div class="home-save-copy">
+            <strong id="home-save-title">Sign in to save your work</strong>
+            <span id="home-save-body">Open your files, chats, and queries on any device. An account also turns on the AI tools and saves the queries behind your charts.</span>
+          </div>
+          <button type="button" class="home-save-btn" id="home-save-btn" onclick="openAccountModal('signup')">Create account</button>
+        </div>
+      </section>
     </div>
-    <div class="landing-mode-bar">
-      <div class="landing-mode-row">
-        <div class="landing-mode-toggle" role="tablist" aria-label="Choose how to start">
-          <button type="button" class="landing-mode-btn is-active" id="landing-mode-lite-btn" onclick="selectLandingMode('lite')" role="tab" aria-selected="true">Lite Mode</button>
-          <button type="button" class="landing-mode-btn" id="landing-mode-normal-btn" onclick="selectLandingMode('normal')" role="tab" aria-selected="false">Normal Mode</button>
-        </div>
-        <button type="button" class="landing-mode-info-btn" id="landing-mode-info-btn" onclick="toggleLandingModeInfo()" aria-expanded="false" aria-controls="landing-mode-compare-wrap">
-          More info
-          <svg class="landing-mode-info-chevron" width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
-      </div>
-
-      <div class="landing-mode-compare-wrap" id="landing-mode-compare-wrap">
-        <div class="landing-mode-compare-inner">
-          <div class="landing-mode-compare active-lite" id="landing-mode-compare">
-            <div class="lmc-row lmc-row-head">
-              <div class="lmc-cell lmc-cell-label"></div>
-              <div class="lmc-cell lmc-cell-lite">Lite Mode</div>
-              <div class="lmc-cell lmc-cell-normal">Normal Mode</div>
-            </div>
-            <div class="lmc-row">
-              <div class="lmc-cell lmc-cell-label">Use case</div>
-              <div class="lmc-cell lmc-cell-lite" data-mode-label="Lite Mode: ">A quick, one-time query session</div>
-              <div class="lmc-cell lmc-cell-normal" data-mode-label="Normal Mode: ">A dataset you'll come back to, with saved sessions and queries</div>
-            </div>
-            <div class="lmc-row">
-              <div class="lmc-cell lmc-cell-label">Account</div>
-              <div class="lmc-cell lmc-cell-lite" data-mode-label="Lite Mode: ">No account needed</div>
-              <div class="lmc-cell lmc-cell-normal" data-mode-label="Normal Mode: ">Create an account to save your history</div>
-            </div>
-            <div class="lmc-row">
-              <div class="lmc-cell lmc-cell-label">Session storage</div>
-              <div class="lmc-cell lmc-cell-lite" data-mode-label="Lite Mode: ">Nothing stored beyond this browser session</div>
-              <div class="lmc-cell lmc-cell-normal" data-mode-label="Normal Mode: ">Save datasets and chat sessions across browser sessions and devices</div>
-            </div>
-            <div class="lmc-row">
-              <div class="lmc-cell lmc-cell-label">Data security</div>
-              <div class="lmc-cell lmc-cell-lite" data-mode-label="Lite Mode: ">Nothing touches our cloud or database.</div>
-              <div class="lmc-cell lmc-cell-normal" data-mode-label="Normal Mode: ">Saved data is stored securely in the cloud. AI conversations stay private and are never shared publicly.</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <section class="landing-split">
-      <div class="landing-panel landing-panel-auth">
-        <div class="landing-panel-inner">
-          <div id="landing-auth-fields-step">
-            <div class="landing-kicker" id="landing-kicker-auth">Step 1</div>
-            <h2 class="landing-panel-title" id="landing-auth-title">Create your account.</h2>
-            <div class="landing-auth-form">
-              <input type="email" id="landing-email" placeholder="you@example.com" autocomplete="email">
-              <div class="password-field">
-                <input type="password" id="landing-password" placeholder="Password" autocomplete="new-password">
-                <button type="button" class="password-toggle-btn" onclick="togglePasswordField('landing-password', this)" aria-label="Show password">
-                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/>
-                    <circle cx="12" cy="12" r="3"/>
-                    <line class="password-toggle-slash" x1="2" y1="2" x2="22" y2="22"/>
-                  </svg>
-                </button>
-              </div>
-              <button type="button" class="landing-magic-btn" id="landing-auth-submit-btn" onclick="landingAuthSubmit()">Create account</button>
-            </div>
-            <div class="landing-auth-switch">
-              <span id="landing-auth-switch-text">Already have an account?</span>
-              <a href="#" id="landing-auth-switch-link" onclick="toggleLandingAuthMode(); return false;">Sign in</a>
-            </div>
-            <div class="landing-auth-forgot" id="landing-auth-forgot-wrap" hidden>
-              <a href="#" onclick="openForgotPasswordFromLanding(); return false;">Forgot password?</a>
-            </div>
-            <div id="landing-auth-message" class="landing-auth-message"></div>
-          </div>
-          <div id="landing-auth-confirm-step" hidden>
-            <div class="landing-kicker">Step 1</div>
-            <h2 class="landing-panel-title">Confirm your email.</h2>
-            <p class="landing-panel-sub" id="landing-confirm-copy" style="margin:0 0 20px"></p>
-            <div class="landing-auth-form">
-              <input type="text" id="landing-confirm-code" placeholder="Confirmation code" inputmode="numeric" autocomplete="one-time-code">
-              <button type="button" class="landing-magic-btn" id="landing-confirm-submit-btn" onclick="submitLandingConfirmCode()">Confirm</button>
-            </div>
-            <div class="landing-auth-switch">
-              <a href="#" id="landing-confirm-resend-link" onclick="resendLandingConfirmCode(); return false;">Resend code</a>
-              <span>&middot;</span>
-              <a href="#" onclick="cancelLandingConfirmStep(); return false;">Use a different email</a>
-            </div>
-            <div id="landing-confirm-message" class="landing-auth-message"></div>
-          </div>
-        </div>
-        <div class="landing-watermark">S</div>
-      </div>
-
-      <div class="landing-panel landing-panel-upload" id="landing-upload-panel">
-        <div class="landing-panel-inner">
-          <div class="landing-kicker" id="landing-kicker-upload">Step 2</div>
-          <h2 class="landing-panel-title">Upload your CSV.</h2>
-          <p class="landing-panel-sub" id="landing-upload-sub">Unlocks once you sign up or sign in.</p>
-          <label for="file-upload" id="landing-upload-label" class="landing-upload-btn is-locked">Upload a file</label>
-        </div>
-      </div>
-    </section>
-
-    <section class="about-band">
-      <div class="about-band-title">How it works</div>
-      <div class="about-steps">
-        <div class="about-step">
-          <div class="about-step-num">01</div>
-          <div class="about-step-title">Pick a mode</div>
-          <div class="about-step-body">Lite Mode skips sign-in entirely. Normal Mode adds an account (email + password) so datasets and chat sessions sync across devices.</div>
-        </div>
-        <div class="about-step">
-          <div class="about-step-num">02</div>
-          <div class="about-step-title">Upload</div>
-          <div class="about-step-body">Drop in any CSV. Synth loads it into a real SQLite database running in your browser tab.</div>
-        </div>
-        <div class="about-step">
-          <div class="about-step-num">03</div>
-          <div class="about-step-title">Query</div>
-          <div class="about-step-body">Write SQL directly, or ask the AI assistant in plain English, then sort and filter instantly.</div>
-        </div>
-      </div>
-    </section>
 
     <footer class="landing-footer">
       <div class="landing-footer-inner">
         <div class="landing-footer-brand">Synth</div>
         <nav class="landing-footer-links">
-          <a href="/about">About</a>
+          <a href="/welcome">About</a>
           <a href="/guides">Guides</a>
           <a href="/terms">Terms of Service</a>
           <a href="/privacy">Privacy Policy</a>
@@ -4755,19 +4870,6 @@
           </div>
         </div>
       </div>
-    </div>
-  </div>
-
-  <div id="dashboard-view" hidden>
-    <div class="dashboard-header">
-      <h2>Your workspaces</h2>
-      <div class="dashboard-header-actions">
-        <button class="upload-btn" onclick="closeDashboard(); document.getElementById('file-upload').click();">+ New workspace</button>
-        <button class="auth-btn" onclick="closeDashboard()">&larr; Back to app</button>
-      </div>
-    </div>
-    <div id="dashboard-body" class="dashboard-body">
-      <div class="empty">Loading your workspaces...</div>
     </div>
   </div>
 

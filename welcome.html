@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>About Synth | Run SQL queries on your CSV files instantly</title>
+<meta name="description" content="Synth lets you run real SQL on a CSV file, or ask in plain English, with no database to install. Here's how it works and why it exists.">
+<link rel="canonical" href="https://synth-sql.com/welcome">
+<meta property="og:title" content="About Synth">
+<meta property="og:description" content="Synth lets you run real SQL on a CSV file, or ask in plain English, with no database to install.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://synth-sql.com/welcome">
+<meta property="og:image" content="https://synth-sql.com/synth-og-card.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="synthfavicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="marketing.css">
+</head>
+<body>
+
+<header class="site-header">
+  <a href="/" class="site-header-logo-link">
+    <img src="synth-logo.png" alt="Synth" class="site-header-logo">
+  </a>
+  <nav class="site-header-nav">
+    <a href="/?auth=signin">Sign in</a>
+    <a href="/" class="cta">Open Synth</a>
+  </nav>
+</header>
+
+<main class="wide welcome">
+  <h1 class="page-title">Run SQL queries on your CSV files instantly</h1>
+
+  <section class="mode-info" aria-label="Using Synth with or without an account">
+    <button type="button" class="mode-info-btn" id="mode-info-btn" aria-expanded="true" aria-controls="mode-compare-wrap">
+      More info
+      <svg class="mode-info-chevron" width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+
+    <div class="mode-compare-wrap is-open" id="mode-compare-wrap">
+      <div class="mode-compare-inner">
+        <div class="mode-compare">
+          <div class="mc-row mc-row-head">
+            <div class="mc-cell mc-cell-label"></div>
+            <div class="mc-cell">Lite Mode</div>
+            <div class="mc-cell">Normal Mode</div>
+          </div>
+          <div class="mc-row">
+            <div class="mc-cell mc-cell-label">Use case</div>
+            <div class="mc-cell" data-mode-label="Lite Mode">A quick, one-time query session</div>
+            <div class="mc-cell" data-mode-label="Normal Mode">A dataset you'll come back to, with saved sessions and queries</div>
+          </div>
+          <div class="mc-row">
+            <div class="mc-cell mc-cell-label">Account</div>
+            <div class="mc-cell" data-mode-label="Lite Mode">No account needed</div>
+            <div class="mc-cell" data-mode-label="Normal Mode">Create an account to save your history</div>
+          </div>
+          <div class="mc-row">
+            <div class="mc-cell mc-cell-label">Session storage</div>
+            <div class="mc-cell" data-mode-label="Lite Mode">Nothing stored beyond this browser session</div>
+            <div class="mc-cell" data-mode-label="Normal Mode">Save datasets and chat sessions across browser sessions and devices</div>
+          </div>
+          <div class="mc-row">
+            <div class="mc-cell mc-cell-label">Data security</div>
+            <div class="mc-cell" data-mode-label="Lite Mode">Nothing touches our cloud or database.</div>
+            <div class="mc-cell" data-mode-label="Normal Mode">Saved data is stored securely in the cloud. AI conversations stay private and are never shared publicly.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="how-it-works">
+    <h2>How it works</h2>
+    <div class="how-steps">
+      <div class="how-step">
+        <div class="how-step-num">01</div>
+        <h3>Pick a mode</h3>
+        <p>Lite Mode skips sign-in entirely. Normal Mode adds an account (email + password) so datasets and chat sessions sync across devices.</p>
+      </div>
+      <div class="how-step">
+        <div class="how-step-num">02</div>
+        <h3>Upload</h3>
+        <p>Drop in any CSV. Synth loads it into a real SQLite database running in your browser tab.</p>
+      </div>
+      <div class="how-step">
+        <div class="how-step-num">03</div>
+        <h3>Query</h3>
+        <p>Write SQL directly, or ask the AI assistant in plain English, then sort and filter instantly.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="welcome-about" id="about">
+    <h2>What Synth is</h2>
+    <p>Synth runs SQL queries, or plain-English questions, against a CSV file. When you upload a file, Synth loads it into a SQLite database that runs in your browser tab, so there's no server to install or wait on.</p>
+
+    <h2>Local by default</h2>
+    <p>In Lite Mode, your file and your queries stay in your browser and nothing is sent to a server. Normal Mode adds an account, which saves workspaces and chat sessions to the cloud so you can open them on another device.</p>
+
+    <h2>SQL or plain English</h2>
+    <p>You can write SQL yourself or ask the built-in AI assistant. In SQL Mode the assistant gives you a query you can run, and in General Mode it answers in plain English. You can switch between them at any time. Synth is meant for people who know SQL but don't want to set up a server for one file, and for people who would rather skip SQL and ask a question.</p>
+
+    <h2>Why it exists</h2>
+    <p>Querying a single CSV file usually means either writing Excel formulas, which don't scale past a few thousand rows, or setting up a database server to ask a handful of questions about one file. Synth lets you run SQL on the file without setting anything up.</p>
+
+    <h2>Multi-table workspaces</h2>
+    <p>A workspace can hold up to 10 tables. You can rename tables, have the AI write joins across them, and let Synth suggest relationships between them. Each CSV can have up to 500,000 rows.</p>
+
+    <h2>Contact</h2>
+    <p>Questions, feedback, or a bug to report? Reach us at <strong>spelillo11@gmail.com</strong>.</p>
+  </section>
+
+  <div class="cta-band">
+    <h2>Try it on your own CSV</h2>
+    <p>You don't need an account to start.</p>
+    <a href="/" class="cta-btn">Open Synth</a>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="site-footer-inner">
+    <div class="site-footer-brand">Synth</div>
+    <nav class="site-footer-links">
+      <a href="/guides">Guides</a>
+      <a href="/terms">Terms of Service</a>
+      <a href="/privacy">Privacy Policy</a>
+    </nav>
+    <div class="site-footer-copyright">&copy; 2026 Synth. All rights reserved.</div>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var btn = document.getElementById('mode-info-btn');
+    var wrap = document.getElementById('mode-compare-wrap');
+    btn.addEventListener('click', function () {
+      var open = wrap.classList.toggle('is-open');
+      btn.setAttribute('aria-expanded', open);
+    });
+  })();
+</script>
+</body>
+</html>
