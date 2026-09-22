@@ -43,6 +43,10 @@
         state.columns = [];
         state.rows = [];
         setExportButtonVisible(stateKey, false);
+        if (stateKey === 'results') {
+          const headerCountEl = document.getElementById('results-row-count');
+          if (headerCountEl) headerCountEl.textContent = '';
+        }
         return;
       }
 
@@ -166,11 +170,17 @@
 
     function updateRowCountText(target, stateKey, total) {
       const state = viewStates[stateKey];
-      const rowCountEl = target.querySelector('.row-count');
-      if (!rowCountEl) return;
-      rowCountEl.textContent = total === state.rows.length
+      const text = total === state.rows.length
         ? `${total.toLocaleString()} rows`
         : `${total.toLocaleString()} of ${state.rows.length.toLocaleString()} rows`;
+
+      const rowCountEl = target.querySelector('.row-count');
+      if (rowCountEl) rowCountEl.textContent = text;
+
+      if (stateKey === 'results') {
+        const headerCountEl = document.getElementById('results-row-count');
+        if (headerCountEl) headerCountEl.textContent = text;
+      }
     }
 
     // Renders only the rows currently in (or near) the scroll viewport,
@@ -554,16 +564,41 @@
       `;
     }
 
+    // The chart replaces the results table (rather than sitting above it)
+    // so it gets the table's full scrollable space — the button's own
+    // label doubles as the way back, flipping to "Results" while the
+    // chart is showing.
     window.toggleResultsChart = function() {
       const panel = document.getElementById('results-chart-panel');
       const btn = document.getElementById('results-chart-toggle-btn');
+      const label = document.getElementById('results-chart-toggle-label');
+      const newBadge = document.getElementById('results-chart-new-badge');
+      const errorEl = document.getElementById('error');
+      const scrollTopEl = document.getElementById('results-scroll-top');
+      const resultsEl = document.getElementById('results');
+
       if (!panel.hidden) {
         panel.hidden = true;
         btn.setAttribute('aria-expanded', 'false');
+        label.textContent = 'Chart';
+        // Restores whatever display value runQuery's own error handling
+        // had set before the chart hid it, rather than assuming none/block.
+        if (errorEl) errorEl.style.display = errorEl.dataset.prevDisplay || '';
+        if (scrollTopEl) scrollTopEl.style.display = '';
+        if (resultsEl) resultsEl.style.display = '';
         return;
       }
+
       panel.hidden = false;
       btn.setAttribute('aria-expanded', 'true');
+      label.textContent = 'Results';
+      if (newBadge) newBadge.hidden = true;
+      if (errorEl) {
+        errorEl.dataset.prevDisplay = errorEl.style.display;
+        errorEl.style.display = 'none';
+      }
+      if (scrollTopEl) scrollTopEl.style.display = 'none';
+      if (resultsEl) resultsEl.style.display = 'none';
       renderResultsChart();
     };
 
