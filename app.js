@@ -2773,6 +2773,7 @@
       errorEl.textContent = '';
       errorEl.style.display = 'none';
       resultsEl.innerHTML = '<div class="loading">Running query...</div>';
+      lastResultsSql = query;
 
       try {
         const result = db.exec(query);
@@ -2787,6 +2788,8 @@
           viewStates.results.columns = [];
           viewStates.results.rows = [];
           setExportButtonVisible('results', false);
+          setResultsRowCountText('');
+          if (!document.getElementById('results-chart-panel').hidden) renderResultsChart();
           return;
         }
 
@@ -2799,6 +2802,8 @@
         viewStates.results.columns = [];
         viewStates.results.rows = [];
         setExportButtonVisible('results', false);
+        setResultsRowCountText('');
+        if (!document.getElementById('results-chart-panel').hidden) renderResultsChart();
         let errorMsg = err.message;
 
         // Add helpful suggestions for common errors
