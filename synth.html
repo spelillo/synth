@@ -4113,18 +4113,14 @@
       color: #fff;
     }
 
-    .chart-customize summary {
-      cursor: pointer;
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--color-text-muted-2);
-    }
-
     .chart-title-fields {
       display: flex;
       flex-wrap: wrap;
       gap: 8px 12px;
-      margin-top: 8px;
+    }
+
+    .chart-title-fields .chart-title-field-main {
+      flex: 2 1 200px;
     }
 
     .chart-title-fields label {
@@ -4134,7 +4130,8 @@
       font-size: 12px;
       font-weight: 600;
       color: var(--color-text-muted-2);
-      flex: 1 1 180px;
+      flex: 1 1 110px;
+      min-width: 0;
     }
 
     .chart-title-fields input {
@@ -4157,8 +4154,77 @@
       color: var(--color-gold);
     }
 
-    .chart-controls-row-2 .chart-customize {
-      margin-right: auto;
+    .chart-status-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 12px;
+    }
+
+    .chart-status-row:not(:has(span:not(:empty))) {
+      display: none;
+    }
+
+    .chart-icon-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      background: none;
+      border: 1px solid var(--color-text);
+      border-radius: 8px;
+      color: var(--color-text);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .chart-icon-btn:hover {
+      background: var(--color-text);
+      color: var(--color-bg);
+    }
+
+    #results-chart-svg-wrap .chart-editable {
+      cursor: text;
+    }
+
+    #results-chart-svg-wrap .chart-editable:hover {
+      text-decoration: underline dotted;
+    }
+
+    .chart-fullscreen-overlay {
+      padding: 2vh 2vw;
+    }
+
+    .modal.chart-fullscreen-modal {
+      width: 96vw;
+      max-width: 96vw;
+      height: 94vh;
+      max-height: 94vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding: 16px 20px 20px;
+    }
+
+    .chart-fullscreen-modal .modal-header {
+      margin-bottom: 8px;
+    }
+
+    .chart-fullscreen-body {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .chart-fullscreen-body #results-chart-svg-wrap {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+    }
+
+    .chart-fullscreen-body #results-chart-svg-wrap svg {
+      max-width: none;
     }
 
     #results-chart-svg-wrap svg {
@@ -4551,6 +4617,16 @@
           <li>Large files: load CSVs up to 500,000 rows</li>
         </ul>
       </div>
+    </div>
+  </div>
+
+  <div id="chart-fullscreen-modal" class="modal-overlay chart-fullscreen-overlay" hidden>
+    <div class="modal chart-fullscreen-modal" role="dialog" aria-modal="true" aria-labelledby="chart-fullscreen-title">
+      <div class="modal-header">
+        <div class="section-label" id="chart-fullscreen-title">Chart</div>
+        <button class="modal-close" onclick="closeChartFullscreen()" aria-label="Close full screen">&times;</button>
+      </div>
+      <div id="chart-fullscreen-body" class="chart-fullscreen-body"></div>
     </div>
   </div>
 
