@@ -4,10 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Synth: Instantly query any CSV file with SQL</title>
-  <meta name="description" content="Query any CSV file with real SQL, or plain English. Runs as a local SQLite database in your browser. No install, no sign-in required.">
+  <meta name="description" content="Instantly run SQL queries on your CSVs — or ask in plain English. No install, no sign-in, right in your browser.">
   <link rel="canonical" href="https://synth-sql.com/">
   <meta property="og:title" content="Synth: Instantly query any CSV file with SQL">
-  <meta property="og:description" content="Query any CSV file with real SQL, or plain English. Runs as a local SQLite database right in your browser tab, no install required.">
+  <meta property="og:description" content="Instantly run SQL queries on your CSVs — or ask in plain English. No install, no sign-in, right in your browser.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://synth-sql.com/">
   <meta property="og:image" content="https://synth-sql.com/synth-og-card.png">
@@ -15,7 +15,7 @@
   <meta property="og:image:height" content="630">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Synth: Instantly query any CSV file with SQL">
-  <meta name="twitter:description" content="Query any CSV file with real SQL, or plain English. Runs as a local SQLite database right in your browser tab, no install required.">
+  <meta name="twitter:description" content="Instantly run SQL queries on your CSVs — or ask in plain English. No install, no sign-in, right in your browser.">
   <meta name="twitter:image" content="https://synth-sql.com/synth-og-card.png">
   <link rel="icon" href="synthfavicon.png">
   <script type="application/ld+json">
@@ -61,6 +61,7 @@
   <script src="auth.js"></script>
   <script src="checkout.js"></script>
   <script src="grid.js"></script>
+  <script src="charts.js"></script>
   <script src="chat.js"></script>
   <script src="app.js"></script>
   <style>
@@ -90,6 +91,9 @@
       --color-blue-bg: #dceefb;
       --color-blue-border: #b9dbf5;
       --color-green: #1e6b45;
+      --color-gold: #b8860b;
+      --color-gold-bg: #fdf3d7;
+      --color-gold-border: #e8c766;
     }
 
     @media (prefers-color-scheme: dark) {
@@ -110,6 +114,9 @@
         --color-blue-bg: #16324a;
         --color-blue-border: #2f5a80;
         --color-green: #4ade80;
+        --color-gold: #f0c655;
+        --color-gold-bg: #3a2f14;
+        --color-gold-border: #8a6d1f;
       }
     }
 
@@ -3352,6 +3359,56 @@
       margin-bottom: 12px;
     }
 
+    .results-header-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .results-row-count {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--color-text-muted-2);
+      white-space: nowrap;
+    }
+
+    /* Hides the row count that renderTable()/updateTable() append at the
+       bottom of the results table itself — for Query Results it's shown
+       in .results-row-count next to the header instead, so it doesn't
+       require scrolling through a large result set to see. Table View
+       keeps its own bottom count, untouched. */
+    .results-section .row-count {
+      display: none;
+    }
+
+    .chart-toggle-btn {
+      position: relative;
+      border-color: var(--color-gold-border);
+      color: var(--color-gold);
+    }
+
+    .chart-toggle-btn:hover:not(:disabled) {
+      background: var(--color-gold);
+      border-color: var(--color-gold);
+      color: var(--color-bg);
+    }
+
+    .chart-toggle-btn .new-badge {
+      position: absolute;
+      top: -9px;
+      right: -8px;
+      background: var(--color-gold);
+      color: var(--color-bg);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      padding: 2px 5px;
+      border-radius: 999px;
+      line-height: 1.3;
+      box-shadow: 0 0 0 2px var(--color-bg);
+    }
+
     .table-view-toolbar-right {
       display: flex;
       align-items: center;
@@ -4034,20 +4091,265 @@
       border: 1px solid var(--color-border);
       border-radius: 10px;
       padding: 14px;
-      background: #f8f6f0;
+      background: var(--color-bg);
       margin-bottom: 12px;
+      /* Fills the same space the results table occupies (it's swapped in
+         for the table, not layered above it) and scrolls on its own when
+         the chart is taller than the viewport, same as #results does. */
+      flex: 1;
+      overflow-y: auto;
+      min-height: 0;
     }
 
-    .chart-toolbar {
+    .chart-controls {
       display: flex;
-      justify-content: flex-end;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .chart-controls-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 12px;
+    }
+
+    .chart-control {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--color-text-muted-2);
+      font-weight: 600;
+    }
+
+    .chart-control select,
+    .chart-series-picker summary {
+      font-family: inherit;
+      font-size: 13px;
+      color: var(--color-text);
+      background: var(--color-bg);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 6px 8px;
+      max-width: 220px;
+    }
+
+    .chart-series-picker {
+      position: relative;
+    }
+
+    .chart-series-picker summary {
+      cursor: pointer;
+      list-style: none;
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .chart-series-picker summary::-webkit-details-marker { display: none; }
+
+    .chart-series-picker summary span {
+      color: var(--color-text-muted-2);
+    }
+
+    .chart-series-picker summary b {
+      font-weight: 600;
+      max-width: 150px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .chart-series-list {
+      position: absolute;
+      z-index: 20;
+      top: calc(100% + 4px);
+      left: 0;
+      min-width: 200px;
+      max-height: 260px;
+      overflow-y: auto;
+      background: var(--color-bg);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 6px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .chart-series-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 6px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--color-text);
+      cursor: pointer;
+    }
+
+    .chart-series-option:hover { background: var(--color-surface); }
+
+    .chart-muted {
+      font-size: 12px;
+      color: var(--color-text-muted);
+      padding: 4px;
+    }
+
+    .chart-actions {
+      display: flex;
+      gap: 8px;
+      margin-left: auto;
+    }
+
+    .chart-actions .save-btn {
+      padding: 6px 12px;
+      font-size: 13px;
+    }
+
+    .chart-excel-btn {
+      background: var(--color-text);
+      color: var(--color-bg);
+    }
+
+    .chart-excel-btn:hover:not(:disabled) {
+      background: var(--color-accent);
+      border-color: var(--color-accent);
+      color: #fff;
+    }
+
+    .chart-title-fields {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+    }
+
+    .chart-title-fields .chart-title-field-main {
+      flex: 2 1 200px;
+    }
+
+    .chart-title-fields label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--color-text-muted-2);
+      flex: 1 1 110px;
+      min-width: 0;
+    }
+
+    .chart-title-fields input {
+      font-family: inherit;
+      font-size: 13px;
+      color: var(--color-text);
+      background: var(--color-bg);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 6px 8px;
+    }
+
+    .chart-ai-status,
+    .chart-excel-status {
+      font-size: 12px;
+      color: var(--color-text-muted);
+    }
+
+    .chart-ai-status.is-loading {
+      color: var(--color-gold);
+    }
+
+    .chart-status-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 12px;
+    }
+
+    .chart-status-row:not(:has(span:not(:empty))) {
+      display: none;
+    }
+
+    .chart-icon-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      background: none;
+      border: 1px solid var(--color-text);
+      border-radius: 8px;
+      color: var(--color-text);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .chart-icon-btn:hover {
+      background: var(--color-text);
+      color: var(--color-bg);
+    }
+
+    #results-chart-svg-wrap .chart-editable {
+      cursor: text;
+    }
+
+    #results-chart-svg-wrap .chart-editable:hover {
+      text-decoration: underline dotted;
+    }
+
+    .chart-fullscreen-overlay {
+      padding: 2vh 2vw;
+    }
+
+    .modal.chart-fullscreen-modal {
+      width: 96vw;
+      max-width: 96vw;
+      height: 94vh;
+      max-height: 94vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding: 16px 20px 20px;
+    }
+
+    .chart-fullscreen-modal .modal-header {
       margin-bottom: 8px;
     }
 
+    .chart-fullscreen-body {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .chart-fullscreen-body #results-chart-svg-wrap {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+    }
+
+    .chart-fullscreen-body #results-chart-svg-wrap svg {
+      max-width: none;
+    }
+
     #results-chart-svg-wrap svg {
+      display: block;
       width: 100%;
+      max-width: 1000px;
       height: auto;
-      max-height: 360px;
+      margin: 0 auto;
+    }
+
+    #results-chart-svg-wrap .chart-mark {
+      transition: opacity 0.12s;
+    }
+
+    #results-chart-svg-wrap g:hover .chart-mark,
+    #results-chart-svg-wrap .chart-mark:hover {
+      opacity: 0.82;
     }
 
     .chart-note {
@@ -4501,6 +4803,16 @@
     </div>
   </div>
 
+  <div id="chart-fullscreen-modal" class="modal-overlay chart-fullscreen-overlay" hidden>
+    <div class="modal chart-fullscreen-modal" role="dialog" aria-modal="true" aria-labelledby="chart-fullscreen-title">
+      <div class="modal-header">
+        <div class="section-label" id="chart-fullscreen-title">Chart</div>
+        <button class="modal-close" onclick="closeChartFullscreen()" aria-label="Close full screen">&times;</button>
+      </div>
+      <div id="chart-fullscreen-body" class="chart-fullscreen-body"></div>
+    </div>
+  </div>
+
   <div id="save-query-modal" class="modal-overlay" hidden>
     <div class="modal">
       <div class="modal-header">
@@ -4760,9 +5072,15 @@
 
             <div class="results-section">
               <div class="results-header">
-                <div class="section-label">Query Results</div>
+                <div class="results-header-left">
+                  <div class="section-label">Query Results</div>
+                  <span class="results-row-count" id="results-row-count"></span>
+                </div>
                 <div class="table-view-toolbar-right">
-                  <button class="save-btn" id="results-chart-toggle-btn" onclick="toggleResultsChart()" aria-expanded="false">Chart</button>
+                  <button class="save-btn chart-toggle-btn" id="results-chart-toggle-btn" onclick="toggleResultsChart()" aria-expanded="false">
+                    <span id="results-chart-toggle-label">Chart</span>
+                    <span class="new-badge" id="results-chart-new-badge">NEW</span>
+                  </button>
                   <button class="save-btn" id="export-results-csv-btn" hidden onclick="exportResultsCSV('results')">Download CSV</button>
                 </div>
               </div>
