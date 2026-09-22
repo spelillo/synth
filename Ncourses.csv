@@ -1,0 +1,26 @@
+﻿Course ID,Course Title,Course Description,College,Subject,Enrolled Students,Staff ID
+CRS-101,Introduction to Microeconomics,Fundmentals of market structures and consumer choice.,Business,Economics,38,STF-101
+CRS-102,Corporate Finance Principles,Analysis of financial decision-making in modern corporations.,Business,Finance,21,STF-102
+CRS-103,Strategic Marketing Management,"Brand positioning, customer acquisition, and market analysis.",Business,Marketing,18,STF-103
+CRS-104,Financial Accounting I,Basic principles of financial recordkeeping and statement preparation.,Business,Accounting,41,STF-104
+CRS-105,General Chemistry & Lab,"Atomic structure, chemical bonding, and stoichiometry.",Science,Chemistry,26,STF-105
+CRS-106,Data Structures & Algorithms,"Fundamental algorithm design, linear data structures, and trees.",Science,Computer Science,25,STF-106
+CRS-107,Cellular Biology,Structure and function of procaryotic and eukaryotic cells.,Science,Biology,25,STF-107
+CRS-108,Classical Mechanics,"Newtonian mechanics, energy conservation, and rotational motion.",Science,Physics,22,STF-108
+CRS-109,Organic Chemistry I,"Structure, reactivity, and synthesis of organic compounds.",Science,Chemistry,41,STF-109
+CRS-110,Digital Illustration & Design,Vector-based visual communication and raster graphics editing.,Art,Graphic Design,21,STF-110
+CRS-111,History of Renaissance Art,"Survey of European painting, sculpture, and architecture 1300-1600.",Art,Fine Arts,39,STF-111
+CRS-112,Music Theory & Harmony,"Fundamentals of notation, chord structures, and voice leading.",Art,Music,41,STF-112
+CRS-113,Studio Painting Techniques,Exploration of oil and acrylic mediums on canvas.,Art,Fine Arts,35,STF-113
+CRS-114,World History 1500 to Present,"Global connections, imperial expansion, and modern conflicts.",History,World History,20,STF-114
+CRS-115,The American Civil War Era,"Political, social, and military dynamics of the US Civil War.",History,American History,36,STF-115
+CRS-116,Ancient Mediterranean Civilizations,"Comparative study of Egypt, Greece, and Rome.",History,Ancient History,31,STF-116
+CRS-117,Modern European Diplomatic History,Inter-state relations and treaties in Europe from 1815 onward.,History,European History,19,STF-117
+CRS-118,Constitutional Law & Rights,Examination of US Supreme Court precedent and constitutional limits.,Law,Constitutional Law,18,STF-118
+CRS-119,Criminal Procedure & Advocacy,"Legal standards governing search, seizure, trial, and due process.",Law,Criminal Law,20,STF-119
+CRS-120,Corporate Governance & Torts,"Legal responsibilities of directors, officers, and liability law.",Law,Corporate Law,24,STF-120
+CRS-121,International Human Rights Law,Frameworks and treaties governing global human rights standards.,Law,International Law,25,STF-116
+CRS-122,Thermodynamics & Heat Transfer,"Energy conversion, heat conduction, and thermodynamic cycles.",Engineering,Mechanical Engineering,34,STF-117
+CRS-123,Circuit Analysis & Signals,"AC/DC circuit response, Laplace transforms, and frequency response.",Engineering,Electrical Engineering,37,STF-118
+CRS-124,Structural Analysis & Statics,"Equilibrium of rigid structures, trusses, and beam deflection.",Engineering,Civil Engineering,18,STF-119
+CRS-125,Fluid Mechanics Fundamentals,"Properties of fluids, Navier-Stokes equations, and pipe flow.",Engineering,Mechanical Engineering,35,STF-120

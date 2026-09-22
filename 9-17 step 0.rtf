@@ -1,0 +1,620 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2822
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;\f1\fnil\fcharset0 .SFNS-Regular_wdth_opsz110000_GRAD_wght2580000;\f2\fnil\fcharset0 HelveticaNeue-Bold;
+\f3\fnil\fcharset0 HelveticaNeue;}
+{\colortbl;\red255\green255\blue255;\red64\green19\blue252;\red255\green255\blue255;\red20\green32\blue52;
+\red28\green95\blue7;\red229\green253\blue213;\red46\green61\blue86;\red30\green43\blue64;\red83\green98\blue126;
+\red172\green188\blue209;}
+{\*\expandedcolortbl;;\cssrgb\c32549\c22745\c99216;\cssrgb\c100000\c100000\c100000;\cssrgb\c10196\c17255\c26667;
+\cssrgb\c12941\c43922\c1961;\cssrgb\c91765\c98824\c86667;\cssrgb\c23529\c30980\c41176;\cssrgb\c15294\c22353\c31765;\cssrgb\c40000\c46275\c56863;
+\cssrgb\c72941\c78431\c85490;}
+{\*\listtable{\list\listtemplateid1\listhybrid{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat1\levelspace360\levelindent0{\*\levelmarker \{none\}}{\leveltext\leveltemplateid1\'00;}{\levelnumbers;}\fi-360\li720\lin720 }{\listname ;}\listid1}}
+{\*\listoverridetable{\listoverride\listid1\listoverridecount0\ls1}}
+\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 1. 1. **Stripe publishable key is still in test mode.**\
+\
+Stripe live keys\
+\
+Synth premium\
+\{\
+  "object": \{\
+    "id": "price_1UGhnpRsooZUyqKON1Pm4aXY",\
+    "object": "price",\
+    "active": true,\
+    "billing_scheme": "per_unit",\
+    "created": 1789661089,\
+    "currency": "usd",\
+    "custom_unit_amount": null,\
+    "livemode": true,\
+    "lookup_key": null,\
+    "metadata": \{\},\
+    "nickname": null,\
+    "product": "prod_VHGKJzvIUVQXqT",\
+    "recurring": null,\
+    "tax_behavior": "unspecified",\
+    "tiers_mode": null,\
+    "transform_quantity": null,\
+    "type": "one_time",\
+    "unit_amount": 999,\
+    "unit_amount_decimal": "999"\
+  \},\
+  "previous_attributes": null\
+\}\
+\
+Synth enterprise\
+\{\
+  "id": "prod_VHGPQ2hcVwvCja",\
+  "object": "product",\
+  "active": true,\
+  "attributes": [],\
+  "created": 1789661373,\
+  "default_price": "price_1UGhsPRsooZUyqKOYhGfablp",\
+  "description": null,\
+  "images": [\
+    "https://files.stripe.com/links/MDB8YWNjdF8xVUU5cmFSc29vWlV5cUtPfGZsX2xpdmVfQjBwSjFEQ3E5SmVmRGt5cVF2ZWk5a1M200A4e6O9SW"\
+  ],\
+  "livemode": true,\
+  "marketing_features": [],\
+  "metadata": \{\},\
+  "name": "Synth Enterprise",\
+  "package_dimensions": null,\
+  "shippable": null,\
+  "statement_descriptor": null,\
+  "tax_code": "txcd_10103001",\
+  "tax_details": \{\
+    "performance_location": null,\
+    "tax_code": "txcd_10103001"\
+  \},\
+  "type": "service",\
+  "unit_label": null,\
+  "updated": 1789661373,\
+  "url": null\
+\}\
+\
+Stripe embedded checkout instructions:\
+codex plugin add stripe@openai-curated\
+\
+Prmopt:\
+\
+## Stripe integration task\
+\
+### Objective\
+\
+Make the minimal changes needed to integrate Stripe Checkout. This integration has two parts \'97 complete **both**.\
+\
+## Part 1 \'97 Server-side\
+\
+### Scenario detection\
+\
+Scan the codebase for an existing Stripe Checkout Session API call. Look for patterns such as:\
+- `stripe.checkout.sessions.create(...)`\
+- `Stripe::Checkout::Session.create(...)` (Ruby)\
+- Any equivalent in the user's language or framework that creates a Stripe Checkout Session\
+\
+**Scenario A \'97 Existing Checkout Session API call found**\
+\
+1. Locate every place in the codebase where a Checkout Session is created.\
+2. Update ONLY the parameters of that call to match the `fixed_by_ui` values from the Field Intents section below.\
+3. **Preserve** any `sample_only` parameters (`mode`, `line_items`) that already exist in the user's code with real, non-placeholder values. Do NOT replace them with sample placeholders.\
+4. Remove any parameters that are absent from the Field Intents (they are no longer configured).\
+5. Do not touch any other code \'97 no new files, no new routes, no refactoring, no restructuring.\
+6. Create or update `STRIPE_INTEGRATION_TODO.md` only for `sample_only` parameters that are still using placeholder values or are missing from the call.\
+\
+**Scenario B \'97 No Checkout Session API call found**\
+\
+1. Add a minimal new server-side endpoint in the user's existing server framework that calls `stripe.checkout.sessions.create(...)` (or `Stripe::Checkout::Session.create(...)` in Ruby).\
+2. Use the `fixed_by_ui` parameters from Field Intents and the `sample_only` placeholder values from the sample below.\
+3. Do not add infrastructure that likely already exists (env loading, webhook handlers, middleware, auth). Add only what is verifiably absent.\
+4. Adapt to the user's language, framework, and conventions. The sample below is a reference only \'97 do not copy it verbatim.\
+5. Create `STRIPE_INTEGRATION_TODO.md` listing all `sample_only` placeholders and remaining setup steps.\
+\
+In both scenarios, server-side changes must be surgical and minimal.\
+\
+### Precedence rules\
+\
+When instructions conflict, follow this order:\
+1. `fixed_by_ui` values are authoritative \'97 configured by the user in the Checkout Studio UI. Use as-is.\
+2. `sample_only` values are placeholders for Scenario B only. In Scenario A, if the parameter already exists in the user's code with a real value, keep the user's value \'97 do NOT overwrite it with a placeholder. Only use `sample_only` placeholders when the parameter is missing entirely from the user's code.\
+\
+### Field intents\
+\
+Each Checkout Session parameter is annotated with its intent. Refer to the precedence rules above when using these values.\
+\
+```json\
+\{\
+  "ui_mode": \{\
+    "intent": "fixed_by_ui",\
+    "value": "form (or custom for SDKs below 21.0.0 \'97 see ui_mode versioning rule)"\
+  \},\
+  "mode": \{\
+    "intent": "sample_only",\
+    "hint": "Set to \\"payment\\" for one-time payments or \\"subscription\\" for recurring payments. Choose based on the product type."\
+  \},\
+  "billing_address_collection": \{\
+    "intent": "fixed_by_ui",\
+    "value": "auto"\
+  \},\
+  "phone_number_collection": \{\
+    "intent": "fixed_by_ui",\
+    "value": \{\
+      "enabled": false\
+    \}\
+  \},\
+  "automatic_tax": \{\
+    "intent": "fixed_by_ui",\
+    "value": \{\
+      "enabled": false\
+    \}\
+  \},\
+  "payment_method_collection": \{\
+    "intent": "fixed_by_ui",\
+    "value": "always"\
+  \},\
+  "submit_type": \{\
+    "intent": "fixed_by_ui",\
+    "value": "auto"\
+  \},\
+  "saved_payment_method_options": \{\
+    "intent": "fixed_by_ui",\
+    "value": \{\
+      "payment_method_save": "enabled"\
+    \}\
+  \},\
+  "integration_identifier": \{\
+    "intent": "fixed_by_ui",\
+    "value": "custom_embedded_web_0002"\
+  \},\
+  "line_items": \{\
+    "intent": "sample_only",\
+    "hint": "Replace with your actual Stripe Price IDs from the Dashboard or API."\
+  \}\
+\}\
+```\
+\
+### Rules\
+\
+1. Adapt to the user's current stack (frameworks, language, auth, DB). Copy only the patterns necessary.\
+2. **Scenario A only**: Change only the parameters inside the existing Checkout Session creation call. Do not modify surrounding code.\
+3. **Scenario B only**: Persist and retrieve Stripe resource identifiers (e.g., `customer_id`, `subscription_id`) in the user's datastore, associated with existing domain models \'97 only if the codebase already has a pattern for this.\
+4. Set the Stripe API version to `2026-03-25.dahlia; custom_checkout_payment_form_preview=v1` when initializing the Stripe server-side client (e.g., `new Stripe(key, \{ apiVersion: '2026-03-25.dahlia; custom_checkout_payment_form_preview=v1' \})`). This version and beta flag are required for the checkout form.\
+5. All `fixed_by_ui` parameters must be used exactly as specified in the Field Intents above.\
+6. **Scenario B**: All `sample_only` parameters are placeholders \'97 use them as-is, then list each one in `STRIPE_INTEGRATION_TODO.md` with instructions for the user to replace them. **Scenario A**: Keep the user's existing values for `sample_only` parameters; only document them in `STRIPE_INTEGRATION_TODO.md` if they still contain placeholder-like values (e.g., `price_...`).\
+7. When the task is complete, direct the user to `STRIPE_INTEGRATION_TODO.md` as the single source of truth for remaining setup steps.\
+8. The `mode` parameter must match the product type: use `"payment"` for one-time charges or `"subscription"` for recurring billing. Only include `payment_method_collection` when mode is `"subscription"`.\
+9. **Environment variable naming consistency**: Ensure that the variables names used in the `.env` file match those referenced in the code. If the project uses Vite, browser-accessible variables must be prefixed with `VITE_` (e.g. `VITE_STRIPE_PUBLISHABLE_KEY`); server-only variables (e.g. `STRIPE_SECRET_KEY`) must NOT use that prefix.\
+10. **ui_mode versioning**: The `ui_mode` value depends on the user's Stripe SDK version. Check the installed SDK version (e.g., in `package.json`, `Gemfile.lock`, `go.mod`, `requirements.txt`). SDK version 21.0.0 and above use: `form`. Versions below 21.0.0 use: `custom`. If you cannot determine the version, default to `form` and note the version dependency in `STRIPE_INTEGRATION_TODO.md`.\
+\
+### Sample reference code \'97 server (Scenario B only)\
+\
+> [SAMPLE_ONLY] Use only when no existing Checkout Session API call exists (Scenario B).\
+> Do not copy verbatim. Adapt patterns to the user's existing architecture, frameworks, and conventions.\
+> For Scenario A (existing call found), ignore this section entirely.\
+\
+```text filename=".env"\
+# Don't put any keys in code. See https://docs.stripe.com/keys-best-practices.\
+# API Keys can be stored as environment variables in this .env file, but\
+# it is recommended to use a secret management tool to store API Keys in production.\
+# Get these from the Stripe Dashboard -> https://dashboard.stripe.com/test/apikeys\
+# IMPORTANT: If using Vite, browser-accessible variables MUST be prefixed with VITE_\
+# (e.g. VITE_STRIPE_PUBLISHABLE_KEY). Server-only variables do NOT use this prefix.\
+# Choose the name that matches your build tool and use it consistently everywhere.\
+STRIPE_PUBLISHABLE_KEY=pk_test_...\
+STRIPE_SECRET_KEY=sk_test_...\
+# Get this from the Stripe Dashboard -> https://dashboard.stripe.com/workbench/webhooks\
+STRIPE_WEBHOOK_SECRET=whsec_...\
+# Set this to the domain of your app\
+DOMAIN=http://localhost:3000\
+```\
+\
+```js filename="server.js"\
+require("dotenv").config();\
+const \{ Stripe \} = require("stripe");\
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);\
+\
+const express = require("express");\
+const app = express();\
+\
+app.use(express.static("public"));\
+app.use(express.urlencoded(\{ extended: true \}));\
+app.use(express.json());\
+\
+app.post("/api/create-checkout-session", async (req, res) => \{\
+  // TODO: Set mode to "subscription" if selling recurring products.\
+  const mode = "payment";\
+\
+  // Use the fixed_by_ui parameters from the Field Intents section above.\
+  // line_items is sample_only \'97 replace with real values, then list in TODO.\
+  // Only include payment_method_collection when mode is "subscription".\
+  const sessionParams = \{\
+    // ... insert fixed_by_ui parameters from Field Intents ...\
+    mode,\
+    line_items: [\{ price: "price_...", quantity: 1 \}],\
+  \};\
+  if (mode === "subscription") \{\
+    sessionParams.payment_method_collection = "always"; // Use the fixed_by_ui value from Field Intents\
+  \}\
+  const session = await stripe.checkout.sessions.create(sessionParams);\
+\
+    res.json(\{ client_secret: session.client_secret \});\
+\});\
+\
+app.post("/api/webhook", express.raw(\{ type: "application/json" \}), (req, res) => \{\
+  const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;\
+  let event = req.body;\
+\
+  if (endpointSecret) \{\
+    const signature = req.headers["stripe-signature"];\
+    try \{\
+      event = stripe.webhooks.constructEvent(req.body, signature, endpointSecret);\
+    \} catch (err) \{\
+      console.log("Webhook signature verification failed.", err.message);\
+      return res.sendStatus(400);\
+    \}\
+  \}\
+\
+  switch (event.type) \{\
+    case "checkout.session.completed":\
+      const session = event.data.object;\
+      console.log("Checkout completed:", session.id);\
+      // Fulfill the purchase, grant access, etc.\
+\
+      // Verify terms of service acceptance\
+      if (session.consent?.terms_of_service === "accepted") \{\
+        console.log("Customer accepted terms of service");\
+      \}\
+\
+      // Check promotional email consent (opt_in or opt_out)\
+      if (session.consent?.promotions === "opt_in") \{\
+        const email = session.customer_details?.email;\
+        console.log("Customer opted in for promotional emails:", email);\
+        // Add email to your marketing list\
+      \}\
+      break;\
+    default:\
+      console.log("Unhandled event type:", event.type);\
+  \}\
+\
+  res.sendStatus(200);\
+\});\
+\
+app.listen(4242, () => console.log("Server running on port 4242"));\
+```\
+\
+### Integration summary\
+\
+You will be using Embedded form (build a custom payment form) to accept payments.\
+\
+\
+## Part 2 \'97 Client-side\
+\
+The embedded form renders in a Stripe-hosted iframe. Apply these changes regardless of which server-side scenario applied.\
+\
+1. **Load Stripe.js** in your HTML `<head>`. Always load directly from `https://js.stripe.com/dahlia/stripe.js` \'97 never bundle or self-host it (PCI requirement). The `dahlia` build is required for `stripe.initCheckoutFormSdk(...)`.\
+2. **Initialize Stripe** with the required beta flag:\
+```js\
+const stripe = Stripe('<your-publishable-key>', \{betas: ['custom_checkout_payment_form_1']\});\
+```\
+3. **The server endpoint must return JSON**, not a redirect. Verify or update it to return `\{client_secret: session.client_secret\}`.\
+4. **Fetch the client secret** and initialize the Checkout Form SDK, passing the configured appearance:\
+```js\
+const appearance = \{\
+  "theme": "night",\
+  "labels": "auto",\
+  "inputs": "spaced",\
+  "variables": \{\
+    "borderRadius": "4px",\
+    "colorBackground": "#ffffff",\
+    "colorDanger": "#df1b41",\
+    "colorPrimary": "#0570de",\
+    "colorSuccess": "#0ff065",\
+    "colorText": "#30313d",\
+    "fontFamily": "Inconsolata",\
+    "fontSizeBase": "16px",\
+    "spacingUnit": "4px"\
+  \}\
+\};\
+\
+const clientSecret = fetch('/api/create-checkout-session', \{method: 'POST'\})\
+  .then((response) => response.json())\
+  .then((json) => json.client_secret);\
+const checkout = stripe.initCheckoutFormSdk(\{clientSecret, appearance\});\
+```\
+5. **Add a container element** in your HTML where the form will render:\
+```html\
+<div id="checkout-form"></div>\
+```\
+6. **Create, mount, and wire the confirm event**:\
+```js\
+const form = checkout.createForm(\{layout: 'expanded'\});\
+form.mount('#checkout-form');\
+\
+const loadActionsResult = await checkout.loadActions();\
+if (loadActionsResult.type === 'success') \{\
+  form.on('confirm', async (event) => \{\
+    try \{\
+      await loadActionsResult.actions.confirm(\{formConfirmEvent: event\});\
+    \} catch (error) \{\
+      console.error('Payment confirmation error:', error);\
+    \}\
+  \});\
+\}\
+```\
+### Output requirements\
+\
+After completing the integration, create a `STRIPE_INTEGRATION_TODO.md` file in the repository. This file is the single source of truth \'97 when the task is done, direct the user to it for all remaining steps.\
+\
+The file must contain:\
+\
+#### Values to replace\
+\
+List the files that contain placeholder values as relative markdown links, then list every placeholder field the user must update:\
+\
+```\
+## Values to Replace\
+\
+The following values are placeholders and must be updated before going live.\
+\
+**Files containing placeholders:**\
+- [server/checkout.js](server/checkout.js)\
+\
+| Field | Current Value | What to Set |\
+|-------|--------------|-------------|\
+| mode | payment | Set to "payment" for one-time charges or "subscription" for recurring billing. |\
+| line_items[].price | price_... | Your actual Stripe Price ID from the Dashboard (https://dashboard.stripe.com/prices) or API. |\
+```\
+\
+#### Configured parameters\
+\
+List the files where Checkout Studio parameters were placed as relative markdown links, then list the parameters and their values:\
+\
+```\
+## Configured Parameters\
+\
+These parameters were configured in Checkout Studio and are already set correctly.\
+\
+**Files containing these parameters:**\
+- [server/checkout.js](server/checkout.js)\
+\
+| Parameter | Value |\
+|-----------|-------|\
+| billing_address_collection | required |\
+```\
+\
+#### Setup and next steps\
+\
+- Setup instructions (environment variables, API keys, dependencies)\
+- Project structure of new files created\
+- How the integration works (flow overview)\
+- Testing credit card numbers and test modes\
+- Next steps (updating products, fulfillment, order tracking)\
+- Resources: https://support.stripe.com and https://docs.stripe.com/mcp\
+\
+Html code\
+\
+<html>\
+  <head>\
+    <title>Checkout</title>\
+    <script src="https://js.stripe.com/dahlia/stripe.js"></script>\
+  </head>\
+  <body>\
+    <div id="checkout-form">\
+      <!-- Embedded form will be inserted here -->\
+    </div>\
+  </body>\
+</html>\
+\
+\
+JS code:\
+// create an instance of Stripe on your Checkout Page\
+const stripe = Stripe('\{\{PUBLISHABLE_KEY\}\}', \{\
+  betas: ['custom_checkout_payment_form_1']\
+\});\
+\
+// fetch the client secret from your server and initialize the Checkout instance:\
+const clientSecret = fetch('/create-checkout-session', \{method: 'POST'\})\
+  .then((response) => response.json())\
+  .then((json) => json.client_secret);\
+\
+const appearance = \{\
+  "theme": "night",\
+  "inputs": "spaced",\
+  "labels": "auto",\
+  "variables": \{\
+    "borderRadius": "4px",\
+    "colorBackground": "#ffffff",\
+    "colorDanger": "#df1b41",\
+    "colorPrimary": "#0570de",\
+    "colorSuccess": "#0ff065",\
+    "colorText": "#30313d",\
+    "fontFamily": "Inconsolata",\
+    "fontSizeBase": "16px",\
+    "spacingUnit": "4px"\
+  \}\
+\};\
+\
+// create the Checkout instance:\
+const checkout = stripe.initCheckoutFormSdk(\{\
+  clientSecret,\
+  appearance\
+\});\
+\
+// Create and mount the Embedded form\
+const checkoutForm = checkout.createForm(\{ layout: 'expanded' \});\
+checkoutForm.mount('#checkout-form');\
+\
+const loadActionsResult = await checkout.loadActions();\
+if (loadActionsResult.type === 'success') \{\
+  checkoutForm.on('confirm', (event) => \{\
+    loadActionsResult.actions.confirm(\{formConfirmEvent: event\});\
+  \});\
+\}\
+\
+\
+New web hook:\
+\pard\tx220\tx720\pardeftab720\li720\fi-720\partightenfactor0
+\ls1\ilvl0
+\f1\b \cf2 \cb3 		{\field{\*\fldinst{HYPERLINK "https://dashboard.stripe.com/acct_1UE9raRsooZUyqKO/workbench/webhooks"}}{\fldrslt \expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Event destinations}}\cf4 \cb1 \expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec4 \
+\pard\pardeftab720\partightenfactor0
+
+\f2\fs40 \cf4 \cb3 adventurous-oasis
+\f3\b0\fs24 \cf5 \cb6 \strokec5 Active
+\fs28 \cf7 \cb1 \strokec7 \
+\pard\pardeftab720\partightenfactor0
+\cf7 \cb3 https://www.synth-sql.com/api/stripe-webhook\cb1 \
+\pard\pardeftab720\partightenfactor0
+
+\f1\b \cf8 \cb3 \strokec8 Edit destination\cb1 \
+\
+\pard\pardeftab720\partightenfactor0
+\cf2 \strokec2 \
+\pard\pardeftab720\partightenfactor0
+\cf2 \cb3 Overview\cf7 \strokec7 Event deliveries
+\f3\b0 \cf4 \cb2 \strokec4 \
+\
+\pard\pardeftab720\partightenfactor0
+
+\f2\b\fs32 \cf4 \cb3 Performance
+\f1\fs24 \cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf4 \cb3 Select time period\cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf8 \cb3 \strokec8 This week\cb1 \
+\
+\pard\pardeftab720\partightenfactor0
+
+\fs28 \cf4 \cb3 \strokec4 Event deliveries\cb1 \
+\pard\pardeftab720\partightenfactor0
+
+\f3\b0 \cf4 \
+\pard\pardeftab720\partightenfactor0
+
+\fs24 \cf4 \cb3 Total
+\f1\b \cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf4 \cb3 0\cb1 \
+\pard\pardeftab720\partightenfactor0
+
+\f3\b0\fs28 \cf4 \
+\pard\pardeftab720\partightenfactor0
+
+\fs24 \cf4 \cb3 Failed
+\f1\b \cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf4 \cb3 0\cb1 \
+\pard\pardeftab720\partightenfactor0
+
+\f3\b0\fs28 \cf4 \
+\pard\pardeftab720\partightenfactor0
+
+\fs24 \cf9 \cb3 \strokec9 0\cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf9 \cb10 \
+\
+\
+\
+\pard\pardeftab720\qc\partightenfactor0
+\cf9 \cb3 9/11\cb1 \
+\cb3 9/13\cb1 \
+\cb3 9/15\cb1 \
+\cb3 9/17\cb1 \
+\pard\pardeftab720\partightenfactor0
+
+\f1\b\fs28 \cf4 \cb3 \strokec4 Response time\cb1 \
+\pard\pardeftab720\partightenfactor0
+
+\f3\b0 \cf4 \
+\pard\pardeftab720\partightenfactor0
+
+\fs24 \cf4 \cb3 Min
+\f1\b \cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf4 \cb3 0\cb1 \
+\pard\pardeftab720\partightenfactor0
+
+\f3\b0 \cf4 \cb3 ms
+\fs28 \cb1 \
+\
+
+\fs24 \cb3 Avg
+\f1\b \cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf4 \cb3 0\cb1 \
+\pard\pardeftab720\partightenfactor0
+
+\f3\b0 \cf4 \cb3 ms
+\fs28 \cb1 \
+\
+
+\fs24 \cb3 Max
+\f1\b \cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf4 \cb3 0\cb1 \
+\pard\pardeftab720\partightenfactor0
+
+\f3\b0 \cf4 \cb3 ms
+\fs28 \cb1 \
+\
+\pard\pardeftab720\partightenfactor0
+
+\fs24 \cf9 \cb3 \strokec9 0\cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf9 \cb10 \
+\
+\
+\
+\pard\pardeftab720\qc\partightenfactor0
+\cf9 \cb3 9/11\cb1 \
+\cb3 9/13\cb1 \
+\cb3 9/15\cb1 \
+\cb3 9/17\cb1 \
+\pard\pardeftab720\partightenfactor0
+
+\f1\b\fs28 \cf4 \cb3 \strokec4 Destination details\cb1 \
+\pard\pardeftab720\partightenfactor0
+
+\f2 \cf4 \
+\pard\pardeftab720\partightenfactor0
+
+\f3\b0 \cf7 \cb3 \strokec7 Destination ID\cb1 \
+\pard\pardeftab720\partightenfactor0
+{\field{\*\fldinst{HYPERLINK "https://dashboard.stripe.com/acct_1UE9raRsooZUyqKO/workbench/webhooks/we_1UGi3yRsooZUyqKOj7ORZXfp"}}{\fldrslt \cf4 \cb3 \ul \ulc4 \strokec4 we_1UGi3yRsooZUyqKOj7ORZXfp}}\cf4 \strokec4 \
+\pard\pardeftab720\partightenfactor0
+\cf7 \cb3 \strokec7 Name\cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf4 \cb3 \strokec4 adventurous-oasis\cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf7 \cb3 \strokec7 Endpoint URL\cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf4 \cb3 \strokec4 https://www.synth-sql.com/api/stripe-webhook\cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf7 \cb3 \strokec7 Description\cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf4 \strokec4 \
+\pard\pardeftab720\partightenfactor0
+\cf7 \cb3 \strokec7 API version\cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf4 \cb3 \strokec4 2026-08-26.dahlia\cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf7 \cb3 \strokec7 Listening to\cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf4 \cb3 \strokec4 3 events\cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf8 \cb3 \strokec8 Hide events\cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf4 \cb3 \strokec4 customer.subscription.created\cb1 \
+\cb3 customer.subscription.deleted\cb1 \
+\cb3 subscription_schedule.updated\cb1 \
+\
+whsec_gfMRtr22N3vYvGyF2hHRRGyvhW6NmYh9\
+\
+2: make it 100000 rows for lite mode and normal\
+\
+3. Add enterprise.html\
+\
+4. 4. **Re-verify the XSS/auth fixes now that the file has grown.** \
+Verify this \
+\
+5.gmail app password is fine for now. }
