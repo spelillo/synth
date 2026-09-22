@@ -43,10 +43,7 @@
         state.columns = [];
         state.rows = [];
         setExportButtonVisible(stateKey, false);
-        if (stateKey === 'results') {
-          const headerCountEl = document.getElementById('results-row-count');
-          if (headerCountEl) headerCountEl.textContent = '';
-        }
+        if (stateKey === 'results') setResultsRowCountText('');
         return;
       }
 
@@ -177,10 +174,12 @@
       const rowCountEl = target.querySelector('.row-count');
       if (rowCountEl) rowCountEl.textContent = text;
 
-      if (stateKey === 'results') {
-        const headerCountEl = document.getElementById('results-row-count');
-        if (headerCountEl) headerCountEl.textContent = text;
-      }
+      if (stateKey === 'results') setResultsRowCountText(text);
+    }
+
+    function setResultsRowCountText(text) {
+      const el = document.getElementById('results-row-count');
+      if (el) el.textContent = text;
     }
 
     // Renders only the rows currently in (or near) the scroll viewport,
@@ -474,146 +473,6 @@
       const s = String(str);
       return s.length > maxLen ? s.slice(0, maxLen) + '…' : s;
     }
-
-    // ---- Query results chart ----
-    // Scoped deliberately narrow: exactly 2 columns (a label and a number),
-    // the shape a GROUP BY / aggregate query actually produces. A raw
-    // multi-column row dump isn't a chart-worthy shape, so this declines
-    // rather than guessing which columns to plot.
-    const MAX_CHART_BARS = 30;
-
-    function getChartableRows(stateKey) {
-      const state = viewStates[stateKey];
-      if (!state || !state.columns || state.columns.length !== 2) {
-        return { error: 'Chart needs a 2-column result — a label and a number. Try a query like SELECT region, SUM(total) FROM orders GROUP BY region.' };
-      }
-
-      const rows = getVisibleRows(stateKey);
-      const parsed = [];
-      for (const row of rows) {
-        const raw = row[1];
-        if (raw === null || raw === undefined || raw === '') continue;
-        const num = parseFloat(raw);
-        if (isNaN(num)) continue;
-        parsed.push({ label: row[0] === null || row[0] === undefined ? '' : String(row[0]), value: num });
-      }
-      if (parsed.length === 0) {
-        return { error: `The second column ("${state.columns[1]}") needs to be numeric to chart it.` };
-      }
-      return { rows: parsed, truncated: parsed.length > MAX_CHART_BARS, total: parsed.length };
-    }
-
-    function renderBarChartSVG(rows) {
-      const width = 640;
-      const height = 320;
-      const paddingLeft = 56;
-      const paddingBottom = 64;
-      const paddingTop = 24;
-      const paddingRight = 20;
-      const chartWidth = width - paddingLeft - paddingRight;
-      const chartHeight = height - paddingTop - paddingBottom;
-
-      const maxVal = Math.max(...rows.map(r => r.value), 0);
-      const minVal = Math.min(...rows.map(r => r.value), 0);
-      const range = (maxVal - minVal) || 1;
-      const zeroY = paddingTop + chartHeight * (maxVal / range);
-
-      const barGap = 8;
-      const barWidth = Math.max(4, (chartWidth - barGap * (rows.length - 1)) / rows.length);
-
-      let bars = '';
-      let labels = '';
-      rows.forEach((r, i) => {
-        const x = paddingLeft + i * (barWidth + barGap);
-        const barHeight = Math.max(Math.abs(r.value) / range * chartHeight, r.value === 0 ? 0 : 1);
-        const y = r.value >= 0 ? zeroY - barHeight : zeroY;
-        const labelX = (x + barWidth / 2).toFixed(1);
-        bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barHeight.toFixed(1)}" fill="#ff4f00" rx="2"></rect>`;
-        bars += `<text x="${labelX}" y="${(y - 4).toFixed(1)}" font-size="10" text-anchor="middle" fill="#201515" font-family="'JetBrains Mono', monospace">${escapeHtml(formatStatNumber(r.value))}</text>`;
-        const labelY = (height - paddingBottom + 14).toFixed(1);
-        labels += `<text x="${labelX}" y="${labelY}" font-size="10" text-anchor="end" fill="#56534a" transform="rotate(-40 ${labelX} ${labelY})">${escapeHtml(truncateForStats(r.label, 14))}</text>`;
-      });
-
-      return `<svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" font-family="Inter, sans-serif">
-        <rect x="0" y="0" width="${width}" height="${height}" fill="#fffefb"></rect>
-        <line x1="${paddingLeft}" y1="${zeroY.toFixed(1)}" x2="${width - paddingRight}" y2="${zeroY.toFixed(1)}" stroke="#c5c0b1" stroke-width="1"></line>
-        ${bars}
-        ${labels}
-      </svg>`;
-    }
-
-    function renderResultsChart() {
-      const panel = document.getElementById('results-chart-panel');
-      if (!panel) return;
-      const data = getChartableRows('results');
-      if (data.error) {
-        panel.innerHTML = `<div class="empty">${escapeHtml(data.error)}</div>`;
-        return;
-      }
-      const shown = data.rows.slice(0, MAX_CHART_BARS);
-      const svg = renderBarChartSVG(shown);
-      const note = data.truncated
-        ? `<div class="chart-note">Showing the first ${MAX_CHART_BARS} of ${data.total.toLocaleString()} rows.</div>`
-        : '';
-      panel.innerHTML = `
-        <div class="chart-toolbar">
-          <button class="save-btn" onclick="downloadChartSVG()">Download SVG</button>
-        </div>
-        <div id="results-chart-svg-wrap">${svg}</div>
-        ${note}
-      `;
-    }
-
-    // The chart replaces the results table (rather than sitting above it)
-    // so it gets the table's full scrollable space — the button's own
-    // label doubles as the way back, flipping to "Results" while the
-    // chart is showing.
-    window.toggleResultsChart = function() {
-      const panel = document.getElementById('results-chart-panel');
-      const btn = document.getElementById('results-chart-toggle-btn');
-      const label = document.getElementById('results-chart-toggle-label');
-      const newBadge = document.getElementById('results-chart-new-badge');
-      const errorEl = document.getElementById('error');
-      const scrollTopEl = document.getElementById('results-scroll-top');
-      const resultsEl = document.getElementById('results');
-
-      if (!panel.hidden) {
-        panel.hidden = true;
-        btn.setAttribute('aria-expanded', 'false');
-        label.textContent = 'Chart';
-        // Restores whatever display value runQuery's own error handling
-        // had set before the chart hid it, rather than assuming none/block.
-        if (errorEl) errorEl.style.display = errorEl.dataset.prevDisplay || '';
-        if (scrollTopEl) scrollTopEl.style.display = '';
-        if (resultsEl) resultsEl.style.display = '';
-        return;
-      }
-
-      panel.hidden = false;
-      btn.setAttribute('aria-expanded', 'true');
-      label.textContent = 'Results';
-      if (newBadge) newBadge.hidden = true;
-      if (errorEl) {
-        errorEl.dataset.prevDisplay = errorEl.style.display;
-        errorEl.style.display = 'none';
-      }
-      if (scrollTopEl) scrollTopEl.style.display = 'none';
-      if (resultsEl) resultsEl.style.display = 'none';
-      renderResultsChart();
-    };
-
-    window.downloadChartSVG = function() {
-      const svgEl = document.querySelector('#results-chart-svg-wrap svg');
-      if (!svgEl) return;
-      const serialized = new XMLSerializer().serializeToString(svgEl);
-      const blob = new Blob([serialized], { type: 'image/svg+xml' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'chart.svg';
-      a.click();
-      URL.revokeObjectURL(url);
-    };
 
     function renderColumnStatsCard(stat) {
       const nullPct = stat.totalRows > 0 ? ((stat.nullCount / stat.totalRows) * 100).toFixed(1) : '0.0';

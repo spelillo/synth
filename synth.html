@@ -60,6 +60,7 @@
   <script src="auth.js"></script>
   <script src="checkout.js"></script>
   <script src="grid.js"></script>
+  <script src="charts.js"></script>
   <script src="chat.js"></script>
   <script src="app.js"></script>
   <style>
@@ -3982,7 +3983,7 @@
       border: 1px solid var(--color-border);
       border-radius: 10px;
       padding: 14px;
-      background: #f8f6f0;
+      background: var(--color-bg);
       margin-bottom: 12px;
       /* Fills the same space the results table occupies (it's swapped in
          for the table, not layered above it) and scrolls on its own when
@@ -3992,16 +3993,189 @@
       min-height: 0;
     }
 
-    .chart-toolbar {
+    .chart-controls {
       display: flex;
-      justify-content: flex-end;
-      margin-bottom: 8px;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .chart-controls-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 12px;
+    }
+
+    .chart-control {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--color-text-muted-2);
+      font-weight: 600;
+    }
+
+    .chart-control select,
+    .chart-series-picker summary {
+      font-family: inherit;
+      font-size: 13px;
+      color: var(--color-text);
+      background: var(--color-bg);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 6px 8px;
+      max-width: 220px;
+    }
+
+    .chart-series-picker {
+      position: relative;
+    }
+
+    .chart-series-picker summary {
+      cursor: pointer;
+      list-style: none;
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .chart-series-picker summary::-webkit-details-marker { display: none; }
+
+    .chart-series-picker summary span {
+      color: var(--color-text-muted-2);
+    }
+
+    .chart-series-picker summary b {
+      font-weight: 600;
+      max-width: 150px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .chart-series-list {
+      position: absolute;
+      z-index: 20;
+      top: calc(100% + 4px);
+      left: 0;
+      min-width: 200px;
+      max-height: 260px;
+      overflow-y: auto;
+      background: var(--color-bg);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 6px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .chart-series-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 6px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--color-text);
+      cursor: pointer;
+    }
+
+    .chart-series-option:hover { background: var(--color-surface); }
+
+    .chart-muted {
+      font-size: 12px;
+      color: var(--color-text-muted);
+      padding: 4px;
+    }
+
+    .chart-actions {
+      display: flex;
+      gap: 8px;
+      margin-left: auto;
+    }
+
+    .chart-actions .save-btn {
+      padding: 6px 12px;
+      font-size: 13px;
+    }
+
+    .chart-excel-btn {
+      background: var(--color-text);
+      color: var(--color-bg);
+    }
+
+    .chart-excel-btn:hover:not(:disabled) {
+      background: var(--color-accent);
+      border-color: var(--color-accent);
+      color: #fff;
+    }
+
+    .chart-customize summary {
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--color-text-muted-2);
+    }
+
+    .chart-title-fields {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+      margin-top: 8px;
+    }
+
+    .chart-title-fields label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--color-text-muted-2);
+      flex: 1 1 180px;
+    }
+
+    .chart-title-fields input {
+      font-family: inherit;
+      font-size: 13px;
+      color: var(--color-text);
+      background: var(--color-bg);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 6px 8px;
+    }
+
+    .chart-ai-status,
+    .chart-excel-status {
+      font-size: 12px;
+      color: var(--color-text-muted);
+    }
+
+    .chart-ai-status.is-loading {
+      color: var(--color-gold);
+    }
+
+    .chart-controls-row-2 .chart-customize {
+      margin-right: auto;
     }
 
     #results-chart-svg-wrap svg {
+      display: block;
       width: 100%;
+      max-width: 1000px;
       height: auto;
-      max-height: 360px;
+      margin: 0 auto;
+    }
+
+    #results-chart-svg-wrap .chart-mark {
+      transition: opacity 0.12s;
+    }
+
+    #results-chart-svg-wrap g:hover .chart-mark,
+    #results-chart-svg-wrap .chart-mark:hover {
+      opacity: 0.82;
     }
 
     .chart-note {
