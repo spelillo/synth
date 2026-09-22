@@ -366,15 +366,16 @@ Rules:
       return `M${f1(x + w)},${f1(y)}H${f1(x + r)}Q${f1(x)},${f1(y)} ${f1(x)},${f1(y + r)}V${f1(y + h - r)}Q${f1(x)},${f1(y + h)} ${f1(x + r)},${f1(y + h)}H${f1(x + w)}Z`;
     }
 
-    function svgText(x, y, str, { size = 11, fill, anchor = 'start', weight = 400, rotate = null, family = null } = {}) {
+    function svgText(x, y, str, { size = 11, fill, anchor = 'start', weight = 400, rotate = null, family = null, edit = null } = {}) {
       const t = rotate !== null ? ` transform="rotate(${rotate} ${f1(x)} ${f1(y)})"` : '';
       const ff = family ? ` font-family="${family}"` : '';
-      return `<text x="${f1(x)}" y="${f1(y)}" font-size="${size}" fill="${fill}" text-anchor="${anchor}" font-weight="${weight}"${ff}${t}>${escapeHtml(String(str))}</text>`;
+      const ed = edit ? ` class="chart-editable" data-edit="${edit}"` : '';
+      return `<text x="${f1(x)}" y="${f1(y)}" font-size="${size}" fill="${fill}" text-anchor="${anchor}" font-weight="${weight}"${ff}${t}${ed}>${escapeHtml(String(str))}</text>`;
     }
 
     // Title + legend block; returns [svg, heightUsed].
     function renderChartHeader(spec, data, theme, W, legendItems) {
-      let out = svgText(20, 32, clip(spec.title, 80), { size: 17, fill: theme.text, weight: 600 });
+      let out = svgText(20, 32, clip(spec.title || 'Untitled chart', 100), { size: 17, fill: spec.title ? theme.text : theme.text2, weight: 600, edit: 'title' });
       let y = 44;
       if (legendItems.length >= 2) {
         let x = 20;
@@ -391,8 +392,8 @@ Rules:
       return [out, y + 16];
     }
 
-    function renderCartesianSVG(spec, data, theme) {
-      const W = 760;
+    function renderCartesianSVG(spec, data, theme, size) {
+      const W = size.width;
       const horizontal = spec.type === 'bar';
       const scatter = spec.type === 'scatter';
       const nSeries = data.series.length;
@@ -420,11 +421,13 @@ Rules:
         const tipLabels = nSeries === 1 && n <= 30;
         const tipW = tipLabels ? Math.max(...data.series[0].values.map(v => textW(formatChartValue(v), 10))) + 8 : 0;
         const right = W - 28 - tipW;
-        const rowH = Math.max(24, nSeries * 12 + 12);
         const plotTop = top + 4;
+        const footer = 26 + (valTitle ? 26 : 0) + 8;
+        // Rows stretch to fill a taller canvas (full screen), up to 48px each.
+        const rowH = Math.max(24, nSeries * 12 + 12, Math.min(48, (size.height - plotTop - footer) / n));
         const plotH = n * rowH;
         const bottom = plotTop + plotH;
-        const H = bottom + 26 + (valTitle ? 26 : 0) + 8;
+        const H = bottom + footer;
         const sx = v => left + (v - vs.lo) / (vs.hi - vs.lo) * (right - left);
         vs.ticks.forEach((t, i) => {
           const x = sx(t);
@@ -450,8 +453,8 @@ Rules:
           out += svgText(left - 8, y0 + rowH / 2 + 4, catLabels[i], { size: 11, fill: theme.text2, anchor: 'end' });
         });
         out += `<line x1="${left}" y1="${plotTop}" x2="${left}" y2="${bottom}" stroke="${theme.axis}" stroke-width="1"></line>`;
-        if (catTitle) out += svgText(28, plotTop + plotH / 2, catTitle, { size: 12, fill: theme.text2, anchor: 'middle', rotate: -90, weight: 500 });
-        if (valTitle) out += svgText((left + right) / 2, bottom + 44, valTitle, { size: 12, fill: theme.text2, anchor: 'middle', weight: 500 });
+        if (catTitle) out += svgText(28, plotTop + plotH / 2, catTitle, { size: 12, fill: theme.text2, anchor: 'middle', rotate: -90, weight: 500, edit: 'xAxisTitle' });
+        if (valTitle) out += svgText((left + right) / 2, bottom + 44, valTitle, { size: 12, fill: theme.text2, anchor: 'middle', weight: 500, edit: 'yAxisTitle' });
         return wrapSvg(W, H, theme, header + out);
       }
 
@@ -480,7 +483,7 @@ Rules:
         }
       }
       const plotTop = top + 4;
-      const H = Math.max(420, plotTop + 300 + xLabelArea + (catTitle ? 28 : 0));
+      const H = Math.max(size.height, plotTop + 300 + xLabelArea + (catTitle ? 28 : 0));
       const bottom = H - xLabelArea - (catTitle ? 28 : 0) - 10;
       const sy = v => bottom - (v - vs.lo) / (vs.hi - vs.lo) * (bottom - plotTop);
 
@@ -489,8 +492,8 @@ Rules:
         out += `<line x1="${left}" y1="${f1(y)}" x2="${right}" y2="${f1(y)}" stroke="${t === 0 ? theme.axis : theme.grid}" stroke-width="1"></line>`;
         out += svgText(left - 8, y + 4, tickLabels[i], { size: 11, fill: theme.text2, anchor: 'end' });
       });
-      if (valTitle) out += svgText(28, (plotTop + bottom) / 2, valTitle, { size: 12, fill: theme.text2, anchor: 'middle', rotate: -90, weight: 500 });
-      if (catTitle) out += svgText((left + right) / 2, H - 14, catTitle, { size: 12, fill: theme.text2, anchor: 'middle', weight: 500 });
+      if (valTitle) out += svgText(28, (plotTop + bottom) / 2, valTitle, { size: 12, fill: theme.text2, anchor: 'middle', rotate: -90, weight: 500, edit: 'yAxisTitle' });
+      if (catTitle) out += svgText((left + right) / 2, H - 14, catTitle, { size: 12, fill: theme.text2, anchor: 'middle', weight: 500, edit: 'xAxisTitle' });
 
       if (scatter) {
         const sx = v => left + (v - xs.lo) / (xs.hi - xs.lo) * plotW;
@@ -575,15 +578,17 @@ Rules:
       return 0.2126 * r + 0.7152 * g + 0.0722 * b;
     }
 
-    function renderPieSVG(spec, data, theme) {
-      const W = 760;
+    function renderPieSVG(spec, data, theme, size) {
+      const W = size.width;
       const [header, top] = renderChartHeader(spec, data, theme, W, []);
       const values = data.series[0].values.map(v => v || 0);
       const total = values.reduce((a, b) => a + b, 0) || 1;
-      const H = 420;
-      const r = Math.min(150, (H - top - 24) / 2);
-      const cx = 40 + r;
-      const cy = top + 8 + r;
+      const H = Math.max(420, size.height);
+      const legendW = 380;
+      const r = Math.max(80, Math.min(260, (H - top - 24) / 2, (W - legendW - 120) / 2));
+      const groupW = 2 * r + 48 + legendW;
+      const cx = Math.max(40, (W - groupW) / 2) + r;
+      const cy = top + 8 + Math.max(r, (H - top - 24) / 2);
       const inner = spec.type === 'doughnut' ? r * 0.58 : 0;
       let out = '';
       let angle = -Math.PI / 2;
@@ -627,7 +632,7 @@ Rules:
         const y = ly0 + i * rowH;
         out += `<rect x="${lx}" y="${y - 10}" width="12" height="12" rx="2" fill="${theme.series[i]}"></rect>`;
         out += svgText(lx + 20, y, clip(data.categories[i], 30), { size: 12, fill: theme.text });
-        out += svgText(W - 24, y, `${formatChartValue(v)}  ·  ${(v / total * 100).toFixed(1)}%`, { size: 12, fill: theme.text2, anchor: 'end' });
+        out += svgText(Math.min(W - 24, lx + legendW), y, `${formatChartValue(v)}  ·  ${(v / total * 100).toFixed(1)}%`, { size: 12, fill: theme.text2, anchor: 'end' });
       });
       return wrapSvg(W, H, theme, header + out);
     }
@@ -637,9 +642,9 @@ Rules:
         <rect x="0" y="0" width="${W}" height="${f1(H)}" fill="${theme.surface}"></rect>${body}</svg>`;
     }
 
-    function renderChartSVG(spec, data, theme) {
-      if (spec.type === 'pie' || spec.type === 'doughnut') return renderPieSVG(spec, data, theme);
-      return renderCartesianSVG(spec, data, theme);
+    function renderChartSVG(spec, data, theme, size = { width: 760, height: 420 }) {
+      if (spec.type === 'pie' || spec.type === 'doughnut') return renderPieSVG(spec, data, theme, size);
+      return renderCartesianSVG(spec, data, theme, size);
     }
 
     // ---- Panel UI ----
@@ -649,9 +654,22 @@ Rules:
       return true;
     }
 
+    // The chart tool lives in exactly one place at a time: the inline
+    // results panel, or the full-screen modal while that's open (its
+    // element ids stay unique that way).
+    function chartFullscreenOpen() {
+      const modal = document.getElementById('chart-fullscreen-modal');
+      return !!modal && !modal.hidden;
+    }
+
     function renderResultsChart() {
-      const panel = document.getElementById('results-chart-panel');
-      if (!panel) return;
+      const inline = document.getElementById('results-chart-panel');
+      if (!inline) return;
+      let panel = inline;
+      if (chartFullscreenOpen()) {
+        inline.innerHTML = '<div class="empty">This chart is open in full screen.</div>';
+        panel = document.getElementById('chart-fullscreen-body');
+      }
       const st = viewStates.results;
       if (!st.columns.length || !st.rows.length) {
         chartState = { key: null, info: null, spec: null, userEdited: false, aiStatus: 'idle', error: null };
@@ -671,7 +689,7 @@ Rules:
       }
       panel.innerHTML = `
         <div class="chart-controls" id="chart-controls"></div>
-        <div id="results-chart-svg-wrap"></div>
+        <div id="results-chart-svg-wrap" onclick="onChartCanvasClick(event)"></div>
         <div class="chart-note" id="chart-note"></div>`;
       renderChartControls();
       renderChartBody();
@@ -710,16 +728,17 @@ Rules:
           <div class="chart-actions">
             <button class="save-btn" onclick="downloadChartSVG()">Download SVG</button>
             <button class="save-btn chart-excel-btn" id="chart-excel-btn" onclick="exportChartToExcel()">Export to Excel</button>
+            ${chartFullscreenOpen() ? '' : `<button type="button" class="chart-icon-btn" onclick="openChartFullscreen()" title="Full screen" aria-label="Open chart full screen">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>`}
           </div>
         </div>
-        <div class="chart-controls-row chart-controls-row-2">
-          <details class="chart-customize"><summary>Edit titles</summary>
-            <div class="chart-title-fields">
-              <label>Chart title<input type="text" id="chart-title-input" value="${escapeAttr(spec.title)}" oninput="onChartTitleInput('title', this.value)"></label>
-              ${isPie ? '' : `<label>${spec.type === 'bar' ? 'Category axis (left)' : 'X-axis title'}<input type="text" value="${escapeAttr(spec.xAxisTitle || '')}" oninput="onChartTitleInput('xAxisTitle', this.value)"></label>
-              <label>${spec.type === 'bar' ? 'Value axis (bottom)' : 'Y-axis title'}<input type="text" value="${escapeAttr(spec.yAxisTitle || '')}" oninput="onChartTitleInput('yAxisTitle', this.value)"></label>`}
-            </div>
-          </details>
+        <div class="chart-title-fields">
+          <label class="chart-title-field-main">Chart title<input type="text" id="chart-title-input" value="${escapeAttr(spec.title)}" placeholder="Untitled chart" oninput="onChartTitleInput('title', this.value)"></label>
+          ${isPie ? '' : `<label>${spec.type === 'bar' ? 'Category axis (left)' : 'X-axis title'}<input type="text" id="chart-xAxisTitle-input" value="${escapeAttr(spec.xAxisTitle || '')}" oninput="onChartTitleInput('xAxisTitle', this.value)"></label>
+          <label>${spec.type === 'bar' ? 'Value axis (bottom)' : 'Y-axis title'}<input type="text" id="chart-yAxisTitle-input" value="${escapeAttr(spec.yAxisTitle || '')}" oninput="onChartTitleInput('yAxisTitle', this.value)"></label>`}
+        </div>
+        <div class="chart-status-row">
           <span class="chart-ai-status" id="chart-ai-status"></span>
           <span class="chart-excel-status" id="chart-excel-status"></span>
         </div>`;
@@ -734,9 +753,18 @@ Rules:
       const rows = getVisibleRows('results');
       const data = buildChartData(chartState.spec, st.columns, rows);
       const empty = chartState.spec.type === 'scatter' ? !data.points.length : !data.categories.length;
+      // Full screen draws at the canvas's real pixel size (1:1 text, more
+      // room) instead of scaling up the 760px inline drawing.
+      const size = chartFullscreenOpen()
+        ? { width: Math.max(760, Math.min(1800, Math.floor(wrap.clientWidth) - 2)), height: Math.max(420, Math.floor(wrap.clientHeight) - 8) }
+        : { width: 760, height: 420 };
       wrap.innerHTML = empty
         ? '<div class="empty">Nothing to plot — the selected value column has no numbers in the visible rows.</div>'
-        : renderChartSVG(chartState.spec, data, chartTheme());
+        : renderChartSVG(chartState.spec, data, chartTheme(), size);
+      // Full screen keeps text at real size; on a phone-width screen the
+      // canvas scrolls sideways rather than shrinking the chart unreadably.
+      const svgEl = wrap.querySelector('svg');
+      if (svgEl && chartFullscreenOpen()) svgEl.style.width = `${size.width}px`;
       const notes = [];
       if (data.shown < data.total && !(data.dropped && data.shown + data.dropped >= data.total)) {
         notes.push(`Showing the first ${data.shown.toLocaleString()} of ${data.total.toLocaleString()} rows here. The Excel export charts all of them.`);
@@ -750,11 +778,7 @@ Rules:
       if (!el) return;
       const s = chartState.aiStatus;
       el.className = 'chart-ai-status' + (s === 'loading' ? ' is-loading' : '');
-      el.textContent =
-        s === 'loading' ? 'AI is designing this chart…' :
-        s === 'done' ? (chartState.userEdited ? 'Edited by you' : '✨ Titles and chart type chosen by AI') :
-        s === 'signed-out' ? 'Sign in to have AI title and design your charts' :
-        s === 'failed' ? 'Auto-titled (AI unavailable right now)' : '';
+      el.textContent = s === 'loading' && !chartState.userEdited ? 'Generating titles…' : '';
     }
 
     function applyChartEdit(mutator, { rerenderControls = true } = {}) {
@@ -794,6 +818,49 @@ Rules:
 
     window.onChartTitleInput = function(field, value) {
       applyChartEdit(s => { s[field] = value; }, { rerenderControls: false });
+    };
+
+    // Clicking the chart title or an axis title on the canvas jumps to its field.
+    window.onChartCanvasClick = function(event) {
+      const target = event.target.closest && event.target.closest('[data-edit]');
+      if (!target) return;
+      const input = document.getElementById(`chart-${target.dataset.edit}-input`);
+      if (input) { input.focus(); input.select(); }
+    };
+
+    let chartResizeObserver = null;
+
+    window.openChartFullscreen = function() {
+      const modal = document.getElementById('chart-fullscreen-modal');
+      if (!modal) return;
+      modal.hidden = false;
+      renderResultsChart();
+      const body = document.getElementById('chart-fullscreen-body');
+      if (typeof ResizeObserver !== 'undefined' && body) {
+        let lastW = 0, lastH = 0;
+        chartResizeObserver = new ResizeObserver(() => {
+          const wrap = document.getElementById('results-chart-svg-wrap');
+          if (!wrap || !chartFullscreenOpen()) return;
+          const w = Math.round(wrap.clientWidth), h = Math.round(wrap.clientHeight);
+          if (Math.abs(w - lastW) < 8 && Math.abs(h - lastH) < 8) return;
+          lastW = w; lastH = h;
+          renderChartBody();
+        });
+        chartResizeObserver.observe(body);
+      }
+      const close = modal.querySelector('.modal-close');
+      if (close) close.focus();
+    };
+
+    window.closeChartFullscreen = function() {
+      const modal = document.getElementById('chart-fullscreen-modal');
+      if (!modal || modal.hidden) return;
+      if (chartResizeObserver) { chartResizeObserver.disconnect(); chartResizeObserver = null; }
+      modal.hidden = true;
+      const body = document.getElementById('chart-fullscreen-body');
+      if (body) body.innerHTML = '';
+      const inline = document.getElementById('results-chart-panel');
+      if (inline && !inline.hidden) renderResultsChart();
     };
 
     window.downloadChartSVG = function() {

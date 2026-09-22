@@ -2939,6 +2939,7 @@
       'cloud-modal': 'closeCloudPanel',
       'help-modal': 'closeHelpPanel',
       'save-query-modal': 'closeSaveQueryModal',
+      'chart-fullscreen-modal': 'closeChartFullscreen',
       'load-query-modal': 'closeLoadQueryModal',
       'delete-query-modal': 'closeDeleteQueryModal',
       'delete-table-modal': 'closeDeleteTableModal',
