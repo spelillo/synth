@@ -68,6 +68,7 @@
       updateCloudButtons();
       updateAIState();
       refreshHomeWorkspaces();
+      syncChartAccess();
     }
 
     // Signed in: the header button is the user's email and opens Settings.
@@ -166,7 +167,7 @@
 
       document.getElementById('account-title').textContent = isSignin ? 'Welcome back' : 'Create your account';
       document.getElementById('account-sub').textContent = isSignin
-        ? 'Sign in to save files and sessions, use the AI tools, and keep the queries behind your charts.'
+        ? 'Sign in to save files and sessions, use the AI tools, and build charts.'
         : "Sign up with your email and a password. We'll email you a code to confirm the address.";
       document.getElementById('auth-panel-submit-btn').textContent = isSignin ? 'Sign in' : 'Create account';
       document.getElementById('auth-forgot-link').hidden = !isSignin;

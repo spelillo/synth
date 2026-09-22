@@ -70,7 +70,7 @@ This page has no sign-up panel, upload button, or account-creation flow. Its act
 
 A button at the top right of the homepage opens the modal. Signed out, it reads "Sign in". Signed in, it shows the account email and opens Settings.
 
-The modal's value line is "Sign in to save files and sessions, use the AI tools, and keep the queries behind your charts." It appears as the modal's pitch, since this is the case for why a Lite Mode visitor should create an account.
+The modal's value line is "Sign in to save files and sessions, use the AI tools, and build charts." It appears as the modal's pitch, since this is the case for why a Lite Mode visitor should create an account.
 
 The modal is a single column that switches between modes, replacing the old side-by-side layout:
 - Sign in (default): email and password, a "Forgot password?" link, submit, and a link to sign up.
@@ -109,4 +109,4 @@ Most of this work is moving the existing markup and handlers from the old `#land
 
 - "New workspace": keep both entry points. The upload area and a "New workspace" button in the signed-in left column both open the file picker.
 - Sign-in entry: the top-right header button opens the account modal. `/welcome` links to it with `/?auth=signin`, and the home footer's "About" link goes to `/welcome`.
-- "AI tools" and "power chart builder": both are live features. The AI tools require an account; charting does not, and charts are not saved. The modal and the home's "save your work" card say an account saves the queries behind your charts.
+- "AI tools" and charts: both are live features and both require an account. Signed-out users who click Chart get the sign-up modal, and the Chart button shows a lock until they sign in.

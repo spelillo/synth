@@ -1001,6 +1001,11 @@ Rules:
         return;
       }
 
+      if (!currentUser) {
+        openAccountModal('signup');
+        return;
+      }
+
       panel.hidden = false;
       btn.setAttribute('aria-expanded', 'true');
       label.textContent = 'Results';
@@ -1012,4 +1017,19 @@ Rules:
       if (scrollTopEl) scrollTopEl.style.display = 'none';
       if (resultsEl) resultsEl.style.display = 'none';
       renderResultsChart();
+    };
+
+    // Charts need an account. Called on every auth change: shows the lock
+    // on the Chart button while signed out, and closes any open chart view
+    // when someone signs out mid-session.
+    window.syncChartAccess = function() {
+      const signedIn = !!currentUser;
+      const btn = document.getElementById('results-chart-toggle-btn');
+      const lock = document.getElementById('results-chart-lock');
+      if (lock) lock.hidden = signedIn;
+      if (btn) btn.title = signedIn ? '' : 'Sign up to use charts';
+      if (signedIn) return;
+      closeChartFullscreen();
+      const panel = document.getElementById('results-chart-panel');
+      if (panel && !panel.hidden) toggleResultsChart();
     };

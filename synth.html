@@ -3394,6 +3394,13 @@
       color: var(--color-bg);
     }
 
+    .chart-lock-icon {
+      margin-right: 4px;
+      vertical-align: -2px;
+    }
+
+    .chart-lock-icon[hidden] { display: none; }
+
     .chart-toggle-btn .new-badge {
       position: absolute;
       top: -9px;
@@ -4524,14 +4531,14 @@
             <i class="ph ph-sparkle" aria-hidden="true"></i>
             <div>
               <strong>Access AI tools</strong>
-              <span>Ask questions in plain English and get SQL or answers back.</span>
+              <span>Get help writing queries for your data, or ask general questions about your schema.</span>
             </div>
           </li>
           <li>
             <i class="ph ph-chart-bar" aria-hidden="true"></i>
             <div>
-              <strong>Save the queries behind your charts</strong>
-              <span>Charting is free for everyone. Save a query to rebuild its chart later.</span>
+              <strong>Build charts</strong>
+              <span>Sign up to chart any query result and export it to Excel.</span>
             </div>
           </li>
         </ul>
@@ -4548,7 +4555,7 @@
             <button type="button" class="account-tab" id="auth-tab-signup" role="tab" aria-selected="false" onclick="setAuthPanelMode('signup')">Sign up</button>
           </div>
           <h2 class="account-title" id="account-title">Welcome back</h2>
-          <p class="account-sub" id="account-sub">Sign in to save files and sessions, use the AI tools, and keep the queries behind your charts.</p>
+          <p class="account-sub" id="account-sub">Sign in to save files and sessions, use the AI tools, and build charts.</p>
           <form class="account-form" onsubmit="event.preventDefault(); authPanelSubmit();" novalidate>
             <div class="account-field">
               <label for="auth-email">Email</label>
@@ -4960,14 +4967,14 @@
             <span class="home-flow-num">3</span>
             <i class="ph ph-chart-bar home-flow-icon" aria-hidden="true"></i>
             <strong>View charts</strong>
-            <span>Chart any result, then sort and filter the grid.</span>
+            <span>Sign in to chart any result as a column, line, pie, or other chart.</span>
           </li>
         </ol>
         <div class="home-save-card" id="home-save-card">
           <i class="ph ph-cloud-check home-save-icon" aria-hidden="true"></i>
           <div class="home-save-copy">
             <strong id="home-save-title">Sign in to save your work</strong>
-            <span id="home-save-body">Open your files, chats, and queries on any device. An account also turns on the AI tools and saves the queries behind your charts.</span>
+            <span id="home-save-body">Open your files, chats, and queries on any device. An account also turns on the AI tools and charts.</span>
           </div>
           <button type="button" class="home-save-btn" id="home-save-btn" onclick="openAccountModal('signup')">Create account</button>
         </div>
@@ -5078,6 +5085,7 @@
                 </div>
                 <div class="table-view-toolbar-right">
                   <button class="save-btn chart-toggle-btn" id="results-chart-toggle-btn" onclick="toggleResultsChart()" aria-expanded="false">
+                    <i class="ph ph-lock-simple chart-lock-icon" id="results-chart-lock" aria-hidden="true" hidden></i>
                     <span id="results-chart-toggle-label">Chart</span>
                     <span class="new-badge" id="results-chart-new-badge">NEW</span>
                   </button>

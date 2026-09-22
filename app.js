@@ -540,6 +540,7 @@
     function initHome() {
       setActiveView('home');
       renderDashboard();
+      syncChartAccess();
 
       const home = document.getElementById('home-view');
       const zone = document.getElementById('home-dropzone');
@@ -875,7 +876,7 @@
         : 'Sign in to save your work';
       document.getElementById('home-save-body').textContent = signedIn
         ? 'Use Save to cloud in any workspace to keep its files and chat sessions here.'
-        : 'Open your files, chats, and queries on any device. An account also turns on the AI tools and saves the queries behind your charts.';
+        : 'Open your files, chats, and queries on any device. An account also turns on the AI tools and charts.';
       document.getElementById('home-save-btn').hidden = signedIn;
       document.getElementById('home-new-workspace-btn').hidden = !signedIn;
     }
