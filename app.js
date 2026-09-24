@@ -993,20 +993,20 @@
         name: 'NFL Stats',
         file: 'sample-data/nfl_team_stats.csv',
         icon: 'ph-football',
-        blurb: 'All 32 teams across 5 seasons of win-loss and scoring stats.',
-        description: 'One row per NFL team per season (2019–2023, 160 rows total): division standings, win-loss-tie records, points scored and allowed, and whether the team made the playoffs.',
+        blurb: '32 teams, 5 seasons of wins, losses, and scoring.',
+        description: '160 rows. One row per team per season, 2019 to 2023. Covers division, record, points scored, and playoff results.',
         columns: [
           { name: 'team', desc: 'Full team name, e.g. "Buffalo Bills"' },
           { name: 'season', desc: 'Season year' },
           { name: 'conference', desc: '"AFC" or "NFC"' },
           { name: 'division', desc: '"East", "North", "South", or "West"' },
-          { name: 'wins / losses / ties', desc: 'Regular-season record' },
-          { name: 'points_for / points_against', desc: 'Total points scored / allowed that season' },
+          { name: 'wins / losses / ties', desc: 'Regular season record' },
+          { name: 'points_for / points_against', desc: 'Points scored and allowed that season' },
           { name: 'point_differential', desc: 'points_for minus points_against' },
           { name: 'made_playoffs', desc: '"Yes" or "No"' },
         ],
-        source: 'Synthesized for practice, modeled on real NFL team/conference/division structure and typical season stat ranges.',
-        purpose: 'Good for practicing GROUP BY, ORDER BY, and filtering — e.g. ranking teams, comparing divisions, or tracking a team across seasons.',
+        source: 'Synthetic data, built to match real NFL team and division structure.',
+        purpose: 'Practice GROUP BY, ORDER BY, and filtering. Rank teams, compare divisions, or track a team across seasons.',
         exampleQueries: [
           'SELECT team, wins, losses FROM nfl_team_stats WHERE season = 2023 ORDER BY wins DESC',
           "SELECT division, AVG(point_differential) AS avg_diff FROM nfl_team_stats GROUP BY division ORDER BY avg_diff DESC",
@@ -1018,19 +1018,19 @@
         name: 'Bank Statement',
         file: 'sample-data/bank_statement.csv',
         icon: 'ph-bank',
-        blurb: 'Six months of personal transactions — paychecks, bills, and everyday spending.',
-        description: 'About 120 rows of everyday checking-account activity from January to June 2025: paychecks, rent, groceries, dining, subscriptions, and a running balance after each transaction.',
+        blurb: 'Six months of transactions. Paychecks, bills, everyday spending.',
+        description: '124 rows of checking account activity from January to June 2025. Includes paychecks, rent, groceries, dining, subscriptions, and a running balance.',
         columns: [
           { name: 'transaction_id', desc: 'Unique ID per transaction' },
           { name: 'date', desc: 'Transaction date (YYYY-MM-DD)' },
           { name: 'description', desc: 'Merchant or payer, e.g. "Trader Joe\'s"' },
           { name: 'category', desc: 'e.g. Groceries, Rent, Dining Out, Paycheck' },
           { name: 'type', desc: '"credit" or "debit"' },
-          { name: 'amount', desc: 'Transaction amount (always positive)' },
+          { name: 'amount', desc: 'Transaction amount, always positive' },
           { name: 'balance_after', desc: 'Account balance right after this transaction' },
         ],
-        source: 'Synthesized for practice — realistic categories and amounts, no real account or personal data.',
-        purpose: 'Good for practicing SUM/AVG aggregates, date filtering, and spotting spending patterns by category or month.',
+        source: 'Synthetic data. Realistic categories and amounts, no real account or personal data.',
+        purpose: 'Practice SUM and AVG, date filtering, and spending patterns. Try totals by category or by month.',
         exampleQueries: [
           "SELECT category, SUM(amount) AS total_spent FROM bank_statement WHERE type = 'debit' GROUP BY category ORDER BY total_spent DESC",
           "SELECT * FROM bank_statement WHERE category = 'Paycheck'",
@@ -1042,21 +1042,21 @@
         name: 'Grocery Store Data',
         file: 'sample-data/grocery_store_data.csv',
         icon: 'ph-shopping-cart',
-        blurb: 'A month of product sales across departments and store locations.',
-        description: 'About 140 rows of grocery sales spanning produce, dairy, meat, pantry, and more, sold across 5 store locations during March 2025 — unit price, quantity sold, and revenue per sale.',
+        blurb: 'A month of sales across departments and store locations.',
+        description: '140 rows of grocery sales from March 2025. Covers produce, dairy, meat, pantry, and more across 5 store locations.',
         columns: [
           { name: 'product_id', desc: 'Unique product ID' },
           { name: 'product_name', desc: 'e.g. "Bananas", "Whole Milk"' },
           { name: 'category', desc: 'Department, e.g. Produce, Dairy, Bakery' },
           { name: 'unit', desc: 'Sale unit, e.g. "lb", "dozen", "12-pack"' },
-          { name: 'unit_price', desc: 'Price per unit ($)' },
+          { name: 'unit_price', desc: 'Price per unit in dollars' },
           { name: 'store_location', desc: 'One of 5 store locations' },
           { name: 'date', desc: 'Date of sale (YYYY-MM-DD)' },
           { name: 'quantity_sold', desc: 'Units sold in that sale' },
-          { name: 'revenue', desc: 'quantity_sold × unit_price' },
+          { name: 'revenue', desc: 'quantity_sold times unit_price' },
         ],
-        source: 'Synthesized for practice, modeled on typical grocery store departments, products, and pricing.',
-        purpose: 'Good for practicing joins-style thinking within one table: totals by category or location, top sellers, and revenue trends.',
+        source: 'Synthetic data, modeled on typical grocery departments, products, and pricing.',
+        purpose: 'Practice totals and rankings. Try revenue by category, by store, or by product.',
         exampleQueries: [
           'SELECT category, SUM(revenue) AS total_revenue FROM grocery_store_data GROUP BY category ORDER BY total_revenue DESC',
           'SELECT product_name, SUM(quantity_sold) AS units_sold FROM grocery_store_data GROUP BY product_name ORDER BY units_sold DESC LIMIT 10',
@@ -1088,14 +1088,25 @@
       document.getElementById('preview-dataset-modal-title').textContent = dataset.name;
       document.getElementById('preview-dataset-modal-body').innerHTML = `
         <p class="help-text">${escapeHtml(dataset.description)}</p>
-        <div class="modal-subhead">Columns</div>
-        <ul class="preview-dataset-list">${dataset.columns.map(c => `<li><strong>${escapeHtml(c.name)}</strong> — ${escapeHtml(c.desc)}</li>`).join('')}</ul>
-        <div class="modal-subhead">Source</div>
-        <p class="help-text">${escapeHtml(dataset.source)}</p>
-        <div class="modal-subhead">Purpose</div>
-        <p class="help-text">${escapeHtml(dataset.purpose)}</p>
-        <div class="modal-subhead">Example queries</div>
-        <ul class="preview-dataset-list">${dataset.exampleQueries.map(q => `<li><code>${escapeHtml(q)}</code></li>`).join('')}</ul>
+
+        <div class="preview-info-card">
+          <div class="preview-info-card-title">Columns</div>
+          <ul class="preview-dataset-list">${dataset.columns.map(c => `<li><strong>${escapeHtml(c.name)}</strong><span>${escapeHtml(c.desc)}</span></li>`).join('')}</ul>
+        </div>
+
+        <div class="preview-info-card-row">
+          <div class="preview-info-card">
+            <div class="preview-info-card-title">Source</div>
+            <p class="help-text">${escapeHtml(dataset.source)}</p>
+          </div>
+          <div class="preview-info-card">
+            <div class="preview-info-card-title">Purpose</div>
+            <p class="help-text">${escapeHtml(dataset.purpose)}</p>
+          </div>
+        </div>
+
+        <div class="preview-info-card-title preview-query-title">Example queries</div>
+        ${dataset.exampleQueries.map(q => `<pre class="preview-query-block"><code>${escapeHtml(q)}</code></pre>`).join('')}
       `;
       document.getElementById('preview-dataset-modal').hidden = false;
     };
