@@ -1209,6 +1209,64 @@
       transition: background 0.2s ease, border-color 0.2s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
+    /* Decorative, translucent previews of the workspace (SQL editor + a
+       pie chart result) sitting behind the dropzone copy. Purely visual:
+       aria-hidden and pointer-events: none so clicks/drops still hit the
+       dropzone itself. */
+    .home-dropzone { position: relative; overflow: hidden; isolation: isolate; }
+    .home-dropzone > :not(.home-dropzone-art) { position: relative; z-index: 1; }
+
+    .home-dropzone-art {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      opacity: 0.34;
+      transition: opacity 0.25s ease;
+      /* Fade the art out toward the text side so the copy stays legible. */
+      -webkit-mask-image: linear-gradient(90deg, transparent 22%, #000 58%);
+              mask-image: linear-gradient(90deg, transparent 22%, #000 58%);
+    }
+    .home-dropzone:hover .home-dropzone-art { opacity: 0.42; }
+
+    .home-dropzone-art svg {
+      position: absolute;
+      height: auto;
+      filter: drop-shadow(0 18px 28px rgba(32, 21, 21, 0.18));
+    }
+    .home-art-editor { width: min(52%, 460px); right: 12%; top: 11%; transform: rotate(-4deg); }
+    .home-art-pie { width: min(32%, 290px); right: 4%; bottom: 8%; transform: rotate(5deg); }
+
+    .home-dropzone-art text { font-family: inherit; font-size: 14px; fill: var(--color-text); }
+    .home-dropzone-art .art-card { fill: var(--color-bg); stroke: var(--color-border); stroke-width: 1.5; }
+    .home-dropzone-art .art-title { font-weight: 700; font-size: 16px; }
+    .home-dropzone-art .art-hint,
+    .home-dropzone-art .art-ln { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; fill: var(--color-text-muted); }
+    .home-dropzone-art .art-editor { fill: var(--color-surface); stroke: var(--color-border); stroke-width: 1.2; }
+    .home-dropzone-art .art-gutter { stroke: var(--color-border); stroke-width: 1.2; }
+    .home-dropzone-art .art-code text { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 15px; }
+    .home-dropzone-art .art-kw { fill: #2256d6; font-weight: 600; }
+    .home-dropzone-art .art-fn { fill: var(--color-accent-text); }
+    .home-dropzone-art .art-num { fill: #8a3ec9; }
+    .home-dropzone-art .art-run { fill: var(--color-text); }
+    .home-dropzone-art .art-run-label { fill: var(--color-bg); font-weight: 700; font-size: 14px; }
+    .home-dropzone-art .art-ghost { fill: var(--color-border); }
+    .home-dropzone-art .art-ghost-label { font-weight: 600; font-size: 14px; }
+    .home-dropzone-art .art-legend text { font-size: 13px; fill: var(--color-text-muted-2); }
+    .home-dropzone-art .art-slice-1 { fill: #ff4f00; }
+    .home-dropzone-art .art-slice-2 { fill: #ff8a4c; }
+    .home-dropzone-art .art-slice-3 { fill: #ffc29e; }
+    .home-dropzone-art .art-slice-4 { fill: #7a2e0e; }
+    .home-dropzone-art path { stroke: var(--color-bg); stroke-width: 2; }
+
+    @media (prefers-color-scheme: dark) {
+      .home-dropzone-art { opacity: 0.28; }
+      .home-dropzone:hover .home-dropzone-art { opacity: 0.36; }
+      .home-dropzone-art .art-kw { fill: #7ea6ff; }
+      .home-dropzone-art .art-num { fill: #c79af0; }
+      .home-dropzone-art .art-slice-4 { fill: #c25a24; }
+    }
+
     .home-dropzone:hover {
       border-color: var(--color-accent);
       background: linear-gradient(155deg, rgba(255, 79, 0, 0.21) 0%, rgba(255, 79, 0, 0.09) 100%);
@@ -1412,6 +1470,9 @@
       .home-upload { padding: 20px 16px 12px; }
       .home-dropzone { min-height: 280px; padding: 28px 24px; }
       .home-dropzone-title { font-size: 26px; }
+      .home-dropzone-art { opacity: 0.2; -webkit-mask-image: linear-gradient(90deg, transparent 30%, #000 75%); mask-image: linear-gradient(90deg, transparent 30%, #000 75%); }
+      .home-art-editor { width: 78%; right: -24%; top: 6%; }
+      .home-art-pie { width: 46%; right: -6%; bottom: 4%; }
 
       .home-workspaces {
         border-right: none;
@@ -1429,6 +1490,7 @@
     @media (prefers-reduced-motion: reduce) {
       .ws-skeleton { animation: none; }
       .home-dropzone, .home-dropzone.is-dragover { transition: none; transform: none; }
+      .home-dropzone-art { transition: none; }
     }
 
     /* ---- Account modal: sign in, sign up, confirm email, reset password ---- */
@@ -5122,6 +5184,45 @@
 
       <section class="home-upload" aria-labelledby="home-upload-title">
         <div id="home-dropzone" class="home-dropzone">
+          <div class="home-dropzone-art" aria-hidden="true">
+            <svg class="home-art-editor" viewBox="0 0 380 250" focusable="false">
+              <rect class="art-card" x="1" y="1" width="378" height="248" rx="14"/>
+              <text class="art-title" x="22" y="34">SQL Query</text>
+              <text class="art-hint" x="358" y="34" text-anchor="end">&#8984; Enter</text>
+              <rect class="art-editor" x="22" y="50" width="336" height="124" rx="8"/>
+              <line class="art-gutter" x1="50" y1="50" x2="50" y2="174"/>
+              <g class="art-code">
+                <text class="art-ln" x="36" y="76" text-anchor="middle">1</text>
+                <text class="art-ln" x="36" y="100" text-anchor="middle">2</text>
+                <text class="art-ln" x="36" y="124" text-anchor="middle">3</text>
+                <text class="art-ln" x="36" y="148" text-anchor="middle">4</text>
+                <text x="62" y="76"><tspan class="art-kw">SELECT</tspan> status, <tspan class="art-fn">COUNT</tspan>(*)</text>
+                <text x="62" y="100"><tspan class="art-kw">FROM</tspan> orders</text>
+                <text x="62" y="124"><tspan class="art-kw">GROUP BY</tspan> status</text>
+                <text x="62" y="148"><tspan class="art-kw">ORDER BY</tspan> <tspan class="art-num">2</tspan> <tspan class="art-kw">DESC</tspan></text>
+              </g>
+              <rect class="art-run" x="22" y="192" width="118" height="38" rx="9"/>
+              <text class="art-run-label" x="81" y="216" text-anchor="middle">Run Query &#9654;</text>
+              <rect class="art-ghost" x="152" y="192" width="104" height="38" rx="9"/>
+              <text class="art-ghost-label" x="204" y="216" text-anchor="middle">Save Query</text>
+            </svg>
+            <svg class="home-art-pie" viewBox="0 0 250 220" focusable="false">
+              <rect class="art-card" x="1" y="1" width="248" height="218" rx="14"/>
+              <text class="art-title" x="20" y="32">orders by status</text>
+              <g transform="translate(86 124)">
+                <path class="art-slice-1" d="M0 0 L0 -62 A62 62 0 0 1 22.8 57.6 Z"/>
+                <path class="art-slice-2" d="M0 0 L22.8 57.6 A62 62 0 0 1 -59 19.2 Z"/>
+                <path class="art-slice-3" d="M0 0 L-59 19.2 A62 62 0 0 1 -42.4 -45.2 Z"/>
+                <path class="art-slice-4" d="M0 0 L-42.4 -45.2 A62 62 0 0 1 0 -62 Z"/>
+              </g>
+              <g class="art-legend">
+                <rect class="art-slice-1" x="170" y="84" width="10" height="10" rx="2"/><text x="186" y="93">shipped</text>
+                <rect class="art-slice-2" x="170" y="108" width="10" height="10" rx="2"/><text x="186" y="117">pending</text>
+                <rect class="art-slice-3" x="170" y="132" width="10" height="10" rx="2"/><text x="186" y="141">returned</text>
+                <rect class="art-slice-4" x="170" y="156" width="10" height="10" rx="2"/><text x="186" y="165">canceled</text>
+              </g>
+            </svg>
+          </div>
           <div class="home-dropzone-icon"><i class="ph ph-file-arrow-up" aria-hidden="true"></i></div>
           <h1 id="home-upload-title" class="home-dropzone-title">Query any CSV with SQL</h1>
           <p class="home-dropzone-sub">Drag a CSV or JSON file here. It loads into a SQLite database right in this tab.</p>
