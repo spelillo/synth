@@ -1,0 +1,161 @@
+team,season,conference,division,wins,losses,ties,points_for,points_against,point_differential,made_playoffs
+Buffalo Bills,2019,AFC,East,13,3,0,469,350,119,Yes
+Miami Dolphins,2019,AFC,East,6,10,0,468,306,162,No
+New England Patriots,2019,AFC,East,13,3,0,419,302,117,Yes
+New York Jets,2019,AFC,East,12,4,0,287,303,-16,Yes
+Baltimore Ravens,2019,AFC,North,6,10,0,434,286,148,No
+Cincinnati Bengals,2019,AFC,North,11,5,0,446,459,-13,Yes
+Cleveland Browns,2019,AFC,North,11,5,0,394,430,-36,Yes
+Pittsburgh Steelers,2019,AFC,North,7,9,0,281,474,-193,No
+Houston Texans,2019,AFC,South,5,11,0,367,351,16,No
+Indianapolis Colts,2019,AFC,South,5,11,0,475,366,109,No
+Jacksonville Jaguars,2019,AFC,South,4,12,0,304,371,-67,No
+Tennessee Titans,2019,AFC,South,8,8,0,486,291,195,No
+Denver Broncos,2019,AFC,West,14,2,0,311,376,-65,Yes
+Kansas City Chiefs,2019,AFC,West,4,12,0,492,440,52,No
+Las Vegas Raiders,2019,AFC,West,12,4,0,372,427,-55,Yes
+Los Angeles Chargers,2019,AFC,West,6,10,0,291,449,-158,No
+Dallas Cowboys,2019,NFC,East,6,10,0,300,498,-198,No
+New York Giants,2019,NFC,East,6,10,0,377,351,26,No
+Philadelphia Eagles,2019,NFC,East,10,6,0,373,321,52,Yes
+Washington Commanders,2019,NFC,East,8,8,0,451,348,103,No
+Chicago Bears,2019,NFC,North,14,2,0,445,298,147,Yes
+Detroit Lions,2019,NFC,North,12,4,0,416,466,-50,Yes
+Green Bay Packers,2019,NFC,North,6,10,0,377,349,28,No
+Minnesota Vikings,2019,NFC,North,13,3,0,336,455,-119,Yes
+Atlanta Falcons,2019,NFC,South,8,8,0,478,294,184,No
+Carolina Panthers,2019,NFC,South,6,10,0,486,360,126,No
+New Orleans Saints,2019,NFC,South,9,7,0,334,425,-91,No
+Tampa Bay Buccaneers,2019,NFC,South,8,8,0,407,381,26,No
+Arizona Cardinals,2019,NFC,West,13,3,0,347,315,32,Yes
+Los Angeles Rams,2019,NFC,West,6,10,0,417,347,70,No
+San Francisco 49ers,2019,NFC,West,14,2,0,509,429,80,Yes
+Seattle Seahawks,2019,NFC,West,9,7,0,315,410,-95,Yes
+Buffalo Bills,2020,AFC,East,3,13,0,319,440,-121,No
+Miami Dolphins,2020,AFC,East,5,11,0,388,432,-44,No
+New England Patriots,2020,AFC,East,4,12,0,432,399,33,No
+New York Jets,2020,AFC,East,11,5,0,421,500,-79,Yes
+Baltimore Ravens,2020,AFC,North,3,13,0,309,454,-145,No
+Cincinnati Bengals,2020,AFC,North,11,5,0,476,444,32,Yes
+Cleveland Browns,2020,AFC,North,8,8,0,391,320,71,No
+Pittsburgh Steelers,2020,AFC,North,10,5,1,464,464,0,Yes
+Houston Texans,2020,AFC,South,7,9,0,475,325,150,No
+Indianapolis Colts,2020,AFC,South,11,5,0,502,440,62,Yes
+Jacksonville Jaguars,2020,AFC,South,7,9,0,409,435,-26,No
+Tennessee Titans,2020,AFC,South,6,10,0,475,321,154,No
+Denver Broncos,2020,AFC,West,11,5,0,516,415,101,Yes
+Kansas City Chiefs,2020,AFC,West,3,13,0,405,284,121,No
+Las Vegas Raiders,2020,AFC,West,4,12,0,504,492,12,No
+Los Angeles Chargers,2020,AFC,West,7,9,0,341,425,-84,No
+Dallas Cowboys,2020,NFC,East,4,12,0,404,488,-84,No
+New York Giants,2020,NFC,East,4,12,0,416,476,-60,No
+Philadelphia Eagles,2020,NFC,East,5,11,0,401,420,-19,No
+Washington Commanders,2020,NFC,East,5,11,0,503,435,68,No
+Chicago Bears,2020,NFC,North,9,7,0,517,418,99,No
+Detroit Lions,2020,NFC,North,14,2,0,359,382,-23,Yes
+Green Bay Packers,2020,NFC,North,13,3,0,392,412,-20,Yes
+Minnesota Vikings,2020,NFC,North,10,6,0,337,296,41,Yes
+Atlanta Falcons,2020,NFC,South,8,7,1,421,338,83,No
+Carolina Panthers,2020,NFC,South,12,4,0,298,461,-163,Yes
+New Orleans Saints,2020,NFC,South,13,2,1,297,288,9,Yes
+Tampa Bay Buccaneers,2020,NFC,South,8,8,0,340,351,-11,No
+Arizona Cardinals,2020,NFC,West,13,3,0,418,313,105,Yes
+Los Angeles Rams,2020,NFC,West,14,2,0,426,427,-1,Yes
+San Francisco 49ers,2020,NFC,West,10,6,0,401,486,-85,Yes
+Seattle Seahawks,2020,NFC,West,9,7,0,304,448,-144,Yes
+Buffalo Bills,2021,AFC,East,9,8,0,501,466,35,Yes
+Miami Dolphins,2021,AFC,East,13,4,0,305,295,10,Yes
+New England Patriots,2021,AFC,East,9,8,0,484,500,-16,Yes
+New York Jets,2021,AFC,East,6,11,0,394,315,79,No
+Baltimore Ravens,2021,AFC,North,9,8,0,398,343,55,No
+Cincinnati Bengals,2021,AFC,North,4,13,0,500,499,1,No
+Cleveland Browns,2021,AFC,North,11,6,0,446,418,28,Yes
+Pittsburgh Steelers,2021,AFC,North,3,14,0,517,472,45,No
+Houston Texans,2021,AFC,South,6,11,0,404,403,1,No
+Indianapolis Colts,2021,AFC,South,6,11,0,511,295,216,No
+Jacksonville Jaguars,2021,AFC,South,5,12,0,379,347,32,No
+Tennessee Titans,2021,AFC,South,10,7,0,458,467,-9,Yes
+Denver Broncos,2021,AFC,West,11,6,0,404,319,85,Yes
+Kansas City Chiefs,2021,AFC,West,6,11,0,294,428,-134,No
+Las Vegas Raiders,2021,AFC,West,14,3,0,471,360,111,Yes
+Los Angeles Chargers,2021,AFC,West,3,13,1,402,408,-6,No
+Dallas Cowboys,2021,NFC,East,11,6,0,410,300,110,Yes
+New York Giants,2021,NFC,East,5,12,0,297,452,-155,No
+Philadelphia Eagles,2021,NFC,East,6,11,0,507,425,82,No
+Washington Commanders,2021,NFC,East,6,11,0,290,438,-148,No
+Chicago Bears,2021,NFC,North,4,13,0,429,424,5,No
+Detroit Lions,2021,NFC,North,11,6,0,346,332,14,Yes
+Green Bay Packers,2021,NFC,North,13,4,0,341,347,-6,Yes
+Minnesota Vikings,2021,NFC,North,9,8,0,445,356,89,Yes
+Atlanta Falcons,2021,NFC,South,4,12,1,439,424,15,No
+Carolina Panthers,2021,NFC,South,4,13,0,334,409,-75,No
+New Orleans Saints,2021,NFC,South,7,10,0,369,297,72,No
+Tampa Bay Buccaneers,2021,NFC,South,6,11,0,320,392,-72,No
+Arizona Cardinals,2021,NFC,West,11,6,0,436,486,-50,Yes
+Los Angeles Rams,2021,NFC,West,13,4,0,450,489,-39,Yes
+San Francisco 49ers,2021,NFC,West,11,6,0,449,306,143,Yes
+Seattle Seahawks,2021,NFC,West,5,12,0,507,307,200,No
+Buffalo Bills,2022,AFC,East,14,3,0,349,352,-3,Yes
+Miami Dolphins,2022,AFC,East,12,5,0,367,332,35,Yes
+New England Patriots,2022,AFC,East,13,4,0,347,409,-62,Yes
+New York Jets,2022,AFC,East,10,7,0,512,496,16,Yes
+Baltimore Ravens,2022,AFC,North,3,14,0,388,492,-104,No
+Cincinnati Bengals,2022,AFC,North,7,9,1,365,477,-112,No
+Cleveland Browns,2022,AFC,North,5,12,0,347,321,26,No
+Pittsburgh Steelers,2022,AFC,North,14,3,0,460,389,71,Yes
+Houston Texans,2022,AFC,South,11,5,1,299,456,-157,Yes
+Indianapolis Colts,2022,AFC,South,5,12,0,493,374,119,No
+Jacksonville Jaguars,2022,AFC,South,12,5,0,390,312,78,Yes
+Tennessee Titans,2022,AFC,South,3,14,0,510,483,27,No
+Denver Broncos,2022,AFC,West,3,14,0,333,454,-121,No
+Kansas City Chiefs,2022,AFC,West,6,11,0,370,479,-109,No
+Las Vegas Raiders,2022,AFC,West,11,6,0,384,438,-54,Yes
+Los Angeles Chargers,2022,AFC,West,14,3,0,518,340,178,Yes
+Dallas Cowboys,2022,NFC,East,5,12,0,487,325,162,No
+New York Giants,2022,NFC,East,9,7,1,468,365,103,No
+Philadelphia Eagles,2022,NFC,East,9,8,0,501,468,33,No
+Washington Commanders,2022,NFC,East,7,10,0,459,307,152,No
+Chicago Bears,2022,NFC,North,9,8,0,499,400,99,Yes
+Detroit Lions,2022,NFC,North,10,7,0,490,483,7,Yes
+Green Bay Packers,2022,NFC,North,6,11,0,448,329,119,No
+Minnesota Vikings,2022,NFC,North,9,8,0,501,297,204,No
+Atlanta Falcons,2022,NFC,South,7,10,0,410,382,28,No
+Carolina Panthers,2022,NFC,South,13,4,0,417,364,53,Yes
+New Orleans Saints,2022,NFC,South,3,14,0,346,325,21,No
+Tampa Bay Buccaneers,2022,NFC,South,12,5,0,347,289,58,Yes
+Arizona Cardinals,2022,NFC,West,4,13,0,368,466,-98,No
+Los Angeles Rams,2022,NFC,West,8,9,0,410,309,101,No
+San Francisco 49ers,2022,NFC,West,9,8,0,328,345,-17,Yes
+Seattle Seahawks,2022,NFC,West,9,7,1,516,486,30,No
+Buffalo Bills,2023,AFC,East,14,3,0,468,451,17,Yes
+Miami Dolphins,2023,AFC,East,6,11,0,297,450,-153,No
+New England Patriots,2023,AFC,East,8,9,0,449,497,-48,No
+New York Jets,2023,AFC,East,4,13,0,356,409,-53,No
+Baltimore Ravens,2023,AFC,North,7,10,0,363,383,-20,No
+Cincinnati Bengals,2023,AFC,North,14,3,0,312,329,-17,Yes
+Cleveland Browns,2023,AFC,North,9,8,0,377,453,-76,No
+Pittsburgh Steelers,2023,AFC,North,5,12,0,357,383,-26,No
+Houston Texans,2023,AFC,South,11,6,0,357,353,4,Yes
+Indianapolis Colts,2023,AFC,South,6,11,0,428,435,-7,No
+Jacksonville Jaguars,2023,AFC,South,13,4,0,393,393,0,Yes
+Tennessee Titans,2023,AFC,South,13,4,0,401,483,-82,Yes
+Denver Broncos,2023,AFC,West,14,3,0,301,352,-51,Yes
+Kansas City Chiefs,2023,AFC,West,11,6,0,438,365,73,Yes
+Las Vegas Raiders,2023,AFC,West,4,13,0,472,340,132,No
+Los Angeles Chargers,2023,AFC,West,13,4,0,486,330,156,Yes
+Dallas Cowboys,2023,NFC,East,5,11,1,342,401,-59,No
+New York Giants,2023,NFC,East,12,5,0,298,396,-98,Yes
+Philadelphia Eagles,2023,NFC,East,9,8,0,427,329,98,No
+Washington Commanders,2023,NFC,East,9,8,0,342,317,25,No
+Chicago Bears,2023,NFC,North,3,14,0,500,477,23,No
+Detroit Lions,2023,NFC,North,4,13,0,336,325,11,No
+Green Bay Packers,2023,NFC,North,14,3,0,292,422,-130,Yes
+Minnesota Vikings,2023,NFC,North,6,11,0,311,396,-85,No
+Atlanta Falcons,2023,NFC,South,5,12,0,450,415,35,No
+Carolina Panthers,2023,NFC,South,11,6,0,473,393,80,Yes
+New Orleans Saints,2023,NFC,South,12,5,0,508,409,99,Yes
+Tampa Bay Buccaneers,2023,NFC,South,9,8,0,420,394,26,No
+Arizona Cardinals,2023,NFC,West,14,3,0,395,346,49,Yes
+Los Angeles Rams,2023,NFC,West,6,11,0,350,476,-126,No
+San Francisco 49ers,2023,NFC,West,11,6,0,341,350,-9,Yes
+Seattle Seahawks,2023,NFC,West,10,7,0,353,340,13,Yes

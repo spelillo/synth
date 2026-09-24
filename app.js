@@ -540,6 +540,7 @@
     function initHome() {
       setActiveView('home');
       renderDashboard();
+      renderPreviewDatasets();
       syncChartAccess();
 
       const home = document.getElementById('home-view');
@@ -976,6 +977,198 @@
       }).join('');
     }
     window.renderDashboard = renderDashboard;
+
+    // ---- Sample datasets (home view, below "Your workspaces") ----
+    //
+    // Static CSVs shipped under /sample-data, meant for signed-out visitors
+    // and anyone who wants a no-setup dataset to poke at. Loading one goes
+    // through the exact same in-browser SQLite path as a manual upload
+    // (loadFileAsTable et al.) — it never touches Supabase, so it works
+    // whether or not anyone is signed in, and behaves like any other fresh
+    // upload afterward (renameable table, "+ Add table", Save to cloud if
+    // signed in).
+    const PREVIEW_DATASETS = [
+      {
+        id: 'nfl-team-stats',
+        name: 'NFL Stats',
+        file: 'sample-data/nfl_team_stats.csv',
+        icon: 'ph-football',
+        blurb: 'All 32 teams across 5 seasons of win-loss and scoring stats.',
+        description: 'One row per NFL team per season (2019–2023, 160 rows total): division standings, win-loss-tie records, points scored and allowed, and whether the team made the playoffs.',
+        columns: [
+          { name: 'team', desc: 'Full team name, e.g. "Buffalo Bills"' },
+          { name: 'season', desc: 'Season year' },
+          { name: 'conference', desc: '"AFC" or "NFC"' },
+          { name: 'division', desc: '"East", "North", "South", or "West"' },
+          { name: 'wins / losses / ties', desc: 'Regular-season record' },
+          { name: 'points_for / points_against', desc: 'Total points scored / allowed that season' },
+          { name: 'point_differential', desc: 'points_for minus points_against' },
+          { name: 'made_playoffs', desc: '"Yes" or "No"' },
+        ],
+        source: 'Synthesized for practice, modeled on real NFL team/conference/division structure and typical season stat ranges.',
+        purpose: 'Good for practicing GROUP BY, ORDER BY, and filtering — e.g. ranking teams, comparing divisions, or tracking a team across seasons.',
+        exampleQueries: [
+          'SELECT team, wins, losses FROM nfl_team_stats WHERE season = 2023 ORDER BY wins DESC',
+          "SELECT division, AVG(point_differential) AS avg_diff FROM nfl_team_stats GROUP BY division ORDER BY avg_diff DESC",
+          "SELECT team, COUNT(*) AS playoff_seasons FROM nfl_team_stats WHERE made_playoffs = 'Yes' GROUP BY team ORDER BY playoff_seasons DESC",
+        ],
+      },
+      {
+        id: 'bank-statement',
+        name: 'Bank Statement',
+        file: 'sample-data/bank_statement.csv',
+        icon: 'ph-bank',
+        blurb: 'Six months of personal transactions — paychecks, bills, and everyday spending.',
+        description: 'About 120 rows of everyday checking-account activity from January to June 2025: paychecks, rent, groceries, dining, subscriptions, and a running balance after each transaction.',
+        columns: [
+          { name: 'transaction_id', desc: 'Unique ID per transaction' },
+          { name: 'date', desc: 'Transaction date (YYYY-MM-DD)' },
+          { name: 'description', desc: 'Merchant or payer, e.g. "Trader Joe\'s"' },
+          { name: 'category', desc: 'e.g. Groceries, Rent, Dining Out, Paycheck' },
+          { name: 'type', desc: '"credit" or "debit"' },
+          { name: 'amount', desc: 'Transaction amount (always positive)' },
+          { name: 'balance_after', desc: 'Account balance right after this transaction' },
+        ],
+        source: 'Synthesized for practice — realistic categories and amounts, no real account or personal data.',
+        purpose: 'Good for practicing SUM/AVG aggregates, date filtering, and spotting spending patterns by category or month.',
+        exampleQueries: [
+          "SELECT category, SUM(amount) AS total_spent FROM bank_statement WHERE type = 'debit' GROUP BY category ORDER BY total_spent DESC",
+          "SELECT * FROM bank_statement WHERE category = 'Paycheck'",
+          "SELECT strftime('%Y-%m', date) AS month, SUM(CASE WHEN type = 'debit' THEN amount ELSE 0 END) AS spent FROM bank_statement GROUP BY month ORDER BY month",
+        ],
+      },
+      {
+        id: 'grocery-store-data',
+        name: 'Grocery Store Data',
+        file: 'sample-data/grocery_store_data.csv',
+        icon: 'ph-shopping-cart',
+        blurb: 'A month of product sales across departments and store locations.',
+        description: 'About 140 rows of grocery sales spanning produce, dairy, meat, pantry, and more, sold across 5 store locations during March 2025 — unit price, quantity sold, and revenue per sale.',
+        columns: [
+          { name: 'product_id', desc: 'Unique product ID' },
+          { name: 'product_name', desc: 'e.g. "Bananas", "Whole Milk"' },
+          { name: 'category', desc: 'Department, e.g. Produce, Dairy, Bakery' },
+          { name: 'unit', desc: 'Sale unit, e.g. "lb", "dozen", "12-pack"' },
+          { name: 'unit_price', desc: 'Price per unit ($)' },
+          { name: 'store_location', desc: 'One of 5 store locations' },
+          { name: 'date', desc: 'Date of sale (YYYY-MM-DD)' },
+          { name: 'quantity_sold', desc: 'Units sold in that sale' },
+          { name: 'revenue', desc: 'quantity_sold × unit_price' },
+        ],
+        source: 'Synthesized for practice, modeled on typical grocery store departments, products, and pricing.',
+        purpose: 'Good for practicing joins-style thinking within one table: totals by category or location, top sellers, and revenue trends.',
+        exampleQueries: [
+          'SELECT category, SUM(revenue) AS total_revenue FROM grocery_store_data GROUP BY category ORDER BY total_revenue DESC',
+          'SELECT product_name, SUM(quantity_sold) AS units_sold FROM grocery_store_data GROUP BY product_name ORDER BY units_sold DESC LIMIT 10',
+          "SELECT store_location, SUM(revenue) AS total_revenue FROM grocery_store_data GROUP BY store_location ORDER BY total_revenue DESC",
+        ],
+      },
+    ];
+
+    let pendingPreviewDatasetId = null;
+
+    function renderPreviewDatasets() {
+      const body = document.getElementById('preview-dataset-body');
+      if (!body) return;
+      body.innerHTML = PREVIEW_DATASETS.map(d => `
+        <button type="button" class="preview-dataset-card" onclick="openPreviewDatasetModal('${d.id}')">
+          <div class="preview-dataset-icon"><i class="ph ${d.icon}" aria-hidden="true"></i></div>
+          <div class="preview-dataset-name">${escapeHtml(d.name)}</div>
+          <div class="preview-dataset-blurb">${escapeHtml(d.blurb)}</div>
+          <div class="preview-dataset-cta">Preview dataset &rarr;</div>
+        </button>
+      `).join('');
+    }
+
+    window.openPreviewDatasetModal = function(id) {
+      const dataset = PREVIEW_DATASETS.find(d => d.id === id);
+      if (!dataset) return;
+      pendingPreviewDatasetId = id;
+
+      document.getElementById('preview-dataset-modal-title').textContent = dataset.name;
+      document.getElementById('preview-dataset-modal-body').innerHTML = `
+        <p class="help-text">${escapeHtml(dataset.description)}</p>
+        <div class="modal-subhead">Columns</div>
+        <ul class="preview-dataset-list">${dataset.columns.map(c => `<li><strong>${escapeHtml(c.name)}</strong> — ${escapeHtml(c.desc)}</li>`).join('')}</ul>
+        <div class="modal-subhead">Source</div>
+        <p class="help-text">${escapeHtml(dataset.source)}</p>
+        <div class="modal-subhead">Purpose</div>
+        <p class="help-text">${escapeHtml(dataset.purpose)}</p>
+        <div class="modal-subhead">Example queries</div>
+        <ul class="preview-dataset-list">${dataset.exampleQueries.map(q => `<li><code>${escapeHtml(q)}</code></li>`).join('')}</ul>
+      `;
+      document.getElementById('preview-dataset-modal').hidden = false;
+    };
+
+    window.closePreviewDatasetModal = function() {
+      document.getElementById('preview-dataset-modal').hidden = true;
+      pendingPreviewDatasetId = null;
+    };
+
+    // Loads a sample CSV the exact same way uploadCSV loads a manually
+    // chosen file (fresh in-browser SQLite db, one table, revealApp at the
+    // end) — the loaded workspace is indistinguishable from a manual
+    // upload afterward, just with no File object behind it.
+    window.proceedToPreviewWorkspace = async function() {
+      const dataset = PREVIEW_DATASETS.find(d => d.id === pendingPreviewDatasetId);
+      if (!dataset) return;
+      document.getElementById('preview-dataset-modal').hidden = true;
+
+      if (hasLoadedWorkspace() && !confirm('Loading this sample dataset will replace what you currently have open. Continue?')) {
+        pendingPreviewDatasetId = null;
+        return;
+      }
+
+      showLoadingOverlay();
+      try {
+        const response = await fetch(dataset.file);
+        if (!response.ok) throw new Error(`Couldn't load sample dataset (${response.status})`);
+        const text = await response.text();
+        const { headers, rows } = await parseCSVText(text);
+        addLoadProgressUnits(rows.length * 3);
+
+        db = new SQL.Database();
+        tables = [];
+        activeTableName = null;
+        columnStatsCache = null;
+
+        const fileName = dataset.file.split('/').pop();
+        const loaded = await loadFileAsTable({ name: fileName }, headers, rows, slugifyTableName(fileName));
+
+        activeTableName = loaded.name;
+        focusedTableNames = new Set([activeTableName]);
+
+        const statusEl = document.getElementById('file-info');
+        statusEl.textContent = `${dataset.name} sample (${loaded.rowCount.toLocaleString()} rows) → table "${loaded.name}"`;
+        statusEl.classList.remove('error');
+        statusEl.classList.add('loaded');
+
+        document.getElementById('query-input').value = dataset.exampleQueries[0] || `SELECT * FROM ${activeTableName} LIMIT 100`;
+
+        csvLoaded = true;
+        currentCSVFile = null;
+        currentWorkspaceId = null;
+        currentWorkspaceName = null;
+        markWorkspaceDirty();
+        renderTableChips();
+        rejectedRelationshipKeys = new Set();
+        relationships = [];
+        recomputeRelationships();
+        populateManualFkTableSelects();
+        updateAIState();
+        renderTableView();
+
+        completeLoadProgress(() => {
+          revealApp();
+          resetQueryInputView();
+        });
+      } catch (err) {
+        hideLoadingOverlay();
+        alert('Failed to load sample dataset: ' + err.message);
+      } finally {
+        pendingPreviewDatasetId = null;
+      }
+    };
 
     window.startRenameWorkspace = function(workspaceId) {
       if (!requireFeature('tableRename')) return;

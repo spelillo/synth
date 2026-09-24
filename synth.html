@@ -933,6 +933,91 @@
       gap: 14px;
     }
 
+    .home-preview-divider {
+      border: none;
+      border-top: 2px solid var(--color-text);
+      margin: 36px 0 24px;
+    }
+
+    .home-preview-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--color-text-muted-2);
+      margin: 0 0 16px;
+    }
+
+    .home-preview-body {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 14px;
+    }
+
+    .preview-dataset-card {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 8px;
+      text-align: left;
+      background: var(--color-bg);
+      border: 1px solid var(--color-border);
+      border-radius: 14px;
+      padding: 18px 18px 16px;
+      font-family: inherit;
+      cursor: pointer;
+      transition: border-color 0.15s, transform 0.1s;
+    }
+
+    .preview-dataset-card:hover {
+      border-color: var(--color-accent);
+      transform: translateY(-1px);
+    }
+
+    .preview-dataset-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--color-surface-2);
+      color: var(--color-accent-text);
+      font-size: 18px;
+    }
+
+    .preview-dataset-name {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--color-text);
+    }
+
+    .preview-dataset-blurb {
+      font-size: 13px;
+      line-height: 1.45;
+      color: var(--color-text-muted-2);
+    }
+
+    .preview-dataset-cta {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--color-accent-text);
+      margin-top: 2px;
+    }
+
+    .preview-dataset-list {
+      margin: 0 0 4px;
+      padding-left: 20px;
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--color-text);
+    }
+
+    .preview-dataset-list code {
+      background: var(--color-surface-2);
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-size: 13px;
+    }
+
     /* Signed-out, empty, and error states share one layout. */
     .home-empty {
       grid-column: 1 / -1;
@@ -4746,6 +4831,20 @@
     </div>
   </div>
 
+  <div id="preview-dataset-modal" class="modal-overlay" hidden>
+    <div class="modal">
+      <div class="modal-header">
+        <div class="section-label" id="preview-dataset-modal-title">Sample dataset</div>
+        <button class="modal-close" onclick="closePreviewDatasetModal()">&times;</button>
+      </div>
+      <div class="modal-section" id="preview-dataset-modal-body"></div>
+      <div class="modal-actions">
+        <button class="modal-cancel-btn" onclick="closePreviewDatasetModal()">Cancel</button>
+        <button class="modal-save-btn" onclick="proceedToPreviewWorkspace()">Proceed to workspace</button>
+      </div>
+    </div>
+  </div>
+
   <div id="help-modal" class="modal-overlay" hidden>
     <div class="modal">
       <div class="modal-header">
@@ -4934,6 +5033,13 @@
           </div>
         </div>
         <div id="dashboard-body" class="home-workspaces-body" aria-live="polite"></div>
+
+        <hr class="home-preview-divider" aria-hidden="true">
+
+        <div class="home-preview-section" aria-labelledby="home-preview-title">
+          <p id="home-preview-title" class="home-preview-title">New to Synth or want extra practice? Try out these sample datasets!</p>
+          <div id="preview-dataset-body" class="home-preview-body" aria-live="polite"></div>
+        </div>
       </section>
 
       <section class="home-upload" aria-labelledby="home-upload-title">

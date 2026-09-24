@@ -1,0 +1,125 @@
+transaction_id,date,description,category,type,amount,balance_after
+TXN1001,2025-01-01,City Water & Power,Utilities,debit,124.82,3075.18
+TXN1002,2025-01-02,Local Cafe,Dining Out,debit,23.15,3052.03
+TXN1003,2025-01-03,Sushi House,Dining Out,debit,51.61,3000.42
+TXN1004,2025-01-04,Merchant Refund,Refund,credit,41.16,3041.58
+TXN1005,2025-01-05,T-Mobile,Phone Bill,debit,45.59,2995.99
+TXN1006,2025-01-06,T-Mobile,Phone Bill,debit,53.96,2942.03
+TXN1007,2025-01-09,ATM Withdrawal - Main St Branch,ATM Withdrawal,debit,72.77,2869.26
+TXN1008,2025-01-10,Maple Street Apartments,Rent,debit,1400.0,1469.26
+TXN1009,2025-01-12,Target.com,Online Shopping,debit,89.8,1379.46
+TXN1010,2025-01-13,Planet Fitness,Gym Membership,debit,44.71,1334.75
+TXN1011,2025-01-15,Best Buy,Online Shopping,debit,30.53,1304.22
+TXN1012,2025-01-16,Costco Gas,Gas,debit,31.76,1272.46
+TXN1013,2025-01-17,Costco Gas,Gas,debit,41.81,1230.65
+TXN1014,2025-01-18,Verizon Wireless,Phone Bill,debit,57.65,1173.0
+TXN1015,2025-01-19,ATM Withdrawal - Main St Branch,ATM Withdrawal,debit,43.13,1129.87
+TXN1016,2025-01-24,Merchant Refund,Refund,credit,59.71,1189.58
+TXN1017,2025-01-25,Spotify,Subscription,debit,9.37,1180.21
+TXN1018,2025-01-26,Aldi,Groceries,debit,67.42,1112.79
+TXN1019,2025-01-27,ATM Withdrawal - Main St Branch,ATM Withdrawal,debit,46.87,1065.92
+TXN1020,2025-01-28,Verizon Wireless,Phone Bill,debit,48.24,1017.68
+TXN1021,2025-01-30,Planet Fitness,Gym Membership,debit,35.63,982.05
+TXN1022,2025-01-31,Amazon,Online Shopping,debit,131.04,851.01
+TXN1023,2025-02-01,City Water & Power,Utilities,debit,142.11,708.9
+TXN1024,2025-02-02,Health Partners Plan,Insurance,debit,95.34,613.56
+TXN1025,2025-02-05,iCloud Storage,Subscription,debit,13.2,600.36
+TXN1026,2025-02-06,Merchant Refund,Refund,credit,66.58,666.94
+TXN1027,2025-02-07,ATM Withdrawal - Main St Branch,ATM Withdrawal,debit,97.93,569.01
+TXN1028,2025-02-08,Monthly Interest,Interest Earned,credit,4.77,573.78
+TXN1029,2025-02-09,76,Gas,debit,55.59,518.19
+TXN1030,2025-02-10,Safeway,Groceries,debit,132.48,385.71
+TXN1031,2025-02-12,Costco Gas,Gas,debit,51.36,334.35
+TXN1032,2025-02-13,Amazon Prime,Subscription,debit,11.9,322.45
+TXN1033,2025-02-14,Monthly Interest,Interest Earned,credit,3.38,325.83
+TXN1034,2025-02-16,Whole Foods,Groceries,debit,26.17,299.66
+TXN1035,2025-02-17,ATM Withdrawal - Main St Branch,ATM Withdrawal,debit,69.31,230.35
+TXN1036,2025-02-18,Best Buy,Online Shopping,debit,134.49,95.86
+TXN1037,2025-02-20,Starbucks,Dining Out,debit,29.76,66.1
+TXN1038,2025-02-21,Health Partners Plan,Insurance,debit,134.69,-68.59
+TXN1039,2025-02-22,Chevron,Gas,debit,40.73,-109.32
+TXN1040,2025-02-23,Maple Street Apartments,Rent,debit,1400.0,-1509.32
+TXN1041,2025-02-24,ATM Withdrawal - Main St Branch,ATM Withdrawal,debit,51.11,-1560.43
+TXN1042,2025-02-25,iCloud Storage,Subscription,debit,16.7,-1577.13
+TXN1043,2025-02-27,PG&E,Utilities,debit,103.31,-1680.44
+TXN1044,2025-02-28,State Farm Auto,Insurance,debit,125.66,-1806.1
+TXN1045,2025-03-01,Best Buy,Online Shopping,debit,38.36,-1844.46
+TXN1046,2025-03-03,Netflix,Subscription,debit,12.09,-1856.55
+TXN1047,2025-03-04,Merchant Refund,Refund,credit,19.13,-1837.42
+TXN1048,2025-03-05,Netflix,Subscription,debit,14.92,-1852.34
+TXN1049,2025-03-06,Monthly Interest,Interest Earned,credit,7.64,-1844.7
+TXN1050,2025-03-07,Kroger,Groceries,debit,89.18,-1933.88
+TXN1051,2025-03-08,Monthly Interest,Interest Earned,credit,2.58,-1931.3
+TXN1052,2025-03-09,Costco Gas,Gas,debit,45.5,-1976.8
+TXN1053,2025-03-10,Transfer to Savings Acct,Transfer to Savings,debit,343.85,-2320.65
+TXN1054,2025-03-11,Verizon Wireless,Phone Bill,debit,51.23,-2371.88
+TXN1055,2025-03-13,Health Partners Plan,Insurance,debit,110.35,-2482.23
+TXN1056,2025-03-14,Transfer to Savings Acct,Transfer to Savings,debit,216.5,-2698.73
+TXN1057,2025-03-15,ATM Withdrawal - Main St Branch,ATM Withdrawal,debit,82.18,-2780.91
+TXN1058,2025-03-16,Target.com,Online Shopping,debit,185.92,-2966.83
+TXN1059,2025-03-17,Health Partners Plan,Insurance,debit,174.19,-3141.02
+TXN1060,2025-03-19,Comcast Internet,Utilities,debit,149.87,-3290.89
+TXN1061,2025-03-21,Costco Gas,Gas,debit,40.64,-3331.53
+TXN1062,2025-03-23,Netflix,Subscription,debit,8.97,-3340.5
+TXN1063,2025-03-25,Transfer to Savings Acct,Transfer to Savings,debit,110.35,-3450.85
+TXN1064,2025-03-26,Amazon,Online Shopping,debit,174.2,-3625.05
+TXN1065,2025-03-28,Whole Foods,Groceries,debit,29.63,-3654.68
+TXN1066,2025-03-29,Target.com,Online Shopping,debit,184.47,-3839.15
+TXN1067,2025-03-31,Monthly Interest,Interest Earned,credit,7.78,-3831.37
+TXN1068,2025-04-01,Chipotle,Dining Out,debit,35.44,-3866.81
+TXN1069,2025-04-03,Best Buy,Online Shopping,debit,68.32,-3935.13
+TXN1070,2025-04-04,Health Partners Plan,Insurance,debit,149.13,-4084.26
+TXN1071,2025-04-06,Merchant Refund,Refund,credit,75.99,-4008.27
+TXN1072,2025-04-07,Merchant Refund,Refund,credit,46.96,-3961.31
+TXN1073,2025-04-08,Amazon Prime,Subscription,debit,15.47,-3976.78
+TXN1074,2025-04-09,ATM Withdrawal - Main St Branch,ATM Withdrawal,debit,52.21,-4028.99
+TXN1075,2025-04-10,LA Fitness,Gym Membership,debit,36.57,-4065.56
+TXN1076,2025-04-11,Verizon Wireless,Phone Bill,debit,63.27,-4128.83
+TXN1077,2025-04-12,PG&E,Utilities,debit,61.64,-4190.47
+TXN1078,2025-04-13,T-Mobile,Phone Bill,debit,72.39,-4262.86
+TXN1079,2025-04-15,Acme Corp Payroll,Paycheck,credit,2359.59,-1903.27
+TXN1080,2025-04-16,Best Buy,Online Shopping,debit,91.87,-1995.14
+TXN1081,2025-04-18,State Farm Auto,Insurance,debit,139.87,-2135.01
+TXN1082,2025-04-20,Monthly Interest,Interest Earned,credit,3.9,-2131.11
+TXN1083,2025-04-22,Monthly Interest,Interest Earned,credit,2.98,-2128.13
+TXN1084,2025-04-23,Health Partners Plan,Insurance,debit,219.86,-2347.99
+TXN1085,2025-04-25,Amazon Prime,Subscription,debit,11.99,-2359.98
+TXN1086,2025-04-26,Comcast Internet,Utilities,debit,82.64,-2442.62
+TXN1087,2025-04-27,Sushi House,Dining Out,debit,74.49,-2517.11
+TXN1088,2025-04-28,ATM Withdrawal - Main St Branch,ATM Withdrawal,debit,82.31,-2599.42
+TXN1089,2025-04-29,Local Cafe,Dining Out,debit,60.45,-2659.87
+TXN1090,2025-05-01,Transfer to Savings Acct,Transfer to Savings,debit,447.88,-3107.75
+TXN1091,2025-05-03,Spotify,Subscription,debit,13.48,-3121.23
+TXN1092,2025-05-04,Best Buy,Online Shopping,debit,43.56,-3164.79
+TXN1093,2025-05-05,Kroger,Groceries,debit,96.67,-3261.46
+TXN1094,2025-05-06,Merchant Refund,Refund,credit,78.19,-3183.27
+TXN1095,2025-05-08,PG&E,Utilities,debit,146.25,-3329.52
+TXN1096,2025-05-11,Planet Fitness,Gym Membership,debit,44.96,-3374.48
+TXN1097,2025-05-13,Merchant Refund,Refund,credit,45.49,-3328.99
+TXN1098,2025-05-14,Planet Fitness,Gym Membership,debit,30.69,-3359.68
+TXN1099,2025-05-15,Starbucks,Dining Out,debit,22.63,-3382.31
+TXN1100,2025-05-16,Target.com,Online Shopping,debit,48.31,-3430.62
+TXN1101,2025-05-17,Merchant Refund,Refund,credit,59.58,-3371.04
+TXN1102,2025-05-18,LA Fitness,Gym Membership,debit,32.15,-3403.19
+TXN1103,2025-05-19,Costco Gas,Gas,debit,53.34,-3456.53
+TXN1104,2025-05-22,Comcast Internet,Utilities,debit,130.51,-3587.04
+TXN1105,2025-05-24,Costco Gas,Gas,debit,40.57,-3627.61
+TXN1106,2025-05-26,Pizza Palace,Dining Out,debit,38.2,-3665.81
+TXN1107,2025-05-28,T-Mobile,Phone Bill,debit,64.75,-3730.56
+TXN1108,2025-05-29,Merchant Refund,Refund,credit,72.26,-3658.3
+TXN1109,2025-06-01,Merchant Refund,Refund,credit,82.23,-3576.07
+TXN1110,2025-06-02,Maple Street Apartments,Rent,debit,1400.0,-4976.07
+TXN1111,2025-06-03,Maple Street Apartments,Rent,debit,1400.0,-6376.07
+TXN1112,2025-06-04,Monthly Interest,Interest Earned,credit,5.77,-6370.3
+TXN1113,2025-06-10,76,Gas,debit,37.03,-6407.33
+TXN1114,2025-06-11,LA Fitness,Gym Membership,debit,42.46,-6449.79
+TXN1115,2025-06-15,Merchant Refund,Refund,credit,74.34,-6375.45
+TXN1116,2025-06-16,Acme Corp Payroll,Paycheck,credit,2252.49,-4122.96
+TXN1117,2025-06-17,Best Buy,Online Shopping,debit,139.77,-4262.73
+TXN1118,2025-06-19,Chipotle,Dining Out,debit,69.72,-4332.45
+TXN1119,2025-06-21,ATM Withdrawal - Main St Branch,ATM Withdrawal,debit,55.73,-4388.18
+TXN1120,2025-06-22,Transfer to Savings Acct,Transfer to Savings,debit,248.59,-4636.77
+TXN1121,2025-06-23,iCloud Storage,Subscription,debit,15.43,-4652.2
+TXN1122,2025-06-26,LA Fitness,Gym Membership,debit,34.53,-4686.73
+TXN1123,2025-06-28,Verizon Wireless,Phone Bill,debit,48.48,-4735.21
+TXN1124,2025-06-30,Costco Gas,Gas,debit,53.47,-4788.68
