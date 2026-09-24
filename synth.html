@@ -885,6 +885,10 @@
       background: var(--color-surface);
       border-right: 1px solid var(--color-border);
       padding: 32px 40px 48px;
+      /* Column flex so the sample-datasets block below can be pushed to the
+         bottom of the panel instead of hugging the workspace list. */
+      display: flex;
+      flex-direction: column;
     }
 
     .home-section-head {
@@ -931,12 +935,13 @@
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
       gap: 14px;
+      margin-bottom: 36px; /* minimum gap above the divider when the list is long */
     }
 
     .home-preview-divider {
       border: none;
       border-top: 2px solid var(--color-text);
-      margin: 36px 0 24px;
+      margin: auto 0 24px; /* auto top margin bottom-aligns divider + sample datasets */
     }
 
     .home-preview-title {
