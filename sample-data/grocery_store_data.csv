@@ -1,0 +1,141 @@
+product_id,product_name,category,unit,unit_price,store_location,date,quantity_sold,revenue
+P127,White Rice,Pantry,2lb bag,4.49,Westside,2025-03-01,43,193.07
+P129,Cereal - Corn Flakes,Pantry,18oz box,3.79,Uptown,2025-03-01,100,379.0
+P121,Bacon,Meat & Seafood,12oz,6.49,Westside,2025-03-01,116,752.84
+P106,Red Apples,Produce,lb,1.79,Riverside,2025-03-01,106,189.74
+P107,Carrots,Produce,lb,1.19,Westside,2025-03-01,38,45.22
+P139,Frozen Pepperoni Pizza,Frozen,each,6.99,Riverside,2025-03-02,111,775.89
+P107,Carrots,Produce,lb,1.19,Westside,2025-03-02,99,117.81
+P104,Baby Spinach,Produce,bag,3.49,Lakeview,2025-03-03,31,108.19
+P140,Frozen Mixed Vegetables,Frozen,16oz bag,2.49,Downtown,2025-03-03,83,206.67
+P108,Broccoli Crowns,Produce,lb,2.29,Uptown,2025-03-03,62,141.98
+P138,Granola Bars,Snacks,8-pack,4.49,Uptown,2025-03-03,61,273.89
+P115,Sourdough Bread,Bakery,loaf,4.99,Downtown,2025-03-03,16,79.84
+P111,Cheddar Cheese Block,Dairy,8oz,5.29,Westside,2025-03-03,40,211.6
+P113,Butter,Dairy,1lb,4.49,Downtown,2025-03-04,114,511.86
+P132,Sparkling Water 12-pack,Beverages,12-pack,5.49,Uptown,2025-03-04,7,38.43
+P135,Potato Chips,Snacks,9.5oz bag,3.99,Westside,2025-03-04,37,147.63
+P116,Bagels,Bakery,6-pack,3.49,Riverside,2025-03-04,108,376.92
+P126,Peanut Butter,Pantry,18oz jar,3.99,Riverside,2025-03-04,60,239.4
+P126,Peanut Butter,Pantry,18oz jar,3.99,Riverside,2025-03-04,91,363.09
+P118,Chicken Breast,Meat & Seafood,lb,4.99,Uptown,2025-03-05,33,164.67
+P104,Baby Spinach,Produce,bag,3.49,Lakeview,2025-03-05,31,108.19
+P116,Bagels,Bakery,6-pack,3.49,Lakeview,2025-03-05,12,41.88
+P121,Bacon,Meat & Seafood,12oz,6.49,Lakeview,2025-03-05,89,577.61
+P115,Sourdough Bread,Bakery,loaf,4.99,Uptown,2025-03-05,13,64.87
+P120,Atlantic Salmon Fillet,Meat & Seafood,lb,9.99,Riverside,2025-03-06,94,939.06
+P135,Potato Chips,Snacks,9.5oz bag,3.99,Westside,2025-03-07,82,327.18
+P105,Russet Potatoes,Produce,5lb bag,4.99,Westside,2025-03-07,47,234.53
+P141,Vanilla Ice Cream,Frozen,1.5qt,4.99,Riverside,2025-03-07,82,409.18
+P102,Roma Tomatoes,Produce,lb,1.29,Uptown,2025-03-07,61,78.69
+P135,Potato Chips,Snacks,9.5oz bag,3.99,Riverside,2025-03-07,49,195.51
+P102,Roma Tomatoes,Produce,lb,1.29,Riverside,2025-03-08,17,21.93
+P143,Dish Soap,Household,each,2.99,Uptown,2025-03-08,61,182.39
+P119,Ground Beef 80/20,Meat & Seafood,lb,5.49,Lakeview,2025-03-09,33,181.17
+P101,Bananas,Produce,lb,0.59,Downtown,2025-03-09,93,54.87
+P103,Avocado,Produce,each,1.49,Westside,2025-03-09,20,29.8
+P105,Russet Potatoes,Produce,5lb bag,4.99,Westside,2025-03-09,21,104.79
+P106,Red Apples,Produce,lb,1.79,Westside,2025-03-09,19,34.01
+P138,Granola Bars,Snacks,8-pack,4.49,Lakeview,2025-03-09,12,53.88
+P125,Olive Oil,Pantry,16.9oz,8.99,Westside,2025-03-09,101,907.99
+P128,Canned Black Beans,Pantry,15oz can,1.09,Riverside,2025-03-09,46,50.14
+P118,Chicken Breast,Meat & Seafood,lb,4.99,Riverside,2025-03-10,18,89.82
+P122,Pork Chops,Meat & Seafood,lb,4.29,Westside,2025-03-11,52,223.08
+P115,Sourdough Bread,Bakery,loaf,4.99,Riverside,2025-03-11,52,259.48
+P131,Orange Juice,Beverages,half gallon,4.29,Lakeview,2025-03-11,59,253.11
+P114,Almond Milk,Dairy,half gallon,3.99,Uptown,2025-03-11,56,223.44
+P111,Cheddar Cheese Block,Dairy,8oz,5.29,Lakeview,2025-03-11,23,121.67
+P132,Sparkling Water 12-pack,Beverages,12-pack,5.49,Westside,2025-03-11,107,587.43
+P134,Bottled Water 24-pack,Beverages,24-pack,4.99,Westside,2025-03-11,14,69.86
+P144,Laundry Detergent,Household,50oz,11.99,Lakeview,2025-03-11,11,131.89
+P119,Ground Beef 80/20,Meat & Seafood,lb,5.49,Downtown,2025-03-12,102,559.98
+P103,Avocado,Produce,each,1.49,Downtown,2025-03-12,55,81.95
+P117,Croissants,Bakery,4-pack,5.99,Uptown,2025-03-12,116,694.84
+P144,Laundry Detergent,Household,50oz,11.99,Riverside,2025-03-12,41,491.59
+P130,Coffee - Ground Medium Roast,Pantry,12oz bag,7.99,Downtown,2025-03-13,60,479.4
+P121,Bacon,Meat & Seafood,12oz,6.49,Downtown,2025-03-13,23,149.27
+P122,Pork Chops,Meat & Seafood,lb,4.29,Uptown,2025-03-13,63,270.27
+P127,White Rice,Pantry,2lb bag,4.49,Lakeview,2025-03-13,12,53.88
+P144,Laundry Detergent,Household,50oz,11.99,Uptown,2025-03-13,104,1246.96
+P132,Sparkling Water 12-pack,Beverages,12-pack,5.49,Uptown,2025-03-13,42,230.58
+P107,Carrots,Produce,lb,1.19,Lakeview,2025-03-14,19,22.61
+P101,Bananas,Produce,lb,0.59,Downtown,2025-03-14,111,65.49
+P133,Cola 12-pack,Beverages,12-pack,6.49,Downtown,2025-03-14,36,233.64
+P129,Cereal - Corn Flakes,Pantry,18oz box,3.79,Westside,2025-03-14,21,79.59
+P114,Almond Milk,Dairy,half gallon,3.99,Downtown,2025-03-14,45,179.55
+P133,Cola 12-pack,Beverages,12-pack,6.49,Lakeview,2025-03-14,56,363.44
+P109,Whole Milk,Dairy,gallon,3.79,Downtown,2025-03-15,12,45.48
+P112,Greek Yogurt,Dairy,6oz cup,1.29,Lakeview,2025-03-15,82,105.78
+P142,Paper Towels,Household,6-pack,7.99,Downtown,2025-03-15,108,862.92
+P140,Frozen Mixed Vegetables,Frozen,16oz bag,2.49,Lakeview,2025-03-15,75,186.75
+P131,Orange Juice,Beverages,half gallon,4.29,Downtown,2025-03-15,115,493.35
+P139,Frozen Pepperoni Pizza,Frozen,each,6.99,Uptown,2025-03-15,9,62.91
+P101,Bananas,Produce,lb,0.59,Lakeview,2025-03-16,57,33.63
+P141,Vanilla Ice Cream,Frozen,1.5qt,4.99,Lakeview,2025-03-16,24,119.76
+P126,Peanut Butter,Pantry,18oz jar,3.99,Riverside,2025-03-17,10,39.9
+P143,Dish Soap,Household,each,2.99,Westside,2025-03-17,10,29.9
+P134,Bottled Water 24-pack,Beverages,24-pack,4.99,Downtown,2025-03-17,72,359.28
+P139,Frozen Pepperoni Pizza,Frozen,each,6.99,Downtown,2025-03-17,44,307.56
+P108,Broccoli Crowns,Produce,lb,2.29,Westside,2025-03-17,83,190.07
+P133,Cola 12-pack,Beverages,12-pack,6.49,Downtown,2025-03-17,55,356.95
+P144,Laundry Detergent,Household,50oz,11.99,Lakeview,2025-03-17,25,299.75
+P130,Coffee - Ground Medium Roast,Pantry,12oz bag,7.99,Westside,2025-03-18,69,551.31
+P119,Ground Beef 80/20,Meat & Seafood,lb,5.49,Lakeview,2025-03-18,83,455.67
+P130,Coffee - Ground Medium Roast,Pantry,12oz bag,7.99,Riverside,2025-03-18,14,111.86
+P118,Chicken Breast,Meat & Seafood,lb,4.99,Lakeview,2025-03-19,32,159.68
+P116,Bagels,Bakery,6-pack,3.49,Lakeview,2025-03-19,76,265.24
+P108,Broccoli Crowns,Produce,lb,2.29,Downtown,2025-03-19,62,141.98
+P123,Spaghetti,Pantry,16oz box,1.49,Lakeview,2025-03-19,15,22.35
+P140,Frozen Mixed Vegetables,Frozen,16oz bag,2.49,Lakeview,2025-03-20,54,134.46
+P125,Olive Oil,Pantry,16.9oz,8.99,Uptown,2025-03-20,58,521.42
+P120,Atlantic Salmon Fillet,Meat & Seafood,lb,9.99,Riverside,2025-03-20,8,79.92
+P104,Baby Spinach,Produce,bag,3.49,Downtown,2025-03-20,11,38.39
+P132,Sparkling Water 12-pack,Beverages,12-pack,5.49,Uptown,2025-03-20,111,609.39
+P112,Greek Yogurt,Dairy,6oz cup,1.29,Lakeview,2025-03-20,42,54.18
+P138,Granola Bars,Snacks,8-pack,4.49,Riverside,2025-03-21,106,475.94
+P112,Greek Yogurt,Dairy,6oz cup,1.29,Lakeview,2025-03-21,75,96.75
+P137,Mixed Nuts,Snacks,10oz can,6.99,Lakeview,2025-03-21,46,321.54
+P113,Butter,Dairy,1lb,4.49,Lakeview,2025-03-21,97,435.53
+P122,Pork Chops,Meat & Seafood,lb,4.29,Downtown,2025-03-21,16,68.64
+P120,Atlantic Salmon Fillet,Meat & Seafood,lb,9.99,Lakeview,2025-03-21,8,79.92
+P125,Olive Oil,Pantry,16.9oz,8.99,Uptown,2025-03-22,67,602.33
+P102,Roma Tomatoes,Produce,lb,1.29,Riverside,2025-03-22,74,95.46
+P110,Large Eggs,Dairy,dozen,3.49,Downtown,2025-03-22,67,233.83
+P117,Croissants,Bakery,4-pack,5.99,Downtown,2025-03-22,57,341.43
+P137,Mixed Nuts,Snacks,10oz can,6.99,Lakeview,2025-03-22,87,608.13
+P103,Avocado,Produce,each,1.49,Westside,2025-03-22,87,129.63
+P124,Marinara Sauce,Pantry,24oz jar,2.99,Downtown,2025-03-22,39,116.61
+P106,Red Apples,Produce,lb,1.79,Downtown,2025-03-22,21,37.59
+P126,Peanut Butter,Pantry,18oz jar,3.99,Lakeview,2025-03-22,67,267.33
+P110,Large Eggs,Dairy,dozen,3.49,Uptown,2025-03-23,14,48.86
+P112,Greek Yogurt,Dairy,6oz cup,1.29,Riverside,2025-03-23,53,68.37
+P101,Bananas,Produce,lb,0.59,Westside,2025-03-24,118,69.62
+P123,Spaghetti,Pantry,16oz box,1.49,Riverside,2025-03-24,104,154.96
+P109,Whole Milk,Dairy,gallon,3.79,Lakeview,2025-03-24,43,162.97
+P135,Potato Chips,Snacks,9.5oz bag,3.99,Westside,2025-03-24,35,139.65
+P134,Bottled Water 24-pack,Beverages,24-pack,4.99,Riverside,2025-03-24,33,164.67
+P122,Pork Chops,Meat & Seafood,lb,4.29,Lakeview,2025-03-24,32,137.28
+P136,Tortilla Chips,Snacks,13oz bag,3.49,Downtown,2025-03-25,27,94.23
+P124,Marinara Sauce,Pantry,24oz jar,2.99,Lakeview,2025-03-25,11,32.89
+P137,Mixed Nuts,Snacks,10oz can,6.99,Lakeview,2025-03-25,62,433.38
+P108,Broccoli Crowns,Produce,lb,2.29,Riverside,2025-03-25,70,160.3
+P136,Tortilla Chips,Snacks,13oz bag,3.49,Uptown,2025-03-25,64,223.36
+P120,Atlantic Salmon Fillet,Meat & Seafood,lb,9.99,Riverside,2025-03-25,48,479.52
+P128,Canned Black Beans,Pantry,15oz can,1.09,Westside,2025-03-25,102,111.18
+P105,Russet Potatoes,Produce,5lb bag,4.99,Westside,2025-03-25,105,523.95
+P106,Red Apples,Produce,lb,1.79,Westside,2025-03-26,80,143.2
+P104,Baby Spinach,Produce,bag,3.49,Riverside,2025-03-26,36,125.64
+P119,Ground Beef 80/20,Meat & Seafood,lb,5.49,Uptown,2025-03-26,113,620.37
+P118,Chicken Breast,Meat & Seafood,lb,4.99,Downtown,2025-03-28,49,244.51
+P137,Mixed Nuts,Snacks,10oz can,6.99,Riverside,2025-03-28,24,167.76
+P110,Large Eggs,Dairy,dozen,3.49,Uptown,2025-03-28,59,205.91
+P103,Avocado,Produce,each,1.49,Uptown,2025-03-28,16,23.84
+P113,Butter,Dairy,1lb,4.49,Westside,2025-03-28,60,269.4
+P114,Almond Milk,Dairy,half gallon,3.99,Westside,2025-03-29,57,227.43
+P123,Spaghetti,Pantry,16oz box,1.49,Downtown,2025-03-29,24,35.76
+P142,Paper Towels,Household,6-pack,7.99,Riverside,2025-03-29,96,767.04
+P105,Russet Potatoes,Produce,5lb bag,4.99,Lakeview,2025-03-29,5,24.95
+P141,Vanilla Ice Cream,Frozen,1.5qt,4.99,Downtown,2025-03-29,62,309.38
+P133,Cola 12-pack,Beverages,12-pack,6.49,Riverside,2025-03-30,16,103.84
+P117,Croissants,Bakery,4-pack,5.99,Downtown,2025-03-30,41,245.59
+P141,Vanilla Ice Cream,Frozen,1.5qt,4.99,Lakeview,2025-03-30,88,439.12
