@@ -4562,6 +4562,35 @@
       margin-bottom: 8px;
     }
 
+    /* Deliberately not this page's own palette (--color-accent etc.) —
+       synth-bi's near-black + lime green, since this is a cross-promo for
+       the other product, not an in-app action. */
+    .chart-bi-banner {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: #0e0f0c;
+      color: #ffffff;
+      padding: 10px 16px;
+      border-radius: 10px;
+      margin-bottom: 10px;
+      font-weight: 700;
+      font-size: 14px;
+      text-decoration: none;
+      flex-shrink: 0;
+    }
+    .chart-bi-banner strong {
+      color: #9fe870;
+    }
+    .chart-bi-banner:hover strong {
+      color: #cdffad;
+    }
+    .chart-bi-banner .ph {
+      color: #9fe870;
+      font-size: 15px;
+    }
+
     .chart-fullscreen-body {
       flex: 1;
       min-height: 0;
@@ -5070,6 +5099,10 @@
         <div class="section-label" id="chart-fullscreen-title">Chart</div>
         <button class="modal-close" onclick="closeChartFullscreen()" aria-label="Close full screen">&times;</button>
       </div>
+      <a id="chart-bi-banner" class="chart-bi-banner" href="https://bi.synth-sql.com" target="_blank" rel="noopener">
+        Want to enhance your visualization? Try <strong>Synth BI</strong>
+        <i class="ph ph-arrow-square-out" aria-hidden="true"></i>
+      </a>
       <div id="chart-fullscreen-body" class="chart-fullscreen-body"></div>
     </div>
   </div>

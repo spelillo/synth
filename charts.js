@@ -834,6 +834,12 @@ Rules:
       const modal = document.getElementById('chart-fullscreen-modal');
       if (!modal) return;
       modal.hidden = false;
+      const biBanner = document.getElementById('chart-bi-banner');
+      if (biBanner) {
+        biBanner.href = currentWorkspaceId
+          ? `https://bi.synth-sql.com/?loadSqlWorkspace=${encodeURIComponent(currentWorkspaceId)}`
+          : 'https://bi.synth-sql.com';
+      }
       renderResultsChart();
       const body = document.getElementById('chart-fullscreen-body');
       if (typeof ResizeObserver !== 'undefined' && body) {
