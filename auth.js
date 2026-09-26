@@ -6,9 +6,14 @@
     const SUPABASE_URL = 'https://gukxpikthryasymfuhgl.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd1a3hwaWt0aHJ5YXN5bWZ1aGdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwMDAyNTQsImV4cCI6MjEwNDU3NjI1NH0.NFhryLa7MLSvjRGnT75EfxH_4M9tACdbVWOlmaLSXbw';
 
+    // Session storage is a shared cookie (storage-cookie.js), not the
+    // client's default localStorage, so a signed-in session here also
+    // signs the user into synth-bi on the same parent domain.
     let sb = null;
     if (SUPABASE_URL !== 'YOUR_SUPABASE_URL' && window.supabase) {
-      sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: { storage: window.sharedAuthStorage },
+      });
     }
 
     async function initAuth() {

@@ -58,6 +58,7 @@
   <script src="state.js"></script>
   <script src="csv-parser.js"></script>
   <script src="json-parser.js"></script>
+  <script src="storage-cookie.js"></script>
   <script src="auth.js"></script>
   <script src="checkout.js"></script>
   <script src="grid.js"></script>
@@ -215,6 +216,12 @@
     .auth-btn:hover {
       border-color: var(--color-accent);
       color: var(--color-accent-text);
+    }
+
+    .auth-btn-icon {
+      width: 15px;
+      height: 15px;
+      vertical-align: -2px;
     }
 
     .auth-btn:disabled {
@@ -4669,7 +4676,7 @@
     <div class="header-right">
       <div class="auth-area">
         <a href="https://bi.synth-sql.com" target="_blank" rel="noopener" class="auth-btn" title="Turn your data into dashboards">
-          <i class="ph ph-chart-bar" aria-hidden="true"></i> BI
+          <img src="bi-icon.png" alt="" class="auth-btn-icon"> BI
         </a>
         <button id="go-premium-btn" class="auth-btn auth-btn-premium" onclick="openPremiumPanel()" hidden>Go Premium</button>
         <button id="enterprise-nav-btn" class="auth-btn auth-btn-enterprise" onclick="openEnterpriseEntry()" hidden>Enterprise</button>
