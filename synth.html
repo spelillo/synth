@@ -1413,62 +1413,6 @@
       color: var(--color-text-muted-2);
     }
 
-    .home-save-card {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      margin-top: 12px;
-      padding: 18px 20px;
-      border-radius: 12px;
-      background: linear-gradient(165deg, #201515 0%, #2f2a26 100%);
-      color: #fffefb;
-    }
-
-    @media (prefers-color-scheme: dark) {
-      .home-save-card { box-shadow: inset 0 0 0 1px rgba(255, 95, 22, 0.35); }
-    }
-
-    .home-save-icon {
-      font-size: 28px;
-      color: var(--color-accent);
-      flex: none;
-    }
-
-    .home-save-copy {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      min-width: 0;
-    }
-
-    .home-save-copy strong { font-size: 15.5px; }
-
-    .home-save-copy span {
-      font-size: 13.5px;
-      line-height: 1.45;
-      opacity: 0.8;
-    }
-
-    .home-save-btn {
-      flex: none;
-      background: var(--color-accent-fill);
-      color: var(--color-bg);
-      border: none;
-      padding: 10px 18px;
-      border-radius: 10px;
-      font-family: inherit;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      white-space: nowrap;
-      transition: background 0.15s, transform 0.1s;
-    }
-
-    .home-save-btn:hover { background: var(--color-accent-fill-hover); }
-    .home-save-btn:active { transform: translateY(1px); }
-    .home-save-btn[hidden] { display: none; }
-
     .auth-btn .ph {
       vertical-align: -2px;
       margin-right: 2px;
@@ -1501,8 +1445,6 @@
 
       .home-flow { padding: 24px 16px 32px; }
       .home-flow-steps { grid-template-columns: minmax(0, 1fr); }
-      .home-save-card { flex-wrap: wrap; }
-      .home-save-btn { width: 100%; }
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -5309,14 +5251,6 @@
             <span>Sign in to chart any result as a column, line, pie, or other chart.</span>
           </li>
         </ol>
-        <div class="home-save-card" id="home-save-card">
-          <i class="ph ph-cloud-check home-save-icon" aria-hidden="true"></i>
-          <div class="home-save-copy">
-            <strong id="home-save-title">Sign in to save your work</strong>
-            <span id="home-save-body">Open your files, chats, and queries on any device. An account also turns on the AI tools and charts.</span>
-          </div>
-          <button type="button" class="home-save-btn" id="home-save-btn" onclick="openAccountModal('signup')">Create account</button>
-        </div>
       </section>
     </main>
 

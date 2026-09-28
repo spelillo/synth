@@ -867,19 +867,11 @@
     // openHome() renders fresh whenever it's reopened anyway.
     window.refreshHomeWorkspaces = function() {
       if (!document.getElementById('home-view').hidden) renderDashboard();
-      updateHomeSaveCard();
+      updateHomeNewWorkspaceBtn();
     };
 
-    function updateHomeSaveCard() {
-      const signedIn = !!currentUser;
-      document.getElementById('home-save-title').textContent = signedIn
-        ? 'Your work saves to your account'
-        : 'Sign in to save your work';
-      document.getElementById('home-save-body').textContent = signedIn
-        ? 'Use Save to cloud in any workspace to keep its files and chat sessions here.'
-        : 'Open your files, chats, and queries on any device. An account also turns on the AI tools and charts.';
-      document.getElementById('home-save-btn').hidden = signedIn;
-      document.getElementById('home-new-workspace-btn').hidden = !signedIn;
+    function updateHomeNewWorkspaceBtn() {
+      document.getElementById('home-new-workspace-btn').hidden = !currentUser;
     }
 
     function homeEmptyState({ icon, title, body, actions = '', isError = false }) {
@@ -894,7 +886,7 @@
 
     async function renderDashboard() {
       const body = document.getElementById('dashboard-body');
-      updateHomeSaveCard();
+      updateHomeNewWorkspaceBtn();
 
       if (!currentUser || !sb) {
         body.innerHTML = homeEmptyState({
