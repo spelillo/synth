@@ -81,6 +81,10 @@
          needs 3:1) or on dark backgrounds, but every place that uses it as
          *text* on a light surface needs this darker variant instead. */
       --color-accent-text: #c23a00;
+      /* Filled accent buttons with light text need the same darker orange
+         (#c23a00 is 5.3:1 against --color-bg). */
+      --color-accent-fill: #c23a00;
+      --color-accent-fill-hover: #a83200;
       --color-border: #c5c0b1;
       --color-text-muted: #726e62; /* darkened from #939084 — that failed WCAG AA text contrast (~3:1) against --color-bg/--color-surface, this clears 4.5:1 on both */
       --color-text-muted-2: #605d52;
@@ -104,6 +108,8 @@
         --color-accent: #ff5f16;
         --color-accent-hover: #ff7a3d;
         --color-accent-text: #ff5f16; /* already 5.9:1+ on the dark backgrounds below — bright orange on near-black doesn't have the light-mode problem */
+        --color-accent-fill: var(--color-accent); /* --color-bg text on it is 5.9:1 */
+        --color-accent-fill-hover: var(--color-accent-hover);
         --color-border: #4a4238;
         --color-text-muted: #a39d8e;
         --color-text-muted-2: #b8b2a3;
@@ -237,13 +243,13 @@
     }
 
     .auth-btn-primary {
-      background: var(--color-accent);
-      border-color: var(--color-accent);
+      background: var(--color-accent-fill);
+      border-color: var(--color-accent-fill);
       color: var(--color-bg);
     }
 
     .auth-btn-primary:hover {
-      background: var(--color-accent-hover);
+      background: var(--color-accent-fill-hover);
       color: var(--color-bg);
     }
 
@@ -638,7 +644,7 @@
     .cloud-add-btn {
       display: block;
       width: 100%;
-      background: var(--color-accent);
+      background: var(--color-accent-fill);
       color: var(--color-bg);
       border: none;
       padding: 12px 16px;
@@ -652,7 +658,7 @@
     }
 
     .cloud-add-btn:hover {
-      background: var(--color-accent-hover);
+      background: var(--color-accent-fill-hover);
     }
 
     /* Every modal section renders as its own raised card (background +
@@ -1326,8 +1332,8 @@
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      background: var(--color-accent);
-      color: #fffefb;
+      background: var(--color-accent-fill);
+      color: var(--color-bg);
       border: none;
       padding: 12px 22px;
       border-radius: 12px;
@@ -1339,7 +1345,7 @@
       transition: background 0.15s, transform 0.1s;
     }
 
-    .home-dropzone-btn:hover { background: var(--color-accent-hover); }
+    .home-dropzone-btn:hover { background: var(--color-accent-fill-hover); }
     .home-dropzone-btn:active { transform: translateY(1px) scale(0.99); }
 
     .home-upload-message {
@@ -1446,8 +1452,8 @@
 
     .home-save-btn {
       flex: none;
-      background: var(--color-accent);
-      color: #fffefb;
+      background: var(--color-accent-fill);
+      color: var(--color-bg);
       border: none;
       padding: 10px 18px;
       border-radius: 10px;
@@ -1459,7 +1465,7 @@
       transition: background 0.15s, transform 0.1s;
     }
 
-    .home-save-btn:hover { background: var(--color-accent-hover); }
+    .home-save-btn:hover { background: var(--color-accent-fill-hover); }
     .home-save-btn:active { transform: translateY(1px); }
     .home-save-btn[hidden] { display: none; }
 
@@ -1756,8 +1762,8 @@
     .account-submit {
       width: 100%;
       margin-top: 4px;
-      background: var(--color-accent);
-      color: #fffefb;
+      background: var(--color-accent-fill);
+      color: var(--color-bg);
       border: none;
       padding: 12px 16px;
       border-radius: 10px;
@@ -1768,7 +1774,7 @@
       transition: background 0.15s, transform 0.1s, opacity 0.15s;
     }
 
-    .account-submit:hover { background: var(--color-accent-hover); }
+    .account-submit:hover { background: var(--color-accent-fill-hover); }
     .account-submit:active { transform: translateY(1px); }
     .account-submit:disabled { opacity: 0.6; cursor: progress; }
 
@@ -2106,7 +2112,7 @@
     }
 
     .modal-save-btn {
-      background: var(--color-accent);
+      background: var(--color-accent-fill);
       color: var(--color-bg);
       border: none;
       padding: 10px 22px;
@@ -2119,7 +2125,7 @@
     }
 
     .modal-save-btn:hover:not(:disabled) {
-      background: var(--color-accent-hover);
+      background: var(--color-accent-fill-hover);
     }
 
     .modal-save-btn:disabled {
@@ -2349,7 +2355,7 @@
     }
 
     .upload-btn {
-      background: var(--color-accent);
+      background: var(--color-accent-fill);
       color: var(--color-bg);
       padding: 10px 20px;
       border: none;
@@ -2362,7 +2368,7 @@
     }
 
     .upload-btn:hover {
-      background: var(--color-accent-hover);
+      background: var(--color-accent-fill-hover);
     }
 
     #file-upload {
@@ -3944,7 +3950,7 @@
       position: absolute;
       top: 8px;
       right: 8px;
-      background: var(--color-accent);
+      background: var(--color-accent-fill);
       color: var(--color-bg);
       border: none;
       padding: 4px 12px;
@@ -3956,7 +3962,7 @@
     }
 
     .use-query-btn:hover {
-      background: var(--color-accent-hover);
+      background: var(--color-accent-fill-hover);
     }
 
     .chat-input-wrapper {
@@ -3993,7 +3999,7 @@
     }
 
     #chat-send {
-      background: var(--color-accent);
+      background: var(--color-accent-fill);
       color: var(--color-bg);
       padding: 12px 24px;
       border: none;
@@ -4006,7 +4012,7 @@
     }
 
     #chat-send:hover:not(:disabled) {
-      background: var(--color-accent-hover);
+      background: var(--color-accent-fill-hover);
     }
 
     #chat-send:disabled {
@@ -5207,7 +5213,7 @@
   <input type="file" id="file-upload-add" accept=".csv,.json,.ndjson,.jsonl" multiple onchange="addTablesCSV(event)">
 
   <div id="home-view">
-    <div class="home-grid">
+    <main class="home-grid">
       <section class="home-workspaces" aria-labelledby="home-workspaces-title">
         <div class="home-section-head">
           <h2 id="home-workspaces-title" class="home-section-title">Your workspaces</h2>
@@ -5312,7 +5318,7 @@
           <button type="button" class="home-save-btn" id="home-save-btn" onclick="openAccountModal('signup')">Create account</button>
         </div>
       </section>
-    </div>
+    </main>
 
     <footer class="landing-footer">
       <div class="landing-footer-inner">
@@ -5336,7 +5342,7 @@
     </div>
   </div>
 
-  <div id="app-view" hidden>
+  <main id="app-view" hidden>
     <div class="upload-area">
       <div class="upload-wrapper">
         <div class="workspace-switcher" id="workspace-switcher" hidden>
@@ -5530,7 +5536,7 @@
         </div>
       </div>
     </div>
-  </div>
+  </main>
 
   <div id="delete-workspace-modal" class="modal-overlay" hidden>
     <div class="modal modal-small">
