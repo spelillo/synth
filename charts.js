@@ -837,8 +837,8 @@ Rules:
       const biBanner = document.getElementById('chart-bi-banner');
       if (biBanner) {
         biBanner.href = currentWorkspaceId
-          ? `https://bi.synth-sql.com/?loadSqlWorkspace=${encodeURIComponent(currentWorkspaceId)}`
-          : 'https://bi.synth-sql.com';
+          ? synthBiUrl(`/?loadSqlWorkspace=${encodeURIComponent(currentWorkspaceId)}`)
+          : synthBiUrl();
       }
       renderResultsChart();
       const body = document.getElementById('chart-fullscreen-body');
