@@ -21,15 +21,15 @@ running client-side, entirely in your browser tab.
 
 ## Key pages
 
-- App: https://synth-sql.com/
-- Pricing: https://synth-sql.com/pricing
-- All guides: https://synth-sql.com/guides
-- Guide — querying a CSV with SQL, no server required: https://synth-sql.com/query-csv-with-sql
-- Guide — querying a JSON file with SQL: https://synth-sql.com/query-json-with-sql
-- Guide — SQL cheat sheet for CSV & JSON analysis: https://synth-sql.com/sql-cheat-sheet
-- Guide — asking data questions in plain English (no SQL): https://synth-sql.com/ask-data-questions-in-plain-english
-- Guide — converting a CSV to SQLite in the browser: https://synth-sql.com/csv-to-sqlite-in-browser
-- Guide — joining two CSV files with SQL: https://synth-sql.com/join-two-csv-files-with-sql
-- Guide — privacy-first data analysis (Lite Mode): https://synth-sql.com/privacy-first-data-analysis
-- About: https://synth-sql.com/welcome
-- Machine-readable pricing: https://synth-sql.com/pricing.md
+- [App](https://synth-sql.com/)
+- [Pricing](https://synth-sql.com/pricing)
+- [All guides](https://synth-sql.com/guides)
+- [Guide — querying a CSV with SQL, no server required](https://synth-sql.com/query-csv-with-sql)
+- [Guide — querying a JSON file with SQL](https://synth-sql.com/query-json-with-sql)
+- [Guide — SQL cheat sheet for CSV & JSON analysis](https://synth-sql.com/sql-cheat-sheet)
+- [Guide — asking data questions in plain English (no SQL)](https://synth-sql.com/ask-data-questions-in-plain-english)
+- [Guide — converting a CSV to SQLite in the browser](https://synth-sql.com/csv-to-sqlite-in-browser)
+- [Guide — joining two CSV files with SQL](https://synth-sql.com/join-two-csv-files-with-sql)
+- [Guide — privacy-first data analysis (Lite Mode)](https://synth-sql.com/privacy-first-data-analysis)
+- [About](https://synth-sql.com/welcome)
+- [Machine-readable pricing](https://synth-sql.com/pricing.md)
