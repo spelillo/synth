@@ -31,5 +31,6 @@ running client-side, entirely in your browser tab.
 - [Guide — converting a CSV to SQLite in the browser](https://synth-sql.com/csv-to-sqlite-in-browser)
 - [Guide — joining two CSV files with SQL](https://synth-sql.com/join-two-csv-files-with-sql)
 - [Guide — privacy-first data analysis (Lite Mode)](https://synth-sql.com/privacy-first-data-analysis)
+- [Guide — finding and removing duplicate rows in a CSV](https://synth-sql.com/find-duplicate-rows-in-csv)
 - [About](https://synth-sql.com/welcome)
 - [Machine-readable pricing](https://synth-sql.com/pricing.md)
