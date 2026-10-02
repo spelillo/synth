@@ -246,6 +246,7 @@
 
     window.cancelAuthConfirmStep = function() {
       pendingConfirmEmail = null;
+      if (window.synthTrack) window.synthTrack('signup');
       showAccountView('fields');
       setAuthPanelMode('signup');
     };

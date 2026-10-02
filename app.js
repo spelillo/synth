@@ -3004,6 +3004,7 @@
 
       try {
         const result = db.exec(query);
+        if (window.synthTrack) window.synthTrack('query_run');
 
         // A query that isn't a read (INSERT/UPDATE/DELETE/etc.) changes
         // the data sql.js holds in-browser, which the cloud copy — if
