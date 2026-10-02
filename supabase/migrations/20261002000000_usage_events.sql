@@ -6,6 +6,7 @@ create table public.usage_events (
   event text not null check (event in ('visit', 'query_run', 'signup')),
   visitor_id text not null,
   ref text,
+  referrer text,
   path text,
   created_at timestamptz not null default now()
 );

@@ -9,6 +9,7 @@ import { createClient } from '@supabase/supabase-js';
 const ALLOWED_EVENTS = new Set(['visit', 'query_run', 'signup']);
 const VISITOR_ID = /^[A-Za-z0-9-]{8,64}$/;
 const REF = /^[A-Za-z0-9_.-]{1,40}$/;
+const HOST = /^[a-z0-9.-]{1,100}$/;
 
 let cachedClient;
 function getSupabaseAdmin() {
@@ -29,7 +30,7 @@ export default async function handler(req, res) {
   if (typeof body === 'string') {
     try { body = JSON.parse(body); } catch { body = null; }
   }
-  const { event, visitor_id, ref, path } = body || {};
+  const { event, visitor_id, ref, referrer, path } = body || {};
 
   if (!ALLOWED_EVENTS.has(event) || !VISITOR_ID.test(visitor_id || '')) {
     res.status(400).end();
@@ -42,6 +43,7 @@ export default async function handler(req, res) {
       event,
       visitor_id,
       ref: REF.test(ref || '') ? ref.toLowerCase() : null,
+      referrer: HOST.test(referrer || '') ? referrer : null,
       path: typeof path === 'string' ? path.slice(0, 100) : null
     });
   }

@@ -4,8 +4,8 @@
 //  2. A tiny first-party counter (api/track.js -> usage_events) for the
 //     numbers Vercel's free tier can't give us: who ran a query, who came
 //     back, and which channel they came from. Only an event name, a random
-//     visitor id, the landing ?ref= tag and the page path are sent. Never
-//     queries, file names, or data.
+//     visitor id, the landing ?ref= tag, the referring site's hostname and
+//     the page path are sent. Never queries, file names, or data.
 (function () {
   window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
   var s = document.createElement('script');
@@ -34,6 +34,13 @@
   var landingRef = (params.get('ref') || params.get('utm_source') || '').slice(0, 40);
   if (landingRef && !get('synth_ref')) set('synth_ref', landingRef);
 
+  // Which site linked here (google.com, reddit.com, ...), host only.
+  var referrerHost = '';
+  try {
+    var r = document.referrer && new URL(document.referrer).hostname;
+    if (r && r !== location.hostname) referrerHost = r.replace(/^www\./, '').slice(0, 100);
+  } catch (e) {}
+
   function today() { return new Date().toISOString().slice(0, 10); }
 
   // Each event is sent at most once per visitor per day: enough to count
@@ -46,6 +53,7 @@
       event: event,
       visitor_id: visitorId,
       ref: get('synth_ref') || landingRef || null,
+      referrer: referrerHost || null,
       path: location.pathname.slice(0, 100)
     });
     try {
