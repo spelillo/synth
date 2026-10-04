@@ -64,6 +64,12 @@ a:hover { color: var(--orange); }
   padding: 8px 14px;
   border-radius: 8px;
   color: var(--ink);
+  white-space: nowrap;
+}
+
+@media (max-width: 420px) {
+  .site-header-nav { gap: 2px; }
+  .site-header-nav a { padding: 8px 10px; }
 }
 
 .site-header-nav a:hover {

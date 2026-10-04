@@ -62,6 +62,43 @@
       document.querySelector('link[rel="canonical"]').href = 'https://synth-sql.com/learn';
       document.querySelector('meta[property="og:url"]').content = 'https://synth-sql.com/learn';
       document.querySelector('meta[name="description"]').content = 'Learn SQL by doing: 60 free interactive lessons from SELECT to window functions. Write a query, check your answer instantly, and get a hint or an AI tutor when you are stuck.';
+      ['og:title', 'twitter:title'].forEach(function (k) {
+        var m = document.querySelector('meta[property="' + k + '"], meta[name="' + k + '"]');
+        if (m) m.content = document.title;
+      });
+      ['og:description', 'twitter:description'].forEach(function (k) {
+        var m = document.querySelector('meta[property="' + k + '"], meta[name="' + k + '"]');
+        if (m) m.content = document.querySelector('meta[name="description"]').content;
+      });
+      // Course structured data for /learn. The crawlable syllabus with the
+      // same schema lives at /free-sql-course.
+      var courses = [
+        ['beginner', 'SQL Foundations', 'Beginner', 21, 'PT1H35M', 'Write your first queries: SELECT, WHERE, ORDER BY, LIMIT, NULL, aggregates, GROUP BY and HAVING.'],
+        ['intermediate', 'Joins & Combining Data', 'Intermediate', 20, 'PT1H50M', 'Combine tables with every kind of join, then subqueries, EXISTS and UNION.'],
+        ['advanced', 'Analytics SQL', 'Advanced', 19, 'PT2H2M', 'CASE, COALESCE, CTEs, recursive CTEs, window functions and dates.']
+      ];
+      var ld = document.createElement('script');
+      ld.type = 'application/ld+json';
+      ld.textContent = JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'ItemList',
+        name: 'Synth Learn SQL courses',
+        itemListElement: courses.map(function (c, i) {
+          return {
+            '@type': 'ListItem', position: i + 1,
+            item: {
+              '@type': 'Course', '@id': 'https://synth-sql.com/free-sql-course#' + c[0],
+              name: c[1] + ' (' + c[2] + ' SQL)', description: c[5] + ' ' + c[3] + ' interactive lessons.',
+              url: 'https://synth-sql.com/learn', educationalLevel: c[2], inLanguage: 'en',
+              isAccessibleForFree: true, numberOfLessons: c[3], timeRequired: c[4],
+              provider: { '@type': 'Organization', name: 'Synth', sameAs: 'https://synth-sql.com/' },
+              offers: [{ '@type': 'Offer', category: 'Free', price: '0', priceCurrency: 'USD' }],
+              hasCourseInstance: [{ '@type': 'CourseInstance', courseMode: 'Online', courseWorkload: c[4] }]
+            }
+          };
+        })
+      });
+      document.head.appendChild(ld);
     }
   </script>
   <script src="https://cdn.jsdelivr.net/npm/sql.js@1.8.0/dist/sql-wasm.js"></script>
