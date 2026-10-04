@@ -4,11 +4,16 @@
   "private": true,
   "description": "Local CSV query tool with AI-powered SQL assistance",
   "scripts": {
-    "dev": "vercel dev"
+    "dev": "vercel dev",
+    "test": "node --test \"tests/*.test.js\"",
+    "test:e2e": "node --test tests/e2e/learn.e2e.test.js"
   },
   "dependencies": {
-    "stripe": "^22.6.2",
     "@supabase/supabase-js": "^2",
-    "nodemailer": "^10"
+    "nodemailer": "^10",
+    "stripe": "^22.6.2"
+  },
+  "devDependencies": {
+    "sql.js": "1.8.0"
   }
 }

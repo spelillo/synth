@@ -1,6 +1,7 @@
 {
   "rewrites": [
     { "source": "/", "destination": "/synth.html" },
+    { "source": "/learn", "destination": "/synth.html" },
     { "source": "/welcome", "destination": "/welcome.html" },
     { "source": "/terms", "destination": "/terms.html" },
     { "source": "/privacy", "destination": "/privacy.html" },

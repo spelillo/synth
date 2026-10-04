@@ -74,6 +74,7 @@
       updateAIState();
       refreshHomeWorkspaces();
       syncChartAccess();
+      if (window.onLearnAuthChange) window.onLearnAuthChange(currentUser);
     }
 
     // Signed in: the header button is the user's email and opens Settings.

@@ -17,11 +17,13 @@ running client-side, entirely in your browser tab.
 - Supports CSV, and JSON (a single array of objects, or newline-delimited JSON) — nested objects flatten into dot-notation columns (e.g. address.city), arrays store as JSON text queryable with SQLite's json_extract()
 - Free tier: single-table workspaces, up to 100,000 rows, no sign-in required
 - Premium: $9.99, paid once (not a subscription) — multi-table workspaces (up to 10 tables), table renaming, cross-table AI joins, relationship detection, and files up to 500,000 rows
+- Learn SQL (https://synth-sql.com/learn): 60 free interactive lessons in three levels (SQL Foundations, Joins & Combining Data, Analytics SQL). Each lesson gives a task, runs your query on real practice data, checks the result against the answer, and explains what's different; an AI tutor unlocks after your first attempt
 - Built-in AI assistant supports two modes: SQL Mode (returns a runnable SQL query) and General Mode (returns a plain-English answer, no SQL)
 
 ## Key pages
 
 - [App](https://synth-sql.com/)
+- [Learn SQL: three free interactive courses (beginner, joins, analytics) with instant answer checking](https://synth-sql.com/learn)
 - [Pricing](https://synth-sql.com/pricing)
 - [All guides](https://synth-sql.com/guides)
 - [Guide — querying a CSV with SQL, no server required](https://synth-sql.com/query-csv-with-sql)

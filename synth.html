@@ -51,6 +51,19 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/regular/style.css">
+  <!-- Hides the home view before first paint on /learn, so the Learn page
+       doesn't flash the upload screen while scripts load. Cleared by
+       setActiveView() in app.js. -->
+  <script>
+    if (/^\/learn\/?$/.test(location.pathname) || /[?&]view=learn(&|$)/.test(location.search)) {
+      document.documentElement.classList.add('route-learn');
+      // /learn shares this file with "/", so give it its own search metadata.
+      document.title = 'Learn SQL: free interactive SQL courses · Synth';
+      document.querySelector('link[rel="canonical"]').href = 'https://synth-sql.com/learn';
+      document.querySelector('meta[property="og:url"]').content = 'https://synth-sql.com/learn';
+      document.querySelector('meta[name="description"]').content = 'Learn SQL by doing: 60 free interactive lessons from SELECT to window functions. Write a query, check your answer instantly, and get a hint or an AI tutor when you are stuck.';
+    }
+  </script>
   <script src="https://cdn.jsdelivr.net/npm/sql.js@1.8.0/dist/sql-wasm.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <!-- Loaded directly from Stripe, never bundled/self-hosted (PCI requirement). -->
@@ -66,6 +79,11 @@
   <script src="charts.js"></script>
   <script src="chat.js"></script>
   <script src="app.js"></script>
+  <script src="learn-datasets.js"></script>
+  <script src="learn-grader.js"></script>
+  <script src="learn-curriculum.js"></script>
+  <script src="learn-progress.js"></script>
+  <script src="learn.js"></script>
   <style>
     /* Covers the ~15 highest-frequency colors in this stylesheet (the
        long tail of one-off status/chart colors is left as literals —
@@ -4645,6 +4663,8 @@
       color: var(--color-text-muted);
     }
   </style>
+  <!-- After the inline styles, so Learn overrides of shared components win. -->
+  <link rel="stylesheet" href="learn.css">
   <script defer src="/analytics.js"></script>
 </head>
 <body>
@@ -4654,6 +4674,9 @@
     </a>
     <div class="header-right">
       <div class="auth-area">
+        <a href="/learn" id="learn-nav-btn" class="auth-btn learn-nav-btn" aria-label="Learn SQL" onclick="return openLearnFromNav(event)" title="Interactive SQL courses">
+          <i class="ph ph-graduation-cap" aria-hidden="true"></i><span class="learn-nav-label">Learn</span>
+        </a>
         <a href="https://bi.synth-sql.com" target="_blank" rel="noopener" class="auth-btn" title="Turn your data into dashboards">
           <img src="bi-icon.png" alt="" class="auth-btn-icon"> BI
         </a>
@@ -5253,6 +5276,14 @@
             <span>Sign in to chart any result as a column, line, pie, or other chart.</span>
           </li>
         </ol>
+        <a href="/learn" class="learn-promo" onclick="return openLearnFromNav(event)">
+          <span class="learn-promo-icon"><i class="ph ph-graduation-cap" aria-hidden="true"></i></span>
+          <span class="learn-promo-text">
+            <strong>New to SQL? Learn it here.</strong>
+            <span>Three free interactive courses, beginner to advanced, with instant feedback on every answer.</span>
+          </span>
+          <i class="ph ph-arrow-right learn-promo-arrow" aria-hidden="true"></i>
+        </a>
       </section>
     </main>
 
@@ -5261,6 +5292,7 @@
         <div class="landing-footer-brand">Synth</div>
         <nav class="landing-footer-links">
           <a href="/welcome">About</a>
+          <a href="/learn" onclick="return openLearnFromNav(event)">Learn SQL</a>
           <a href="/guides">Guides</a>
           <a href="/terms">Terms of Service</a>
           <a href="/privacy">Privacy Policy</a>
@@ -5473,6 +5505,158 @@
       </div>
     </div>
   </main>
+
+  <!-- ---- Learn (/learn): course overview + lesson player. See learn.js. ---- -->
+  <main id="learn-view" hidden>
+    <div id="learn-overview" class="learn-overview"></div>
+
+    <section id="learn-lesson" class="learn-lesson" hidden aria-label="Lesson">
+      <div class="upload-area learn-coursebar">
+        <div class="upload-wrapper">
+          <button type="button" class="home-ghost-btn learn-back-btn" onclick="learnShowOverview()">
+            <i class="ph ph-arrow-left" aria-hidden="true"></i> All courses
+          </button>
+          <div class="learn-coursebar-title">
+            <span id="learn-level-pill" class="learn-level-pill"></span>
+            <span id="learn-lesson-heading" class="learn-lesson-heading"></span>
+          </div>
+          <div class="learn-coursebar-progress" id="learn-progress" role="progressbar" aria-label="Level progress" aria-valuemin="0">
+            <div class="learn-progress-track"><div class="learn-progress-fill" id="learn-progress-fill"></div></div>
+            <span id="learn-progress-text" class="learn-progress-text"></span>
+          </div>
+          <div class="upload-wrapper-right">
+            <button type="button" class="save-btn" onclick="learnOpenOutline()"><i class="ph ph-list-bullets" aria-hidden="true"></i> Lessons</button>
+            <button type="button" class="help-btn learn-nav-arrow" id="learn-prev-btn" aria-label="Previous lesson"><i class="ph ph-caret-left" aria-hidden="true"></i></button>
+            <button type="button" class="help-btn learn-nav-arrow" id="learn-next-btn" aria-label="Next lesson"><i class="ph ph-caret-right" aria-hidden="true"></i></button>
+          </div>
+        </div>
+      </div>
+
+      <nav id="learn-stepper" class="learn-stepper" aria-label="Lessons in this level"></nav>
+
+      <div class="tabs" role="tablist">
+        <button type="button" class="tab-btn active" data-learn-tab="lesson" role="tab" aria-selected="true">Lesson &amp; Tutor</button>
+        <button type="button" class="tab-btn" data-learn-tab="tables" role="tab" aria-selected="false">Tables</button>
+      </div>
+
+      <div class="tab-panels">
+        <div id="learn-tab-lesson" class="tab-panel active">
+          <div class="workspace learn-workspace">
+            <aside class="preview-pane learn-guide-pane">
+              <div class="ai-header">
+                <div class="output-mode-toggle" role="tablist" aria-label="Lesson or tutor">
+                  <button type="button" class="output-mode-btn is-active" id="learn-pane-lesson-btn" role="tab" aria-selected="true">Lesson</button>
+                  <button type="button" class="output-mode-btn learn-tutor-tab" id="learn-pane-tutor-btn" role="tab" aria-selected="false"><i class="ph ph-lock-simple" id="learn-tutor-lock" aria-hidden="true"></i> AI Tutor</button>
+                </div>
+                <span class="learn-lesson-meta" id="learn-lesson-meta"></span>
+              </div>
+              <div id="learn-guide" class="learn-guide"></div>
+              <div id="learn-tutor" class="learn-tutor" hidden>
+                <div id="learn-tutor-locked" class="learn-tutor-locked"></div>
+                <div id="learn-tutor-chat" class="learn-tutor-chat" hidden>
+                  <div id="learn-tutor-context" class="learn-tutor-context"></div>
+                  <div id="learn-chat-messages" class="learn-chat-messages" data-query-target="learn-query-input" aria-live="polite"></div>
+                  <div class="learn-tutor-chips">
+                    <button type="button" class="learn-chip" onclick="learnTutorChip('why')">Why is my answer wrong?</button>
+                    <button type="button" class="learn-chip" onclick="learnTutorChip('hint')">Give me a hint</button>
+                    <button type="button" class="learn-chip" onclick="learnTutorChip('explain')">Explain the concept</button>
+                  </div>
+                  <div class="chat-input-wrapper">
+                    <textarea id="learn-chat-input" class="learn-chat-input" rows="1" placeholder="Ask the tutor about this question..." aria-label="Message the AI tutor" disabled></textarea>
+                    <button type="button" id="learn-chat-send" class="learn-chat-send" onclick="learnSendTutor()" disabled>Send</button>
+                  </div>
+                </div>
+              </div>
+            </aside>
+
+            <div class="pane-resizer pane-resizer-v" id="learn-workspace-resizer" title="Drag to resize"></div>
+
+            <div class="left-pane learn-code-pane">
+              <div class="editor-section">
+                <div class="editor-label-row">
+                  <div class="editor-label">SQL Query</div>
+                  <div class="keyboard-hint" title="Ctrl+Enter runs your query; Ctrl+Shift+Enter checks it">⌘↵ run · ⇧⌘↵ check</div>
+                </div>
+                <div class="query-schema-panel">
+                  <button type="button" class="query-schema-toggle" id="learn-schema-toggle" onclick="toggleLearnSchemaPanel()" aria-expanded="false">
+                    <span id="learn-schema-summary">Tables</span>
+                    <span class="query-schema-chevron">▾</span>
+                  </button>
+                  <div class="query-schema-body" id="learn-schema-body" hidden></div>
+                </div>
+                <div class="editor-wrapper">
+                  <div class="line-numbers" id="learn-line-numbers">1</div>
+                  <div class="query-input-stack">
+                    <pre class="query-highlight" id="learn-query-highlight" aria-hidden="true"><code id="learn-query-highlight-code"></code></pre>
+                    <textarea id="learn-query-input" class="learn-query-input" spellcheck="false" aria-label="Your SQL query"></textarea>
+                  </div>
+                </div>
+                <div class="editor-actions">
+                  <div class="editor-actions-left">
+                    <button type="button" class="run-btn" id="learn-run-btn" onclick="learnRunQuery()"><span>Run Query</span><span aria-hidden="true">▶</span></button>
+                    <button type="button" class="run-btn learn-check-btn" id="learn-check-btn" onclick="learnCheckAnswer()"><span>Check Answer</span><i class="ph ph-check-fat" aria-hidden="true"></i></button>
+                  </div>
+                  <button type="button" class="load-query-btn" onclick="learnResetEditor()"><i class="ph ph-arrow-counter-clockwise" aria-hidden="true"></i> Reset</button>
+                </div>
+                <div id="learn-feedback" class="learn-feedback" role="status" aria-live="polite" hidden></div>
+              </div>
+
+              <div class="pane-resizer pane-resizer-h" id="learn-editor-results-resizer" title="Drag to resize"></div>
+
+              <div class="results-section">
+                <div class="results-header">
+                  <div class="results-header-left">
+                    <div class="section-label" id="learn-results-label">Query Results</div>
+                    <span class="results-row-count" id="learn-results-count"></span>
+                  </div>
+                  <div class="table-view-toolbar-right">
+                    <button type="button" class="save-btn" id="learn-expected-btn" onclick="learnToggleExpected()" aria-pressed="false" hidden>Show expected result</button>
+                  </div>
+                </div>
+                <div id="learn-results" class="learn-results"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="learn-tab-tables" class="tab-panel">
+          <div class="table-view-panel learn-tables-panel">
+            <div id="learn-table-chips" class="learn-table-chips"></div>
+            <div id="learn-table-info" class="learn-table-info"></div>
+            <div id="learn-table-preview" class="learn-table-preview"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="learn-outline-modal" class="modal-overlay" hidden>
+    <div class="modal learn-outline-modal">
+      <div class="modal-header">
+        <div class="section-label">All lessons</div>
+        <button class="modal-close" onclick="closeLearnOutline()" aria-label="Close">&times;</button>
+      </div>
+      <div id="learn-outline-body"></div>
+    </div>
+  </div>
+
+  <div id="learn-level-modal" class="modal-overlay" hidden>
+    <div class="modal modal-small learn-level-modal">
+      <div id="learn-level-modal-body"></div>
+    </div>
+  </div>
+
+  <div id="learn-reset-modal" class="modal-overlay" hidden>
+    <div class="modal modal-small">
+      <div class="delete-warning-icon">⚠</div>
+      <div class="delete-warning-title">Reset your course progress?</div>
+      <div class="delete-warning-body">This clears every completed lesson, hint, and saved query in all three courses. If you're signed in, your synced progress is cleared too. It can't be undone.</div>
+      <div class="modal-actions">
+        <button class="modal-cancel-btn" onclick="closeLearnResetModal()">Cancel</button>
+        <button class="modal-confirm-delete-btn" onclick="confirmLearnReset()">Reset progress</button>
+      </div>
+    </div>
+  </div>
 
   <div id="delete-workspace-modal" class="modal-overlay" hidden>
     <div class="modal modal-small">
