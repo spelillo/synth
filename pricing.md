@@ -9,6 +9,7 @@ Synth is a browser-based SQL/AI query tool for CSV files. Two tiers, no trial pe
 - CSVs up to 100,000 rows
 - Save queries locally in the browser
 - No sign-in required to start (Lite Mode); optional free sign-in syncs workspaces across devices (Normal Mode)
+- Learn SQL (https://synth-sql.com/learn): all 60 interactive lessons in three courses are free; a free sign-in adds the AI tutor and syncs progress across devices
 
 ## Premium — $9.99 one-time
 
