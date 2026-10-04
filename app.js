@@ -9,6 +9,9 @@
 
     window.addEventListener('DOMContentLoaded', async () => {
       SQL = await initDB();
+      // The Learn page (learn.js) waits on this before building its lesson
+      // database, since its overview renders before sql.js has loaded.
+      document.dispatchEvent(new Event('synth:sql-ready'));
       initHome();
       initAuth();
       checkPremiumCheckoutReturn();
@@ -538,7 +541,8 @@
     const UPLOAD_EXTENSIONS = /\.(csv|json|ndjson|jsonl)$/i;
 
     function initHome() {
-      setActiveView('home');
+      // /learn (or ?view=learn) opens straight into the Learn page.
+      setActiveView(window.isLearnRoute && window.isLearnRoute() ? 'learn' : 'home');
       renderDashboard();
       renderPreviewDatasets();
       syncChartAccess();
@@ -614,14 +618,20 @@
       input.click();
     };
 
-    // Exactly one of home-view / app-view is visible. The header's
-    // "Workspaces" button only makes sense from inside the app.
+    // Exactly one of home-view / app-view / learn-view is visible. The
+    // header's "Workspaces" button only makes sense from inside the app.
     function setActiveView(view) {
       const onHome = view === 'home';
+      const onLearn = view === 'learn';
+      const learnView = document.getElementById('learn-view');
+      const leavingLearn = !onLearn && learnView && (!learnView.hidden || document.documentElement.classList.contains('route-learn'));
+      document.documentElement.classList.remove('route-learn');
       document.getElementById('home-view').hidden = !onHome;
-      document.getElementById('app-view').hidden = onHome;
-      document.getElementById('dashboard-nav-btn').hidden = onHome;
-      document.getElementById('home-return-btn').hidden = !(onHome && hasLoadedWorkspace());
+      document.getElementById('app-view').hidden = view !== 'app';
+      if (learnView) learnView.hidden = !onLearn;
+      document.getElementById('dashboard-nav-btn').hidden = view !== 'app';
+      document.getElementById('home-return-btn').hidden = !((onHome || onLearn) && hasLoadedWorkspace());
+      if (leavingLearn && typeof window.onLeaveLearnView === 'function') window.onLeaveLearnView();
     }
 
     function tableToCSVBlob(tableName) {
@@ -3071,12 +3081,16 @@
       resizerEl.classList.add('is-dragging');
       document.body.classList.add(type === 'h' ? 'resizing-row' : 'resizing-col');
 
+      // Scoped to the resizer's own container, so the same handlers drive
+      // both the main workspace and the Learn page's lesson workspace.
       if (type === 'h') {
-        const editorSection = document.querySelector('.editor-section');
-        paneDragState = { type, resizerEl, startY: event.clientY, startHeight: editorSection.getBoundingClientRect().height };
+        const editorSection = resizerEl.previousElementSibling;
+        const leftPane = resizerEl.parentElement;
+        paneDragState = { type, resizerEl, editorSection, leftPane, startY: event.clientY, startHeight: editorSection.getBoundingClientRect().height };
       } else {
-        const leftPane = document.querySelector('.left-pane');
-        paneDragState = { type, resizerEl, startX: event.clientX, startWidth: leftPane.getBoundingClientRect().width };
+        const workspace = resizerEl.parentElement;
+        const firstPane = workspace.firstElementChild;
+        paneDragState = { type, resizerEl, workspace, startX: event.clientX, startWidth: firstPane.getBoundingClientRect().width };
       }
 
       document.addEventListener('mousemove', onPaneDragMove);
@@ -3087,8 +3101,7 @@
       if (!paneDragState) return;
 
       if (paneDragState.type === 'h') {
-        const editorSection = document.querySelector('.editor-section');
-        const leftPane = document.querySelector('.left-pane');
+        const { editorSection, leftPane } = paneDragState;
         const RESIZER_SIZE = 8;
         // Matches the editor section's natural content height at the
         // textarea's own min-height (label row + 120px textarea + the
@@ -3105,7 +3118,7 @@
         const newHeight = Math.min(Math.max(paneDragState.startHeight + dy, MIN_EDITOR), maxHeight);
         editorSection.style.flex = `0 0 ${newHeight}px`;
       } else {
-        const workspace = document.querySelector('.workspace');
+        const { workspace } = paneDragState;
         const RESIZER_SIZE = 8;
         // Below this, the AI assistant header (label + Clear Session +
         // the on/off toggle) no longer fits on one line even with
@@ -3135,14 +3148,14 @@
     // .workspace having exactly 2 grid items instead of 3.
     function clearPaneOverridesForMobile() {
       if (window.innerWidth > 1024) return;
-      const workspace = document.querySelector('.workspace');
-      const editorSection = document.querySelector('.editor-section');
-      if (workspace) workspace.style.gridTemplateColumns = '';
-      if (editorSection) editorSection.style.flex = '';
+      document.querySelectorAll('.workspace').forEach(el => { el.style.gridTemplateColumns = ''; });
+      document.querySelectorAll('.editor-section').forEach(el => { el.style.flex = ''; });
     }
 
     document.addEventListener('keydown', (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      // Only while the main workspace is showing; the Learn page has its
+      // own Cmd/Ctrl+Enter (run) and Cmd/Ctrl+Shift+Enter (check answer).
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !document.getElementById('app-view').hidden) {
         e.preventDefault();
         runQuery();
       }
@@ -3174,6 +3187,9 @@
       'relationship-type-modal': 'closeRelationshipTypeModal',
       'delete-workspace-modal': 'closeDeleteWorkspaceModal',
       'switch-workspace-modal': 'closeSwitchWorkspaceModal',
+      'learn-outline-modal': 'closeLearnOutline',
+      'learn-level-modal': 'closeLearnLevelModal',
+      'learn-reset-modal': 'closeLearnResetModal',
     };
 
     function closeModalOverlay(overlay) {

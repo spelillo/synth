@@ -238,10 +238,11 @@
       });
       chatInputEl.addEventListener('input', () => autoGrowChatInput(chatInputEl));
 
-      document.querySelectorAll('.tab-btn').forEach(btn => {
+      // Scoped to the main workspace: the Learn page has its own tabs.
+      document.querySelectorAll('#app-view .tab-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-          document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-          document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+          document.querySelectorAll('#app-view .tab-btn').forEach(b => b.classList.remove('active'));
+          document.querySelectorAll('#app-view .tab-panel').forEach(p => p.classList.remove('active'));
           btn.classList.add('active');
           document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
           if (btn.dataset.tab === 'relationships') {
@@ -573,22 +574,34 @@
     window.insertQuery = function(id) {
       const pre = document.getElementById(id);
       const codeEl = pre.querySelector('code[data-sql]');
+      let code;
 
       if (codeEl) {
         const escapedCode = codeEl.getAttribute('data-sql');
-        const code = escapedCode
+        code = escapedCode
           .replace(/\\n/g, '\n')
           .replace(/&amp;/g, '&')
           .replace(/&lt;/g, '<')
           .replace(/&gt;/g, '>')
           .replace(/&quot;/g, '"')
           .replace(/&#39;/g, "'");
-        document.getElementById('query-input').value = code;
       } else {
-        const code = pre.querySelector('code').textContent.trim();
-        document.getElementById('query-input').value = code;
+        code = pre.querySelector('code').textContent.trim();
       }
 
+      // A chat panel can name a different editor (the Learn page's tutor
+      // sets data-query-target="learn-query-input").
+      const container = pre.closest('[data-query-target]');
+      const targetId = container ? container.dataset.queryTarget : 'query-input';
+      if (targetId !== 'query-input') {
+        const target = document.getElementById(targetId);
+        target.value = code;
+        target.dispatchEvent(new Event('input', { bubbles: true }));
+        target.focus();
+        return;
+      }
+
+      document.getElementById('query-input').value = code;
       resetQueryInputView();
       document.getElementById('query-input').focus();
     };

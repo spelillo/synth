@@ -17,6 +17,7 @@ Query any CSV or JSON file with real SQL, or in plain English, entirely in your 
 - You don't need an account to start. Lite Mode keeps everything in memory in your browser. Signing in adds the AI assistant, charts and Excel export, saved queries, and cloud sync for workspaces and chat sessions. Sign in, sign up, email confirmation, and password reset all happen in one modal, opened from the header's Sign in button.
 - A workspace can hold up to 10 tables, with table renaming, AI-written joins across tables, and suggested foreign-key relationships. Each CSV can have up to 500,000 rows.
 - Your file is only uploaded if you sign in and choose to save it to the cloud.
+- [Learn SQL](https://www.synth-sql.com/learn) has three free interactive courses (SQL Foundations, Joins & Combining Data, and Analytics SQL), 60 lessons in all. Each lesson gives a task, runs your query on real practice tables, checks it against the answer, and tells you exactly what's off. Hints unlock one at a time, the solution unlocks after two tries, and an AI tutor unlocks once you've made an attempt. See [LEARN.md](LEARN.md).
 
 ![Querying an uploaded CSV](screenshot-workspace.png)
 
@@ -25,6 +26,7 @@ Query any CSV or JSON file with real SQL, or in plain English, entirely in your 
 | Route | File | What it is |
 |---|---|---|
 | `/` | `synth.html` | The app: home view (upload and saved workspaces), then the query workspace |
+| `/learn` | `synth.html` | Learn SQL: three interactive courses (`/learn?lesson=b01` opens a lesson). See [LEARN.md](LEARN.md) |
 | `/welcome` | `welcome.html` | About page: Lite vs. Normal Mode comparison, how it works, and background on the project |
 | `/about` | none | Permanent redirect to `/welcome` |
 | `/guides` | `guides.html` | Index of the SQL how-to guides (`/query-csv-with-sql`, `/sql-cheat-sheet`, and others) |
@@ -48,6 +50,7 @@ The app is plain HTML, CSS, and JavaScript with no bundler or framework. `synth.
 | `charts.js` | Charts, the full-screen chart view, SVG download, and Excel export |
 | `chat.js` | The AI assistant panel |
 | `app.js` | Home view, uploads, workspaces, and everything else |
+| `learn-datasets.js`, `learn-curriculum.js`, `learn-grader.js`, `learn-progress.js`, `learn.js` | The Learn page: lesson tables, the three courses, answer checking, progress, and the page itself (styles in `learn.css`). See [LEARN.md](LEARN.md) |
 
 Other pieces:
 
@@ -67,7 +70,16 @@ npm install
 vercel dev
 ```
 
-`vercel dev` serves `synth.html` and the `api/` functions together, matching production. To work on the front end alone, any static server works (for example `python3 -m http.server 8123`, then open `/synth.html`), but the AI assistant, checkout, and the `vercel.json` routes won't be available.
+`vercel dev` serves `synth.html` and the `api/` functions together, matching production. To work on the front end alone, any static server works (for example `python3 -m http.server 8123`, then open `/synth.html`, or `/synth.html?view=learn` for the Learn page), but the AI assistant, checkout, and the `vercel.json` routes won't be available.
+
+### Tests
+
+```bash
+npm test           # Learn: answer grader, all 60 lessons against their data, datasets, progress
+npm run test:e2e   # Learn: browser test of the whole page (needs Playwright + Chromium)
+```
+
+`npm test` also runs on every pull request (`.github/workflows/test.yml`).
 
 ### Environment variables
 
