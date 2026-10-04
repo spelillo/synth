@@ -3,7 +3,8 @@
 //     Vercel dashboard under Analytics. The script 404s harmlessly until then.
 //  2. A tiny first-party counter (api/track.js -> usage_events) for the
 //     numbers Vercel's free tier can't give us: who ran a query, who came
-//     back, and which channel they came from. Only an event name, a random
+//     back, which channel they came from, and how far people get in Learn.
+//     Only an event name (plus a Learn lesson or course id), a random
 //     visitor id, the landing ?ref= tag, the referring site's hostname and
 //     the page path are sent. Never queries, file names, or data.
 (function () {
@@ -44,9 +45,11 @@
   function today() { return new Date().toISOString().slice(0, 10); }
 
   // Each event is sent at most once per visitor per day: enough to count
-  // daily users and returns without logging every click.
-  window.synthTrack = function (event) {
-    var dayKey = 'synth_ev_' + event;
+  // daily users and returns without logging every click. An optional
+  // detail (a Learn lesson or course id, never user input) is deduped
+  // separately, so finishing two lessons in a day sends two events.
+  window.synthTrack = function (event, detail) {
+    var dayKey = 'synth_ev_' + event + (detail ? ':' + detail : '');
     if (get(dayKey) === today()) return;
     set(dayKey, today());
     var body = JSON.stringify({
@@ -54,7 +57,8 @@
       visitor_id: visitorId,
       ref: get('synth_ref') || landingRef || null,
       referrer: referrerHost || null,
-      path: location.pathname.slice(0, 100)
+      path: location.pathname.slice(0, 100),
+      detail: detail || null
     });
     try {
       if (navigator.sendBeacon) {

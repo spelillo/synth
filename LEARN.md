@@ -57,6 +57,10 @@ For signed-in users it also syncs to one row of `public.learn_progress`. Pushes 
 
 The session lives in a size-limited shared cookie (`storage-cookie.js`), so progress is deliberately kept out of Supabase `user_metadata`.
 
+## Usage numbers
+
+Learn sends anonymous events through `analytics.js` to `usage_events`: `learn_open`, `learn_attempt` (Check Answer), `learn_lesson_done` and `learn_course_done` (with the lesson or course id in `detail`), and `learn_tutor`. Each is sent at most once per visitor per day (per lesson for completions). The Sunday email (`api/cron/weekly-marketing-report.js`, numbers in `api/_learnReport.js`) turns these and `learn_progress` into a Learn section. The events need `supabase/migrations/20261005000000_learn_usage_events.sql`; until it runs they're dropped and the email says so.
+
 ## Datasets
 
 | Group | Tables | Notes |
