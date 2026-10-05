@@ -15,7 +15,8 @@
     { "source": "/csv-to-sqlite-in-browser", "destination": "/csv-to-sqlite-in-browser.html" },
     { "source": "/join-two-csv-files-with-sql", "destination": "/join-two-csv-files-with-sql.html" },
     { "source": "/privacy-first-data-analysis", "destination": "/privacy-first-data-analysis.html" },
-    { "source": "/find-duplicate-rows-in-csv", "destination": "/find-duplicate-rows-in-csv.html" }
+    { "source": "/find-duplicate-rows-in-csv", "destination": "/find-duplicate-rows-in-csv.html" },
+    { "source": "/pivot-table-from-csv-with-sql", "destination": "/pivot-table-from-csv-with-sql.html" }
   ],
   "crons": [
     { "path": "/api/cron/enterprise-renewal-notices", "schedule": "0 13 * * *" },
