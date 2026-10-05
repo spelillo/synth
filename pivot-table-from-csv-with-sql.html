@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How to Make a Pivot Table from a CSV with SQL | Synth</title>
+<meta name="description" content="Turn a CSV into a pivot table with SQL: totals by category, months as columns, and percent of total. Copy-paste queries, no Excel, nothing to install.">
+<link rel="canonical" href="https://synth-sql.com/pivot-table-from-csv-with-sql">
+<meta property="og:title" content="How to Make a Pivot Table from a CSV with SQL">
+<meta property="og:description" content="Turn a CSV into a pivot table with SQL: totals by category, months as columns, and percent of total. Copy-paste queries, no Excel, nothing to install.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://synth-sql.com/pivot-table-from-csv-with-sql">
+<meta property="og:image" content="https://synth-sql.com/synth-og-card-v2.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="synthfavicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="marketing.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Article",
+      "headline": "How to Make a Pivot Table from a CSV with SQL",
+      "description": "Turn a CSV into a pivot table with SQL: totals by category, months as columns, and percent of total. Copy-paste queries, no Excel, nothing to install.",
+      "url": "https://synth-sql.com/pivot-table-from-csv-with-sql",
+      "dateModified": "2026-10-05",
+      "author": {
+        "@type": "Organization",
+        "name": "Synth"
+      },
+      "publisher": {
+        "@type": "Organization",
+        "name": "Synth",
+        "logo": "https://synth-sql.com/synth-logo.png"
+      }
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Can you make a pivot table with SQL?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. Group by the row field and use SUM(CASE WHEN column = 'value' THEN amount ELSE 0 END) for each column you want across the top. That is how a pivot works in SQLite, which has no PIVOT keyword."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How do I sum values by category in a CSV?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "SELECT category, SUM(amount) AS total FROM my_table GROUP BY category ORDER BY total DESC. This is the SQL equivalent of a one-field pivot table."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How do I put months as columns?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Extract the month with strftime('%Y-%m', date) and write one SUM(CASE WHEN ...) per month. Each CASE becomes a column in the result."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How do I show percent of total?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Divide each group's total by the grand total using a window function: ROUND(100.0 * SUM(amount) / SUM(SUM(amount)) OVER (), 1)."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Do I need Excel or a database for this?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. Synth loads the CSV into a SQLite database inside your browser tab. Nothing is installed and the file is not uploaded unless you sign in and choose to save it."
+          }
+        }
+      ]
+    }
+  ]
+}
+</script>
+  <script defer src="/analytics.js"></script>
+</head>
+<body>
+
+<header class="site-header">
+  <a href="/" class="site-header-logo-link">
+    <img src="synth-logo.png" alt="Synth" class="site-header-logo">
+  </a>
+  <nav class="site-header-nav">
+    <a href="/welcome">About</a>
+    <a href="/" class="cta">Open Synth</a>
+  </nav>
+</header>
+
+<main>
+  <div class="kicker">Guide</div>
+  <h1 class="page-title">How to make a pivot table from a CSV with SQL</h1>
+
+  <p class="lede">A pivot table answers questions like "how much did each category sell, by month?" You can get the same answer from a CSV with a few lines of SQL, and SQL keeps working when the file is too slow or messy for a spreadsheet. Synth runs these queries in your browser, with nothing to install and without uploading your file.</p>
+
+  <p>The examples below use a table called <code class="inline-code">sales</code> with the columns <code class="inline-code">order_date</code>, <code class="inline-code">region</code>, <code class="inline-code">category</code> and <code class="inline-code">amount</code>. Swap in your own column names.</p>
+
+  <h2>Step 1: Load the CSV</h2>
+  <p>Open <a href="/">Synth</a> and drop your CSV onto the page. It becomes a SQLite table named after the file, so <code class="inline-code">sales.csv</code> becomes <code class="inline-code">sales</code>. No account is needed.</p>
+
+  <h2>Step 2: Totals by one field</h2>
+  <p>The simplest pivot puts one field in rows and sums a number. In SQL that's a <code class="inline-code">GROUP BY</code>:</p>
+  <pre class="code-block"><code>SELECT category,
+       SUM(amount) AS total
+FROM sales
+GROUP BY category
+ORDER BY total DESC;</code></pre>
+
+  <h2>Step 3: Two fields in rows</h2>
+  <p>Add more fields to the <code class="inline-code">GROUP BY</code> to nest them, the way a pivot table stacks row labels. You can show several values at once, like a sum and a count:</p>
+  <pre class="code-block"><code>SELECT region, category,
+       SUM(amount) AS total,
+       COUNT(*)    AS orders
+FROM sales
+GROUP BY region, category
+ORDER BY region, total DESC;</code></pre>
+
+  <h2>Step 4: Put values across the top as columns</h2>
+  <p>This is the part people usually mean by "pivot." SQLite has no <code class="inline-code">PIVOT</code> keyword, so each column is a <code class="inline-code">SUM(CASE WHEN ...)</code> that only adds rows matching that column. Here months go across the top:</p>
+  <pre class="code-block"><code>SELECT category,
+       SUM(CASE WHEN strftime(&#x27;%m&#x27;, order_date) = &#x27;01&#x27; THEN amount ELSE 0 END) AS jan,
+       SUM(CASE WHEN strftime(&#x27;%m&#x27;, order_date) = &#x27;02&#x27; THEN amount ELSE 0 END) AS feb,
+       SUM(CASE WHEN strftime(&#x27;%m&#x27;, order_date) = &#x27;03&#x27; THEN amount ELSE 0 END) AS mar,
+       SUM(amount) AS total
+FROM sales
+GROUP BY category
+ORDER BY total DESC;</code></pre>
+  <p><code class="inline-code">strftime(&#x27;%m&#x27;, order_date)</code> pulls the month out of a date stored like <code class="inline-code">2026-01-15</code>. If your dates look different, ask Synth's AI assistant to convert them, or pivot on a text column such as <code class="inline-code">region</code> instead.</p>
+
+  <h2>Step 5: Percent of total</h2>
+  <p>A window function divides each group by the grand total, like "Show values as % of grand total" in a spreadsheet:</p>
+  <pre class="code-block"><code>SELECT category,
+       SUM(amount) AS total,
+       ROUND(100.0 * SUM(amount) / SUM(SUM(amount)) OVER (), 1) AS pct_of_total
+FROM sales
+GROUP BY category
+ORDER BY total DESC;</code></pre>
+
+  <h2>Step 6: Add a grand total row</h2>
+  <pre class="code-block"><code>SELECT &#x27;All categories&#x27; AS category, SUM(amount) AS total FROM sales
+UNION ALL
+SELECT category, SUM(amount) FROM sales GROUP BY category;</code></pre>
+
+  <h2>Save or chart the result</h2>
+  <p>Click <strong>Download CSV</strong> above the results to save the pivot. With a free account you can also turn any result into a chart and export it to Excel with the chart included.</p>
+
+  <h2>Don't want to write SQL?</h2>
+  <p>Sign in and ask the AI assistant something like "total sales by category with one column per month." It writes the query for you, using only your column names, never your data.</p>
+
+  <h2>Frequently asked questions</h2>
+  <details class="faq-item">
+    <summary>Can you make a pivot table with SQL?</summary>
+    <p>Yes. Group by the row field and use SUM(CASE WHEN column = &#x27;value&#x27; THEN amount ELSE 0 END) for each column you want across the top. That is how a pivot works in SQLite, which has no PIVOT keyword.</p>
+  </details>
+  <details class="faq-item">
+    <summary>How do I sum values by category in a CSV?</summary>
+    <p>SELECT category, SUM(amount) AS total FROM my_table GROUP BY category ORDER BY total DESC. This is the SQL equivalent of a one-field pivot table.</p>
+  </details>
+  <details class="faq-item">
+    <summary>How do I put months as columns?</summary>
+    <p>Extract the month with strftime(&#x27;%Y-%m&#x27;, date) and write one SUM(CASE WHEN ...) per month. Each CASE becomes a column in the result.</p>
+  </details>
+  <details class="faq-item">
+    <summary>How do I show percent of total?</summary>
+    <p>Divide each group&#x27;s total by the grand total using a window function: ROUND(100.0 * SUM(amount) / SUM(SUM(amount)) OVER (), 1).</p>
+  </details>
+  <details class="faq-item">
+    <summary>Do I need Excel or a database for this?</summary>
+    <p>No. Synth loads the CSV into a SQLite database inside your browser tab. Nothing is installed and the file is not uploaded unless you sign in and choose to save it.</p>
+  </details>
+
+  <div class="related-guides">
+    <h2>More guides</h2>
+    <ul>
+      <li><a href="/query-csv-with-sql">Query a CSV file with SQL</a></li>
+      <li><a href="/find-duplicate-rows-in-csv">Find and remove duplicate rows in a CSV</a></li>
+      <li><a href="/learn">Learn SQL with free interactive lessons</a></li>
+      <li><a href="/guides">All guides →</a></li>
+    </ul>
+  </div>
+
+  <div class="cta-band">
+    <h2>Pivot your own CSV</h2>
+    <p>No sign-in required to start.</p>
+    <a href="/" class="cta-btn">Open Synth</a>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="site-footer-inner">
+    <div class="site-footer-brand">Synth</div>
+    <nav class="site-footer-links">
+      <a href="/welcome">About</a>
+      <a href="/guides">Guides</a>
+      <a href="/terms">Terms of Service</a>
+      <a href="/privacy">Privacy Policy</a>
+    </nav>
+    <div class="site-footer-copyright">&copy; 2026 Synth. All rights reserved.</div>
+  </div>
+</footer>
+
+</body>
+</html>

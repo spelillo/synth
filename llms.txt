@@ -34,5 +34,6 @@ running client-side, entirely in your browser tab.
 - [Guide — joining two CSV files with SQL](https://synth-sql.com/join-two-csv-files-with-sql)
 - [Guide — privacy-first data analysis (Lite Mode)](https://synth-sql.com/privacy-first-data-analysis)
 - [Guide — finding and removing duplicate rows in a CSV](https://synth-sql.com/find-duplicate-rows-in-csv)
+- [Guide — making a pivot table from a CSV with SQL](https://synth-sql.com/pivot-table-from-csv-with-sql)
 - [About](https://synth-sql.com/welcome)
 - [Machine-readable pricing](https://synth-sql.com/pricing.md)
