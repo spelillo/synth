@@ -25,5 +25,5 @@ Early-adopter price while Synth is in beta. Paid once via Stripe — not a subsc
 
 - Payment processor: Stripe (card details never touch Synth's servers)
 - Billing model: one-time purchase, not recurring
-- Refund policy: purchases are non-refundable except where required by law — email spelillo11@gmail.com with questions
+- Refund policy: purchases are non-refundable except where required by law — email synth.sql@gmail.com with questions
 - Full page: https://synth-sql.com/pricing
