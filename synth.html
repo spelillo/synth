@@ -49,7 +49,7 @@
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/regular/style.css">
   <!-- Hides the home view before first paint on /learn, so the Learn page
        doesn't flash the upload screen while scripts load. Cleared by
@@ -3204,8 +3204,8 @@
     }
 
     /* ---- Drag-to-resize dividers (SQL editor / results, left pane /
-       AI assistant). Plain mouse events, same approach as the
-       drag-to-connect relationships feature. ---- */
+       AI assistant). Pointer events with capture, rubber-banding and a
+       spring settle; see startPaneDrag in app.js. ---- */
 
     .pane-resizer {
       flex: none;
@@ -4665,6 +4665,8 @@
   </style>
   <!-- After the inline styles, so Learn overrides of shared components win. -->
   <link rel="stylesheet" href="learn.css">
+  <!-- Last: press feedback, springs, materials and type tuning (with motion.js). -->
+  <link rel="stylesheet" href="motion.css">
   <script defer src="/analytics.js"></script>
 </head>
 <body>
@@ -5682,5 +5684,6 @@
     </div>
   </div>
 
+  <script src="motion.js"></script>
 </body>
 </html>

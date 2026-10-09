@@ -1194,8 +1194,8 @@ How to help:
         chatInput.style.height = Math.min(chatInput.scrollHeight, 160) + 'px';
       });
 
-      document.getElementById('learn-workspace-resizer').addEventListener('mousedown', (e) => startPaneDrag(e, 'v'));
-      document.getElementById('learn-editor-results-resizer').addEventListener('mousedown', (e) => startPaneDrag(e, 'h'));
+      document.getElementById('learn-workspace-resizer').addEventListener('pointerdown', (e) => startPaneDrag(e, 'v'));
+      document.getElementById('learn-editor-results-resizer').addEventListener('pointerdown', (e) => startPaneDrag(e, 'h'));
 
       // ⌘/Ctrl+Enter runs, ⌘/Ctrl+Shift+Enter checks. The app view has its
       // own ⌘/Ctrl+Enter handler (app.js), scoped to when it's visible.
