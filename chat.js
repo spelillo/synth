@@ -259,8 +259,8 @@
 
       document.getElementById('load-query-list').addEventListener('scroll', closeAllQueryMenus);
 
-      document.getElementById('editor-results-resizer').addEventListener('mousedown', (e) => startPaneDrag(e, 'h'));
-      document.getElementById('workspace-resizer').addEventListener('mousedown', (e) => startPaneDrag(e, 'v'));
+      document.getElementById('editor-results-resizer').addEventListener('pointerdown', (e) => startPaneDrag(e, 'h'));
+      document.getElementById('workspace-resizer').addEventListener('pointerdown', (e) => startPaneDrag(e, 'v'));
       window.addEventListener('resize', clearPaneOverridesForMobile);
 
       updateLineNumbers();

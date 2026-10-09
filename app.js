@@ -3066,43 +3066,55 @@
     };
 
     // ---- Drag-to-resize panes: SQL editor <-> Query Results (height), and
-    // left pane <-> AI assistant (width). Plain mouse events, matching the
-    // drag-to-connect relationships feature. Session-only — not persisted
-    // across reloads. Inert below the 1024px breakpoint, where .workspace
-    // stacks into a single column (see .pane-resizer-v's [hidden] rule and
-    // the matching guard in startPaneDrag).
+    // left pane <-> AI assistant (width). Pointer events with capture, so
+    // the divider stays glued to the pointer even when it leaves the 8px
+    // strip. Past a min/max the pane rubber-bands instead of stopping dead,
+    // and on release it springs back to the limit, carrying the pointer's
+    // velocity. Session-only — not persisted across reloads. Inert below
+    // the 1024px breakpoint, where .workspace stacks into a single column
+    // (see .pane-resizer-v's [hidden] rule and the matching guard in
+    // startPaneDrag).
 
-    let paneDragState = null; // { type: 'h' | 'v', resizerEl, startX/startY, startHeight/startWidth }
+    let paneDragState = null; // { type, resizerEl, pointerId, start, startSize, min, max, value, history }
+    const paneSprings = new WeakMap(); // resizerEl -> rAF id of a settling spring
+
+    // Progressive resistance past a bound (the further past, the less the
+    // pane follows), from Apple's scroll-view rubber-banding.
+    function rubberband(overshoot, dimension, constant = 0.55) {
+      return (overshoot * dimension * constant) / (dimension + constant * Math.abs(overshoot));
+    }
+
+    function applyPaneSize(state, size) {
+      if (state.type === 'h') {
+        state.editorSection.style.flex = `0 0 ${size}px`;
+      } else {
+        state.workspace.style.gridTemplateColumns = `${size}px 8px 1fr`;
+      }
+    }
 
     function startPaneDrag(event, type) {
       if (window.innerWidth <= 1024) return;
+      if (event.button !== undefined && event.button !== 0) return;
       event.preventDefault();
       const resizerEl = event.currentTarget;
+
+      // Grabbing a pane that's still springing back stops it where it is
+      // and starts the new drag from that on-screen size.
+      cancelAnimationFrame(paneSprings.get(resizerEl));
+      paneSprings.delete(resizerEl);
+
       resizerEl.classList.add('is-dragging');
       document.body.classList.add(type === 'h' ? 'resizing-row' : 'resizing-col');
+      if (event.pointerId !== undefined && resizerEl.setPointerCapture) {
+        try { resizerEl.setPointerCapture(event.pointerId); } catch (e) { /* synthetic event */ }
+      }
 
+      const RESIZER_SIZE = 8;
       // Scoped to the resizer's own container, so the same handlers drive
       // both the main workspace and the Learn page's lesson workspace.
       if (type === 'h') {
         const editorSection = resizerEl.previousElementSibling;
         const leftPane = resizerEl.parentElement;
-        paneDragState = { type, resizerEl, editorSection, leftPane, startY: event.clientY, startHeight: editorSection.getBoundingClientRect().height };
-      } else {
-        const workspace = resizerEl.parentElement;
-        const firstPane = workspace.firstElementChild;
-        paneDragState = { type, resizerEl, workspace, startX: event.clientX, startWidth: firstPane.getBoundingClientRect().width };
-      }
-
-      document.addEventListener('mousemove', onPaneDragMove);
-      document.addEventListener('mouseup', onPaneDragEnd);
-    }
-
-    function onPaneDragMove(event) {
-      if (!paneDragState) return;
-
-      if (paneDragState.type === 'h') {
-        const { editorSection, leftPane } = paneDragState;
-        const RESIZER_SIZE = 8;
         // Matches the editor section's natural content height at the
         // textarea's own min-height (label row + 120px textarea + the
         // Run/Save/Load Query button row + padding) — going any smaller
@@ -3111,35 +3123,83 @@
         // be tested for.
         const MIN_EDITOR = 264;
         const MIN_RESULTS = 140;
-
-        const dy = event.clientY - paneDragState.startY;
         const leftPaneHeight = leftPane.getBoundingClientRect().height;
-        const maxHeight = Math.max(MIN_EDITOR, leftPaneHeight - RESIZER_SIZE - MIN_RESULTS);
-        const newHeight = Math.min(Math.max(paneDragState.startHeight + dy, MIN_EDITOR), maxHeight);
-        editorSection.style.flex = `0 0 ${newHeight}px`;
+        const startSize = editorSection.getBoundingClientRect().height;
+        paneDragState = {
+          type, resizerEl, editorSection, start: event.clientY, startSize, value: startSize,
+          min: MIN_EDITOR, max: Math.max(MIN_EDITOR, leftPaneHeight - RESIZER_SIZE - MIN_RESULTS), dimension: Math.min(leftPaneHeight, 400),
+        };
       } else {
-        const { workspace } = paneDragState;
-        const RESIZER_SIZE = 8;
+        const workspace = resizerEl.parentElement;
+        const firstPane = workspace.firstElementChild;
         // Below this, the AI assistant header (label + Clear Session +
         // the on/off toggle) no longer fits on one line even with
         // flex-wrap, so keep both panes at least this wide.
         const MIN_PANE = 340;
-
-        const dx = event.clientX - paneDragState.startX;
         const workspaceWidth = workspace.getBoundingClientRect().width;
-        const maxWidth = Math.max(MIN_PANE, workspaceWidth - RESIZER_SIZE - MIN_PANE);
-        const newWidth = Math.min(Math.max(paneDragState.startWidth + dx, MIN_PANE), maxWidth);
-        workspace.style.gridTemplateColumns = `${newWidth}px ${RESIZER_SIZE}px 1fr`;
+        const startSize = firstPane.getBoundingClientRect().width;
+        paneDragState = {
+          type, resizerEl, workspace, start: event.clientX, startSize, value: startSize,
+          min: MIN_PANE, max: Math.max(MIN_PANE, workspaceWidth - RESIZER_SIZE - MIN_PANE), dimension: Math.min(workspaceWidth, 400),
+        };
       }
+      paneDragState.history = [{ v: paneDragState.value, t: performance.now() }];
+
+      document.addEventListener('pointermove', onPaneDragMove);
+      document.addEventListener('pointerup', onPaneDragEnd);
+      document.addEventListener('pointercancel', onPaneDragEnd);
+    }
+
+    function onPaneDragMove(event) {
+      if (!paneDragState) return;
+      const s = paneDragState;
+      const delta = (s.type === 'h' ? event.clientY : event.clientX) - s.start;
+      const raw = s.startSize + delta;
+      let size = raw;
+      if (raw < s.min) size = s.min - rubberband(s.min - raw, s.dimension);
+      else if (raw > s.max) size = s.max + rubberband(raw - s.max, s.dimension);
+      s.value = size;
+      s.history.push({ v: size, t: performance.now() });
+      if (s.history.length > 5) s.history.shift();
+      applyPaneSize(s, size);
     }
 
     function onPaneDragEnd() {
       if (!paneDragState) return;
-      paneDragState.resizerEl.classList.remove('is-dragging');
-      document.body.classList.remove('resizing-row', 'resizing-col');
+      const s = paneDragState;
       paneDragState = null;
-      document.removeEventListener('mousemove', onPaneDragMove);
-      document.removeEventListener('mouseup', onPaneDragEnd);
+      s.resizerEl.classList.remove('is-dragging');
+      document.body.classList.remove('resizing-row', 'resizing-col');
+      document.removeEventListener('pointermove', onPaneDragMove);
+      document.removeEventListener('pointerup', onPaneDragEnd);
+      document.removeEventListener('pointercancel', onPaneDragEnd);
+
+      const target = Math.min(Math.max(s.value, s.min), s.max);
+      if (target === s.value) return;
+      const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (reduceMotion) { applyPaneSize(s, target); return; }
+
+      // Release velocity (px/s) from the last few moves, handed to a
+      // critically damped spring (response 0.35s) so there's no seam
+      // between dragging and settling.
+      const first = s.history[0], last = s.history[s.history.length - 1];
+      const dt = (last.t - first.t) / 1000;
+      const v0 = dt > 0 ? (last.v - first.v) / dt : 0;
+      const omega = 2 * Math.PI / 0.35;
+      const x0 = s.value - target;
+      const t0 = performance.now();
+      const step = (now) => {
+        const t = (now - t0) / 1000;
+        const x = (x0 + (v0 + omega * x0) * t) * Math.exp(-omega * t);
+        if (Math.abs(x) < 0.5 && t > 0.05) {
+          applyPaneSize(s, target);
+          paneSprings.delete(s.resizerEl);
+          return;
+        }
+        applyPaneSize(s, target + x);
+        paneSprings.set(s.resizerEl, requestAnimationFrame(step));
+      };
+      paneSprings.set(s.resizerEl, requestAnimationFrame(step));
     }
 
     // A resize crossing the 1024px breakpoint (e.g. shrinking the browser

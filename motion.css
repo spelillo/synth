@@ -1,0 +1,329 @@
+/* motion.css — feel layer for synth.html, after Apple's interface
+   guidelines (Designing Fluid Interfaces, UI typography, materials).
+   Colors and fonts stay exactly as defined in synth.html and learn.css;
+   this file only changes how things move, layer and set type. Loaded
+   after both, and paired with motion.js (press feedback, popover origins,
+   header scroll edge). */
+
+:root {
+  /* Critically damped spring (damping 1.0, response 0.35s) sampled for
+     CSS. No overshoot: the default for anything that appears on its own. */
+  --ease-spring: linear(0, 0.037, 0.121, 0.227, 0.336, 0.441, 0.536, 0.619, 0.69, 0.75, 0.8, 0.84, 0.873, 0.9, 0.921, 0.938, 0.952, 0.962, 0.971, 0.977, 0.982, 0.986, 0.99, 0.992, 0.994, 0.995, 0.996, 0.997, 0.998, 0.998, 1);
+  /* Exit curve: the same spring mirrored, so things leave along the path
+     they arrived on. */
+  --ease-spring-out: cubic-bezier(0.4, 0, 0.9, 0.6);
+  --spring-duration: 500ms;
+  --spring-duration-short: 380ms;
+
+  /* Translucent materials, built from the existing palette. Thicker
+     (more opaque) for bigger surfaces. */
+  --material-chrome: color-mix(in srgb, var(--color-bg) 78%, transparent);
+  --material-scrim: rgba(32, 21, 21, 0.32);
+  --hairline: color-mix(in srgb, var(--color-text) 12%, transparent);
+
+  /* Set by motion.js from the header's real height. */
+  --chrome-h: 0px;
+}
+
+/* ---- Typography: tracking and leading by size ----
+   Large text tightens, small caps open up, body stays at 0. Optical
+   sizing lets Inter use its display cut at heading sizes. */
+
+body {
+  font-optical-sizing: auto;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+.learn-hero-title {
+  letter-spacing: -0.026em;
+  line-height: 1.06;
+}
+
+.home-dropzone-title {
+  letter-spacing: -0.022em;
+  line-height: 1.1;
+}
+
+.account-title,
+.account-pitch-title,
+.learn-guide-title,
+.learn-level-modal-title {
+  letter-spacing: -0.017em;
+  line-height: 1.18;
+}
+
+.home-section-title,
+.learn-level-title {
+  letter-spacing: -0.015em;
+  line-height: 1.22;
+}
+
+.section-label,
+.modal-header h2,
+.modal-header h3 {
+  letter-spacing: -0.011em;
+  line-height: 1.3;
+}
+
+/* Small uppercase labels: open tracking so 10-13px caps stay legible. */
+.workspace-badge,
+.workspace-sessions-label,
+.rel-badge,
+.stat-card-type,
+.preview-info-card-title,
+.learn-card-label,
+.learn-eyebrow,
+.learn-stat-list dt,
+.learn-level-kicker,
+.learn-syllabus-module-title,
+.learn-level-pill,
+.learn-hint-num {
+  letter-spacing: 0.06em;
+}
+
+/* Buttons read as one weight-led unit; drop the fixed 0.144px tracking. */
+.auth-btn {
+  letter-spacing: -0.006em;
+}
+
+/* ---- Response: press feedback ----
+   motion.js scales pressables on pointer-down and springs them back on
+   release. The older translateY nudges would double up with it. */
+
+.home-dark-btn:active,
+.home-dropzone-btn:active,
+.account-submit:active {
+  transform: none;
+}
+
+button,
+a,
+[role="button"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+[role="button"],
+.auth-btn {
+  touch-action: manipulation; /* no double-tap-zoom delay on taps */
+}
+
+.pane-resizer {
+  touch-action: none;
+}
+
+/* ---- Materials: translucent chrome, scroll edge instead of a rule ----
+   The header floats over Home and Learn: those views slide up under it
+   (motion.js measures --chrome-h) so their content scrolls beneath the
+   blur. Its bottom rule only appears once something is actually under
+   it. Banners between the header and a view switch the overlap off. */
+
+.header {
+  position: relative;
+  z-index: 40;
+  background: var(--material-chrome);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border-bottom-color: transparent;
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.header.is-scrolled-under {
+  border-bottom-color: var(--hairline);
+  box-shadow: 0 10px 24px -18px rgba(32, 21, 21, 0.35);
+}
+
+/* The workspace sits flush under the header with no scroll beneath, so it
+   keeps a quiet hairline in place of the old full-strength rule. */
+body:has(> #app-view:not([hidden])) .header {
+  border-bottom-color: var(--hairline);
+}
+
+body:not(:has(> .premium-success-banner:not([hidden]))) > #home-view,
+body:not(:has(> .premium-success-banner:not([hidden]))) > #learn-view {
+  margin-top: calc(-1 * var(--chrome-h));
+}
+
+body:not(:has(> .premium-success-banner:not([hidden]))) > #home-view {
+  padding-top: var(--chrome-h);
+  scroll-padding-top: var(--chrome-h);
+}
+
+body:not(:has(> .premium-success-banner:not([hidden]))) > #learn-view > .learn-overview {
+  padding-top: calc(var(--chrome-h) + 40px);
+  scroll-padding-top: var(--chrome-h);
+}
+
+body:not(:has(> .premium-success-banner:not([hidden]))) > #learn-view > .learn-lesson {
+  padding-top: var(--chrome-h);
+}
+
+@media (max-width: 640px) {
+  body:not(:has(> .premium-success-banner:not([hidden]))) > #learn-view > .learn-overview {
+    padding-top: calc(var(--chrome-h) + 20px);
+  }
+}
+
+/* ---- Sheets: modals materialize from where they were opened ----
+   Scrim fades and blurs the page; the card scales up from its trigger
+   (motion.js sets transform-origin) with blur and opacity together, on a
+   critically damped spring. CSS transitions start from the current value,
+   so closing mid-open simply reverses. */
+
+.modal-overlay {
+  background: var(--material-scrim);
+  -webkit-backdrop-filter: blur(6px) saturate(120%);
+  backdrop-filter: blur(6px) saturate(120%);
+  opacity: 1;
+  transition:
+    opacity 220ms ease,
+    display 320ms allow-discrete,
+    overlay 320ms allow-discrete;
+}
+
+.modal-overlay[hidden] {
+  opacity: 0;
+}
+
+.modal-overlay > .modal {
+  transform: none;
+  opacity: 1;
+  filter: none;
+  transition:
+    transform var(--spring-duration) var(--ease-spring),
+    opacity 200ms ease,
+    filter 260ms ease;
+}
+
+.modal-overlay[hidden] > .modal {
+  transform: scale(0.94);
+  opacity: 0;
+  filter: blur(6px);
+  transition:
+    transform 260ms var(--ease-spring-out),
+    opacity 200ms ease,
+    filter 220ms ease;
+}
+
+@starting-style {
+  .modal-overlay:not([hidden]) {
+    opacity: 0;
+  }
+  .modal-overlay:not([hidden]) > .modal {
+    transform: scale(0.94);
+    opacity: 0;
+    filter: blur(6px);
+  }
+}
+
+/* Bigger surface, thicker material: deeper shadow on the chart sheet. */
+.modal.chart-fullscreen-modal {
+  box-shadow: 0 40px 80px -24px rgba(32, 21, 21, 0.45), 0 0 0 1px rgba(32, 21, 21, 0.06);
+}
+
+/* ---- Popovers: anchored to their trigger ----
+   Grow out of the button that opened them (origin set by motion.js,
+   top-left by default) and shrink back into it. */
+
+.workspace-switcher-panel,
+.focus-dropdown-panel,
+.query-card-menu-popup {
+  transform-origin: var(--popover-origin, top left);
+  transition:
+    transform var(--spring-duration-short) var(--ease-spring),
+    opacity 160ms ease,
+    display 200ms allow-discrete;
+}
+
+.workspace-switcher-panel[hidden],
+.focus-dropdown-panel[hidden],
+.query-card-menu-popup[hidden] {
+  transform: scale(0.92);
+  opacity: 0;
+  transition:
+    transform 180ms var(--ease-spring-out),
+    opacity 140ms ease,
+    display 180ms allow-discrete;
+}
+
+@starting-style {
+  .workspace-switcher-panel:not([hidden]),
+  .focus-dropdown-panel:not([hidden]),
+  .query-card-menu-popup:not([hidden]) {
+    transform: scale(0.92);
+    opacity: 0;
+  }
+}
+
+.workspace-switcher-chevron,
+.focus-dropdown-chevron,
+.query-schema-chevron {
+  transition: transform var(--spring-duration-short) var(--ease-spring);
+}
+
+/* ---- Accessibility ---- */
+
+/* Reduced motion: no scaling or springs, short cross-fades only. */
+@media (prefers-reduced-motion: reduce) {
+  .modal-overlay > .modal,
+  .modal-overlay[hidden] > .modal,
+  .workspace-switcher-panel,
+  .focus-dropdown-panel,
+  .query-card-menu-popup,
+  .workspace-switcher-panel[hidden],
+  .focus-dropdown-panel[hidden],
+  .query-card-menu-popup[hidden] {
+    transform: none !important;
+    filter: none !important;
+    transition: opacity 150ms ease, display 150ms allow-discrete;
+  }
+  @starting-style {
+    .modal-overlay:not([hidden]) > .modal,
+    .workspace-switcher-panel:not([hidden]),
+    .focus-dropdown-panel:not([hidden]),
+    .query-card-menu-popup:not([hidden]) {
+      transform: none;
+      filter: none;
+    }
+  }
+}
+
+/* Reduced transparency: solid chrome and scrims, no blur. */
+@media (prefers-reduced-transparency: reduce) {
+  .header {
+    background: var(--color-bg);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .modal-overlay {
+    background: rgba(32, 21, 21, 0.55);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* Higher contrast: solid surfaces with defined edges. */
+@media (prefers-contrast: more) {
+  :root {
+    --hairline: var(--color-text);
+  }
+  .header {
+    background: var(--color-bg);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    border-bottom-color: var(--color-text);
+  }
+  .modal-overlay {
+    background: rgba(32, 21, 21, 0.6);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .modal,
+  .workspace-switcher-panel,
+  .focus-dropdown-panel,
+  .query-card-menu-popup {
+    border: 1px solid var(--color-text);
+  }
+}
