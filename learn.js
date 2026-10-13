@@ -326,7 +326,7 @@
           <div class="learn-hero-text">
             <p class="learn-eyebrow"><i class="ph ph-graduation-cap" aria-hidden="true"></i> Synth Learn</p>
             <h1 class="learn-hero-title">Learn SQL by writing it.</h1>
-            <p class="learn-hero-sub">Three hands-on courses, ${total} short lessons, from your first <code>SELECT</code> to window functions. Read a concept, write a real query against real tables, and get instant, specific feedback. When you're stuck, an AI tutor helps, once you've given it a try yourself.</p>
+            <p class="learn-hero-sub">Three courses and ${total} short lessons take you from your first <code>SELECT</code> to window functions. In each lesson you write a query against real tables, and Synth checks it right away and tells you what's off. If you're still stuck after trying, an AI tutor can help.</p>
             <div class="learn-hero-actions">
               <button type="button" class="run-btn" onclick="learnGoToLesson('${target.id}')">
                 <span>${started ? `Continue: ${escapeHtml(target.title)}` : 'Start the first lesson'}</span><span aria-hidden="true">▶</span>
@@ -356,8 +356,8 @@
           <ol class="learn-how-steps">
             <li><span class="home-flow-num">1</span><i class="ph ph-book-open-text" aria-hidden="true"></i><strong>Read the concept</strong><span>A short explanation and an example you can run.</span></li>
             <li><span class="home-flow-num">2</span><i class="ph ph-code" aria-hidden="true"></i><strong>Write your query</strong><span>In the same editor as the main app, against real tables.</span></li>
-            <li><span class="home-flow-num">3</span><i class="ph ph-check-square-offset" aria-hidden="true"></i><strong>Check your answer</strong><span>Your result is compared to the right one, with feedback on exactly what's off.</span></li>
-            <li><span class="home-flow-num">4</span><i class="ph ph-sparkle" aria-hidden="true"></i><strong>Unlock the tutor</strong><span>After your first attempt, ask the AI tutor for a nudge. It won't just hand you the answer.</span></li>
+            <li><span class="home-flow-num">3</span><i class="ph ph-check-square-offset" aria-hidden="true"></i><strong>Check your answer</strong><span>Synth compares your result to the expected one and points out what's different.</span></li>
+            <li><span class="home-flow-num">4</span><i class="ph ph-sparkle" aria-hidden="true"></i><strong>Unlock the tutor</strong><span>After your first attempt, you can ask the AI tutor for a nudge. It holds back the full solution until you've tried a couple of times.</span></li>
           </ol>
         </section>
 
@@ -944,7 +944,7 @@
         <div class="learn-trophy" aria-hidden="true"><i class="ph ${done ? 'ph-trophy' : 'ph-flag-checkered'}"></i></div>
         <h2 class="learn-level-modal-title">${done ? `${escapeHtml(level.level)} complete!` : `${escapeHtml(level.level)}: ${s.completed} of ${s.total} done`}</h2>
         <p class="help-text">${done
-          ? `You finished <strong>${escapeHtml(level.title)}</strong>. ${nextLevel ? `Up next: ${escapeHtml(nextLevel.title)}.` : 'That\'s the whole path. You can write real analytics SQL now.'}`
+          ? `You finished <strong>${escapeHtml(level.title)}</strong>. ${nextLevel ? `Up next: ${escapeHtml(nextLevel.title)}.` : 'That was the last level, and you can now write analytics SQL with CTEs and window functions.'}`
           : 'A few lessons in this level are still open. Finish them from the lesson list whenever you like.'}</p>
         <dl class="learn-stat-list learn-stat-list-row">
           <div><dt>Lessons</dt><dd>${s.completed}<span>/${s.total}</span></dd></div>
