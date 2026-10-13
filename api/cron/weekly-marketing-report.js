@@ -1,14 +1,15 @@
 // Vercel Cron Job (see vercel.json "crons") — runs Sundays. Emails a short
 // growth report for the past 7 days, compared with the 7 before: visitors,
-// people who ran a query, returning users, new accounts, and where visitors
-// came from. Reads usage_events (written by api/track.js) and the Supabase
-// auth user list.
+// people who ran a query, returning users, new accounts, where visitors
+// came from, and how Learn is being used. Reads usage_events (written by
+// api/track.js), learn_progress, and the Supabase auth user list.
 //
 // Recipient: MARKETING_REPORT_TO, falling back to GMAIL_USER (the address
 // the mailer sends from). Protected by CRON_SECRET, like the other cron.
 
 import { createClient } from '@supabase/supabase-js';
 import { sendMail } from '../_mailer.js';
+import { summarizeLearnEvents, summarizeLearnProgress, learnTrackingEnabled, fetchLearnProgress } from '../_learnReport.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -21,13 +22,13 @@ function getSupabaseAdmin() {
   return cachedSupabaseAdmin;
 }
 
-async function fetchEventsSince(supabase, since) {
+async function fetchEventsSince(supabase, since, { withDetail = false } = {}) {
   const rows = [];
   const pageSize = 1000;
   for (let from = 0; ; from += pageSize) {
     const { data, error } = await supabase
       .from('usage_events')
-      .select('event, visitor_id, ref, referrer, path, created_at')
+      .select(`event, visitor_id, ref, referrer, path, created_at${withDetail ? ', detail' : ''}`)
       .gte('created_at', since.toISOString())
       .order('id', { ascending: true })
       .range(from, from + pageSize - 1);
@@ -92,6 +93,30 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
+function learnSection(r) {
+  if (r.trackingMissing) return null;
+  const l = r.learn;
+  const p = r.learnProgress;
+  const lines = l ? [
+    ['Opened Learn', `${l.openers}${delta(l.openers, l.prevOpeners)}`],
+    ['Checked an answer', `${l.attempters}`],
+    ['Lessons completed', `${l.lessonsCompleted}${delta(l.lessonsCompleted, l.prevLessonsCompleted)}, by ${l.completers} ${l.completers === 1 ? 'person' : 'people'}`],
+    ['Used the AI tutor', `${l.tutorUsers}`],
+    ['Came back to Learn', `${l.returning}`],
+    ['Signed up from Learn', `${l.signupsFromLearn}`],
+  ] : [];
+  lines.push(['Signed-in learners with progress', p
+    ? `${p.accounts} (${p.activeThisWeek} completed a lesson this week)`
+    : 'unavailable']);
+  const courses = l ? l.byCourse
+    .filter(c => c.lessons || c.finished)
+    .map(c => [c.label, `${c.lessons} lesson${c.lessons === 1 ? '' : 's'} by ${c.people}${c.finished ? `, ${c.finished} finished the course` : ''}`]) : [];
+  const notes = [];
+  if (!l) notes.push('Learn tracking isn\'t on yet, so only signed-in progress is shown. Run supabase/migrations/20261005000000_learn_usage_events.sql once to turn it on.');
+  if (!p) notes.push('Signed-in progress isn\'t available (the learn_progress table is missing). Run supabase/migrations/20261004000000_learn_progress.sql to add it.');
+  return { lines, courses, notes };
+}
+
 function buildEmail(r) {
   const lines = [
     ['Visitors', `${r.visitors}${delta(r.visitors, r.prevVisitors)}`],
@@ -107,7 +132,9 @@ function buildEmail(r) {
     ? `<table style="border-collapse:collapse">${rows.map(([k, v]) => `<tr><td style="padding:2px 16px 2px 0">${escapeHtml(k)}</td><td style="text-align:right">${v}</td></tr>`).join('')}</table>`
     : '<p style="margin:0;color:#666">Nothing yet.</p>');
 
-  const subject = `Synth weekly: ${r.queriers} ran a query, ${r.newAccounts ?? "?"} new accounts, ${r.visitors} visitors`;
+  const learn = learnSection(r);
+  const subject = `Synth weekly: ${r.queriers} ran a query, ${r.newAccounts ?? "?"} new accounts, ${r.visitors} visitors`
+    + (r.learn ? `, ${r.learn.lessonsCompleted} Learn lessons` : '');
   const note = r.trackingMissing
     ? 'Usage tracking isn\'t set up yet (the usage_events table is missing), so only account numbers are shown. Run supabase/migrations/20261002000000_usage_events.sql once to turn it on.'
     : '';
@@ -119,6 +146,12 @@ function buildEmail(r) {
     list('Where visitors came from (sites)', r.referrers),
     list('Tracked campaign links (?ref=)', r.refs),
     list('Most visited pages', r.pages),
+    learn && [
+      'Learn',
+      ...learn.notes,
+      learn.lines.map(([k, v]) => `${k}: ${v}`).join('\n'),
+      r.learn ? list('Lessons completed by course', learn.courses) : '',
+    ].filter(Boolean).join('\n\n'),
     '— Synth',
   ].filter(Boolean).join('\n\n');
 
@@ -129,10 +162,16 @@ ${note ? `<p style="color:#a15c00">${escapeHtml(note)}</p>` : ''}
 ${htmlList('Where visitors came from (sites)', r.referrers)}
 ${htmlList('Tracked campaign links (?ref=)', r.refs)}
 ${htmlList('Most visited pages', r.pages)}
+${learn ? `<h3 style="margin:28px 0 6px;font-size:16px">Learn</h3>
+${learn.notes.map(n => `<p style="color:#a15c00;margin:0 0 8px">${escapeHtml(n)}</p>`).join('')}
+<table style="border-collapse:collapse">${learn.lines.map(([k, v]) => `<tr><td style="padding:3px 16px 3px 0">${k}</td><td style="font-weight:600">${escapeHtml(v)}</td></tr>`).join('')}</table>
+${r.learn ? htmlList('Lessons completed by course', learn.courses) : ''}` : ''}
 <p style="margin-top:24px;color:#666">— Synth</p></div>`;
 
   return { subject, text, html };
 }
+
+export { buildEmail };
 
 export default async function handler(req, res) {
   const cronSecret = process.env.CRON_SECRET;
@@ -156,7 +195,8 @@ export default async function handler(req, res) {
   const prevStart = new Date(now.getTime() - 14 * DAY_MS);
 
   // Returning users need history before this week, so read further back.
-  const { rows: events, error } = await fetchEventsSince(supabase, new Date(now.getTime() - 90 * DAY_MS));
+  const learnTracking = await learnTrackingEnabled(supabase);
+  const { rows: events, error } = await fetchEventsSince(supabase, new Date(now.getTime() - 90 * DAY_MS), { withDetail: learnTracking });
   const trackingMissing = !!error;
   const all = events || [];
 
@@ -165,6 +205,7 @@ export default async function handler(req, res) {
   const visits = thisWeek.inRange.filter(e => e.event === 'visit');
 
   const signupDates = await fetchUserSignupDates(supabase);
+  const learnProgressRows = await fetchLearnProgress(supabase);
 
   const report = {
     weekLabel: weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
@@ -180,6 +221,8 @@ export default async function handler(req, res) {
     referrers: topCounts(visits, 'referrer'),
     refs: topCounts(visits.filter(e => e.ref), 'ref'),
     pages: topCounts(visits, 'path'),
+    learn: learnTracking && !trackingMissing ? summarizeLearnEvents(all, { now, weekStart, prevStart }) : null,
+    learnProgress: learnProgressRows ? summarizeLearnProgress(learnProgressRows, { weekStart }) : null,
   };
 
   const to = process.env.MARKETING_REPORT_TO || process.env.GMAIL_USER;

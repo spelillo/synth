@@ -94,8 +94,15 @@
       return false;
     };
 
+    // Anonymous usage counts for the weekly email (analytics.js); at most
+    // once per visitor per day per event and lesson.
+    function learnTrack(event, detail) {
+      if (window.synthTrack) window.synthTrack(event, detail);
+    }
+
     function openLearn({ lessonId = null, push = false } = {}) {
       learnInit();
+      learnTrack('learn_open');
       setActiveView('learn');
       document.getElementById('learn-nav-btn')?.classList.add('is-active');
       if (lessonId && LearnCurriculum.getLesson(lessonId)) learnOpenLesson(lessonId, { push });
@@ -106,6 +113,7 @@
       if (window.isLearnRoute()) {
         const id = new URLSearchParams(window.location.search).get('lesson');
         learnInit();
+        learnTrack('learn_open');
         setActiveView('learn');
         if (id && LearnCurriculum.getLesson(id)) learnOpenLesson(id, { push: false, fromHistory: true });
         else showLearnOverview({ push: false, fromHistory: true });
@@ -744,6 +752,7 @@
         return;
       }
       if (window.synthTrack) window.synthTrack('query_run');
+      learnTrack('learn_attempt');
 
       const wasLocked = learn.store.lesson(lesson.id).attempts === 0;
       const { firstCompletion, record } = learn.store.recordAttempt(lesson.id, { correct: grade.ok, sql });
@@ -769,7 +778,11 @@
             ? `<button type="button" class="run-btn learn-next-cta" onclick="learnGoToLesson('${next.id}')"><span>Next: ${escapeHtml(next.title)}</span><span aria-hidden="true">▶</span></button>`
             : `<button type="button" class="run-btn learn-next-cta" onclick="learnOpenLevelModal('${level.id}')"><span>Finish ${escapeHtml(level.level)}</span><span aria-hidden="true">▶</span></button>`,
         });
-        if (firstCompletion) learnCelebrate();
+        if (firstCompletion) {
+          learnTrack('learn_lesson_done', lesson.id);
+          if (levelDone) learnTrack('learn_course_done', level.id);
+          learnCelebrate();
+        }
         if (firstCompletion && levelDone) setTimeout(() => learnOpenLevelModal(level.id), 900);
       } else {
         const tips = [grade.tip, ...(grade.tips || [])].filter(Boolean);
@@ -1121,6 +1134,7 @@ How to help:
         const data = await response.json();
         if (data.error) throw new Error(data.error.message);
         history.push({ role: 'assistant', content: data.choices[0].message.content });
+        learnTrack('learn_tutor');
       } catch (err) {
         const msg = /Failed to fetch/.test(err.message) ? `Can't reach ${CHAT_ENDPOINT}. If you're running locally, start \`vercel dev\`.` : err.message;
         history.push({ role: 'assistant', content: msg, error: true });
