@@ -26,27 +26,25 @@
     const MAX_POINTS = { column: 50, bar: 60, line: 1000, area: 1000, scatter: 2000, pie: MAX_PIE_SLICES, doughnut: MAX_PIE_SLICES };
 
     // Brand-orange-led order of the validated categorical palette (passes
-    // adjacent-pair colorblind checks in both modes for these 6 slots; the
+    // adjacent-pair colorblind checks for these 6 slots; the
     // first 3 pass all-pairs, hence the scatter series cap).
     const CHART_PALETTE_LIGHT = ['#eb6834', '#2a78d6', '#1baf7a', '#4a3aa7', '#eda100', '#e87ba4'];
-    const CHART_PALETTE_DARK = ['#d95926', '#3987e5', '#199e70', '#9085e9', '#c98500', '#d55181'];
 
     let lastResultsSql = '';
     let chartState = { key: null, info: null, spec: null, userEdited: false, aiStatus: 'idle', error: null };
     const aiChartSpecCache = new Map();
 
     function chartTheme() {
-      const dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
       const css = getComputedStyle(document.documentElement);
       const v = (name, fallback) => (css.getPropertyValue(name) || '').trim() || fallback;
       return {
-        dark,
-        surface: v('--color-bg', dark ? '#1a1512' : '#fffefb'),
-        text: v('--color-text', dark ? '#f0ebe3' : '#201515'),
-        text2: v('--color-text-muted-2', dark ? '#b8b2a3' : '#605d52'),
-        grid: dark ? '#332c26' : '#ebe7dd',
-        axis: v('--color-border', dark ? '#4a4238' : '#c5c0b1'),
-        series: dark ? CHART_PALETTE_DARK : CHART_PALETTE_LIGHT,
+        dark: false,
+        surface: v('--color-bg', '#fffefb'),
+        text: v('--color-text', '#201515'),
+        text2: v('--color-text-muted-2', '#605d52'),
+        grid: '#ebe7dd',
+        axis: v('--color-border', '#c5c0b1'),
+        series: CHART_PALETTE_LIGHT,
       };
     }
 

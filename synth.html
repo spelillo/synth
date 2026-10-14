@@ -91,6 +91,7 @@
        of a much larger, harder-to-verify rewrite). Dark values below keep
        the same warm/brand character rather than going neutral-gray. */
     :root {
+      color-scheme: light;
       --color-bg: #fffefb;
       --color-text: #201515;
       --color-accent: #ff4f00;
@@ -120,31 +121,6 @@
       --color-gold-border: #e8c766;
     }
 
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --color-bg: #1a1512;
-        --color-text: #f0ebe3;
-        --color-accent: #ff5f16;
-        --color-accent-hover: #ff7a3d;
-        --color-accent-text: #ff5f16; /* already 5.9:1+ on the dark backgrounds below — bright orange on near-black doesn't have the light-mode problem */
-        --color-accent-fill: var(--color-accent); /* --color-bg text on it is 5.9:1 */
-        --color-accent-fill-hover: var(--color-accent-hover);
-        --color-border: #4a4238;
-        --color-text-muted: #a39d8e;
-        --color-text-muted-2: #b8b2a3;
-        --color-text-muted-3: #ada695;
-        --color-surface: #241e1a;
-        --color-surface-2: #2a231e;
-        --color-blue-dark: #6cb6f5;
-        --color-blue: #6cb6f5;
-        --color-blue-bg: #16324a;
-        --color-blue-border: #2f5a80;
-        --color-green: #4ade80;
-        --color-gold: #f0c655;
-        --color-gold-bg: #3a2f14;
-        --color-gold-border: #8a6d1f;
-      }
-    }
 
     * {
       margin: 0;
@@ -520,11 +496,6 @@
       font-weight: 600;
     }
 
-    @media (prefers-color-scheme: dark) {
-      .auth-message.error { color: #ff8a7a; }
-      .auth-message.success { color: #4ade80; }
-      .home-upload-message.error, .home-empty.is-error .home-empty-icon { color: #ff8a7a; }
-    }
 
     .save-btn {
       background: none;
@@ -1296,13 +1267,6 @@
     .home-dropzone-art .art-slice-4 { fill: #7a2e0e; }
     .home-dropzone-art path { stroke: var(--color-bg); stroke-width: 2; }
 
-    @media (prefers-color-scheme: dark) {
-      .home-dropzone-art { opacity: 0.28; }
-      .home-dropzone:hover .home-dropzone-art { opacity: 0.36; }
-      .home-dropzone-art .art-kw { fill: #7ea6ff; }
-      .home-dropzone-art .art-num { fill: #c79af0; }
-      .home-dropzone-art .art-slice-4 { fill: #c25a24; }
-    }
 
     .home-dropzone:hover {
       border-color: var(--color-accent);
@@ -2855,10 +2819,6 @@
 
     .workspace-delete-btn:hover { border-color: #bc3a2c; background: #fce7e3; }
 
-    @media (prefers-color-scheme: dark) {
-      .workspace-delete-btn { color: #ff8a7a; }
-      .workspace-delete-btn:hover { border-color: #ff8a7a; background: rgba(255, 138, 122, 0.1); }
-    }
 
     /* ---- Relationships / ERD ---- */
 
