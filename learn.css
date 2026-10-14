@@ -14,15 +14,6 @@
   --learn-step-size: 28px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --learn-success-bg: #12261b;
-    --learn-success-border: #2a5a3e;
-    --learn-error-bg: #2c1910;
-    --learn-error-border: #7a3a1a;
-  }
-}
-
 /* ---- View plumbing ---- */
 
 #learn-view {
@@ -163,14 +154,6 @@ body.bg-blur > #learn-view {
 .learn-code .sql-tok-ident { color: #0f7a4d; }
 .learn-code .sql-tok-number { color: #7c3aed; }
 .learn-code .sql-tok-comment { color: #6b6459; font-style: italic; }
-
-@media (prefers-color-scheme: dark) {
-  .learn-code .sql-tok-keyword { color: #7ea6ff; }
-  .learn-code .sql-tok-string { color: #e3b260; }
-  .learn-code .sql-tok-ident { color: #5fd3a0; }
-  .learn-code .sql-tok-number { color: #c79af0; }
-  .learn-code .sql-tok-comment { color: #a39d8e; }
-}
 
 /* ---- Overview ---- */
 
