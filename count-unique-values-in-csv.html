@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How to Count Unique Values in a CSV Column | Synth</title>
+<meta name="description" content="Count distinct values in a CSV column, see how often each value appears, and ignore blanks and capitalization, with SQL in your browser. Nothing is uploaded.">
+<link rel="canonical" href="https://synth-sql.com/count-unique-values-in-csv">
+<meta property="og:title" content="How to Count Unique Values in a CSV Column">
+<meta property="og:description" content="Count distinct values in a CSV column, see how often each value appears, and ignore blanks and capitalization, with SQL in your browser. Nothing is uploaded.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://synth-sql.com/count-unique-values-in-csv">
+<meta property="og:image" content="https://synth-sql.com/synth-og-card-v2.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="synthfavicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="marketing.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Article",
+      "headline": "How to Count Unique Values in a CSV Column",
+      "description": "Count distinct values in a CSV column, see how often each value appears, and ignore blanks and capitalization, with SQL in your browser. Nothing is uploaded.",
+      "url": "https://synth-sql.com/count-unique-values-in-csv",
+      "dateModified": "2026-10-19",
+      "author": {
+        "@type": "Organization",
+        "name": "Synth"
+      },
+      "publisher": {
+        "@type": "Organization",
+        "name": "Synth",
+        "logo": "https://synth-sql.com/synth-logo.png"
+      }
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "How do I count unique values in a CSV column?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Drop the CSV into Synth and run SELECT COUNT(DISTINCT column) FROM table. The file is loaded into SQLite in your browser, so the query runs on your computer."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How do I see how many times each value appears?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Group by the column and count: SELECT column, COUNT(*) FROM table GROUP BY column ORDER BY 2 DESC. Each distinct value gets one row with its count."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Why is my unique count one higher than expected?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Blank cells are stored as empty text, so they count as one extra value. Wrap the column in NULLIF(column, '') to leave blanks out."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does COUNT(DISTINCT) treat East and east as different?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. SQLite compares text exactly, so different capitalization counts as different values. Use lower(column) to count them as one."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Do I need an account?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. Open Synth, drop a CSV and run the query. Signing in adds saved workspaces, charts and the AI assistant."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How big a CSV can I use?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Up to 100,000 rows on the free plan, and up to 500,000 rows with Premium."
+          }
+        }
+      ]
+    }
+  ]
+}
+</script>
+  <script defer src="/analytics.js"></script>
+</head>
+<body>
+
+<header class="site-header">
+  <a href="/" class="site-header-logo-link">
+    <img src="synth-logo.png" alt="Synth" class="site-header-logo">
+  </a>
+  <nav class="site-header-nav">
+    <a href="/welcome">About</a>
+    <a href="/" class="cta">Open Synth</a>
+  </nav>
+</header>
+
+<main>
+  <div class="kicker">Guide</div>
+  <h1 class="page-title">How to count unique values in a CSV column</h1>
+
+  <p class="lede">How many customers are in this export? How many different products sold? Which values show up only once? Synth loads your CSV into a SQLite database in your browser, so each of those is one short query. Nothing is installed, and the file never leaves your computer.</p>
+
+  <h2>The example file</h2>
+  <p>Say you drop a <code class="inline-code">sales.csv</code> like this into <a href="/">Synth</a>. It becomes a table called <code class="inline-code">sales</code>:</p>
+  <pre class="code-block"><code>order_id | region | product | customer_email
+1        | East   | Widget  | ana@example.com
+2        | West   | Widget  | Ben@example.com
+3        | East   | Gadget  | ben@example.com
+4        | east   | Widget  | cy@example.com
+5        |        | Gadget  | ana@example.com
+6        | North  | Widget  |
+7        | West   | Gizmo   | dee@example.com</code></pre>
+
+  <h2>Count the distinct values</h2>
+  <pre class="code-block"><code>SELECT COUNT(DISTINCT region) AS unique_regions
+FROM sales;</code></pre>
+  <p>This returns <strong>5</strong>, which is probably not what you wanted. The blank cell counts as a value, and <code class="inline-code">East</code> and <code class="inline-code">east</code> count separately. The next section fixes both.</p>
+
+  <h2>Ignore blanks and capitalization</h2>
+  <p>Synth stores an empty cell as empty text. <code class="inline-code">NULLIF(region, &#x27;&#x27;)</code> turns it into NULL, which <code class="inline-code">COUNT(DISTINCT)</code> skips, and <code class="inline-code">lower()</code> makes the comparison case-insensitive:</p>
+  <pre class="code-block"><code>SELECT COUNT(DISTINCT NULLIF(lower(region), &#x27;&#x27;)) AS unique_regions
+FROM sales;</code></pre>
+  <p>Now the answer is <strong>3</strong>: east, west and north. The same pattern counts unique customers by email, where <code class="inline-code">Ben@example.com</code> and <code class="inline-code">ben@example.com</code> are the same person:</p>
+  <pre class="code-block"><code>SELECT COUNT(DISTINCT lower(customer_email)) AS unique_customers
+FROM sales
+WHERE customer_email &lt;&gt; &#x27;&#x27;;</code></pre>
+  <p>That returns <strong>4</strong>.</p>
+
+  <h2>See how often each value appears</h2>
+  <p>A frequency table puts each value on its own row with its count, most common first:</p>
+  <pre class="code-block"><code>SELECT lower(region) AS region,
+       COUNT(*) AS row_count
+FROM sales
+WHERE region &lt;&gt; &#x27;&#x27;
+GROUP BY lower(region)
+ORDER BY row_count DESC;</code></pre>
+  <pre class="code-block"><code>region | row_count
+east   | 3
+west   | 2
+north  | 1</code></pre>
+  <p>To add each value&#x27;s share of all rows, divide by the total:</p>
+  <pre class="code-block"><code>SELECT region,
+       COUNT(*) AS row_count,
+       ROUND(100.0 * COUNT(*) / (SELECT COUNT(*) FROM sales), 1) AS pct
+FROM sales
+GROUP BY region
+ORDER BY row_count DESC;</code></pre>
+
+  <h2>Find values that appear only once</h2>
+  <pre class="code-block"><code>SELECT product, COUNT(*) AS row_count
+FROM sales
+GROUP BY product
+HAVING COUNT(*) = 1;</code></pre>
+  <p>Here that&#x27;s Gizmo. Change the condition to <code class="inline-code">HAVING COUNT(*) &gt; 1</code> to list values that repeat, or see <a href="/find-duplicate-rows-in-csv">finding duplicate rows</a> to match on whole rows.</p>
+
+  <h2>Count unique values per group</h2>
+  <p>Put <code class="inline-code">COUNT(DISTINCT)</code> next to a <code class="inline-code">GROUP BY</code> to count within each group, for example how many different products each region sold:</p>
+  <pre class="code-block"><code>SELECT region, COUNT(DISTINCT product) AS products_sold
+FROM sales
+WHERE region &lt;&gt; &#x27;&#x27;
+GROUP BY region
+ORDER BY products_sold DESC;</code></pre>
+  <p>Click <strong>Download CSV</strong> above any result to save it.</p>
+
+  <h2>Don&#x27;t want to write SQL?</h2>
+  <p>Sign in and ask the AI assistant something like &quot;how many unique customers are there, ignoring capitalization?&quot; It writes the query from your column names, never your data.</p>
+
+  <h2>Frequently asked questions</h2>
+  <details class="faq-item">
+    <summary>How do I count unique values in a CSV column?</summary>
+    <p>Drop the CSV into Synth and run SELECT COUNT(DISTINCT column) FROM table. The file is loaded into SQLite in your browser, so the query runs on your computer.</p>
+  </details>
+  <details class="faq-item">
+    <summary>How do I see how many times each value appears?</summary>
+    <p>Group by the column and count: SELECT column, COUNT(*) FROM table GROUP BY column ORDER BY 2 DESC. Each distinct value gets one row with its count.</p>
+  </details>
+  <details class="faq-item">
+    <summary>Why is my unique count one higher than expected?</summary>
+    <p>Blank cells are stored as empty text, so they count as one extra value. Wrap the column in NULLIF(column, &#x27;&#x27;) to leave blanks out.</p>
+  </details>
+  <details class="faq-item">
+    <summary>Does COUNT(DISTINCT) treat East and east as different?</summary>
+    <p>Yes. SQLite compares text exactly, so different capitalization counts as different values. Use lower(column) to count them as one.</p>
+  </details>
+  <details class="faq-item">
+    <summary>Do I need an account?</summary>
+    <p>No. Open Synth, drop a CSV and run the query. Signing in adds saved workspaces, charts and the AI assistant.</p>
+  </details>
+  <details class="faq-item">
+    <summary>How big a CSV can I use?</summary>
+    <p>Up to 100,000 rows on the free plan, and up to 500,000 rows with Premium.</p>
+  </details>
+
+  <div class="related-guides">
+    <h2>More guides</h2>
+    <ul>
+      <li><a href="/find-duplicate-rows-in-csv">Find and remove duplicate rows in a CSV</a></li>
+      <li><a href="/pivot-table-from-csv-with-sql">Make a pivot table from a CSV with SQL</a></li>
+      <li><a href="/query-csv-with-sql">Query a CSV file with SQL</a></li>
+      <li><a href="/guides">All guides →</a></li>
+    </ul>
+  </div>
+
+  <div class="cta-band">
+    <h2>Count the values in your own CSV</h2>
+    <p>No sign-in required to start.</p>
+    <a href="/" class="cta-btn">Open Synth</a>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="site-footer-inner">
+    <div class="site-footer-brand">Synth</div>
+    <nav class="site-footer-links">
+      <a href="/welcome">About</a>
+      <a href="/guides">Guides</a>
+      <a href="/terms">Terms of Service</a>
+      <a href="/privacy">Privacy Policy</a>
+    </nav>
+    <div class="site-footer-copyright">&copy; 2026 Synth. All rights reserved.</div>
+  </div>
+</footer>
+
+</body>
+</html>
