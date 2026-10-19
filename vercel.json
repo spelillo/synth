@@ -17,7 +17,8 @@
     { "source": "/privacy-first-data-analysis", "destination": "/privacy-first-data-analysis.html" },
     { "source": "/find-duplicate-rows-in-csv", "destination": "/find-duplicate-rows-in-csv.html" },
     { "source": "/pivot-table-from-csv-with-sql", "destination": "/pivot-table-from-csv-with-sql.html" },
-    { "source": "/convert-json-to-csv", "destination": "/convert-json-to-csv.html" }
+    { "source": "/convert-json-to-csv", "destination": "/convert-json-to-csv.html" },
+    { "source": "/count-unique-values-in-csv", "destination": "/count-unique-values-in-csv.html" }
   ],
   "crons": [
     { "path": "/api/cron/enterprise-renewal-notices", "schedule": "0 13 * * *" },
