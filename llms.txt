@@ -37,5 +37,6 @@ running client-side, entirely in your browser tab.
 - [Guide — making a pivot table from a CSV with SQL](https://synth-sql.com/pivot-table-from-csv-with-sql)
 - [Guide — converting JSON (including nested JSON and NDJSON) to CSV](https://synth-sql.com/convert-json-to-csv)
 - [Guide — counting unique values in a CSV column, with value frequencies](https://synth-sql.com/count-unique-values-in-csv)
+- [Guide — splitting a CSV column: first and last names, email domains, lists into rows](https://synth-sql.com/split-a-column-in-csv)
 - [About](https://synth-sql.com/welcome)
 - [Machine-readable pricing](https://synth-sql.com/pricing.md)
