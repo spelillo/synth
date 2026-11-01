@@ -12,6 +12,14 @@
 // who runs an organization or a workroom would leave it broken, so they
 // get a message to email us instead and nothing is deleted.
 //
+// The same account signs in to Synth BI (bi.synth-sql.com), whose
+// dashboards live in a separate Supabase project with no foreign key back
+// to this one. So before anything here is deleted, this asks Synth BI's
+// own /api/delete-account to delete that account's dashboards, forwarding
+// the caller's token. If that fails, nothing here is deleted.
+// SYNTH_BI_URL overrides where that call goes (default
+// https://bi.synth-sql.com).
+//
 // Needs SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY, already set for the
 // other API routes.
 
@@ -88,6 +96,16 @@ export default async function handler(req, res) {
     if (await blocksDeletion(supabase, userId)) {
       res.status(409).json({ error: { message: 'You run a Synth Enterprise organization or workroom, so your account can\'t be deleted from here without breaking it for your members. Email synth.sql@gmail.com and we\'ll sort it out with you.' } });
       return;
+    }
+
+    const biBase = (process.env.SYNTH_BI_URL || 'https://bi.synth-sql.com').replace(/\/$/, '');
+    const bi = await fetch(`${biBase}/api/delete-account`, {
+      method: 'POST',
+      headers: { Authorization: req.headers['authorization'] },
+    });
+    if (!bi.ok) {
+      const body = await bi.json().catch(() => null);
+      throw new Error(`Synth BI data: ${body?.error || `request failed (${bi.status})`}`);
     }
 
     const paths = await listAllPaths(supabase, userId);
