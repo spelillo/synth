@@ -11,7 +11,11 @@
   --muted: #605d52;
   --border: #c5c0b1;
   --orange: #ff4f00;
-  --orange-dark: #e64600;
+  /* Text and button shades of the brand orange, dark enough for WCAG AA
+     contrast (4.5:1) on the cream background. --orange stays for borders
+     and decoration. */
+  --orange-dark: #c23c00;
+  --orange-button: #cc3f00;
   --panel-dark: #201515;
 }
 
@@ -25,7 +29,8 @@ html, body {
 }
 
 a { color: var(--orange-dark); }
-a:hover { color: var(--orange); }
+:where(a, button):focus-visible { outline: 2px solid #2f6fdb; outline-offset: 2px; }
+a:hover { color: #a33200; }
 
 .site-header {
   background: var(--cream);
@@ -72,7 +77,7 @@ a:hover { color: var(--orange); }
 }
 
 .site-header-nav a.cta {
-  background: var(--orange);
+  background: var(--orange-button);
   color: var(--cream);
 }
 
@@ -200,7 +205,7 @@ table.compare tr.highlight td:first-child { font-weight: 700; }
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: var(--orange);
+  background: var(--orange-button);
   color: var(--cream);
   font-weight: 700;
   font-size: 14px;
@@ -258,7 +263,7 @@ details.faq-item p { padding-bottom: 16px; margin: 0; color: var(--muted); }
 
 .cta-btn {
   display: inline-block;
-  background: var(--orange);
+  background: var(--orange-button);
   color: var(--cream);
   text-decoration: none;
   font-weight: 700;

@@ -15,9 +15,7 @@
   <meta property="og:url" content="https://synth-sql.com/enterprise">
   <meta name="robots" content="noindex">
   <link rel="icon" href="synthfavicon.png">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/fonts/fonts.css">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <!-- Loaded directly from Stripe, never bundled/self-hosted (PCI requirement) — same as synth.html. -->
   <script src="https://js.stripe.com/dahlia/stripe.js"></script>
@@ -650,6 +648,10 @@
       <input type="email" id="mini-email" class="field-input" placeholder="you@yourschool.edu" autocomplete="email">
       <label class="field-label">Password</label>
       <input type="password" id="mini-password" class="field-input" placeholder="Password" autocomplete="current-password">
+      <label class="help-note" id="mini-consent-row" style="display:flex;gap:8px;align-items:flex-start" hidden>
+        <input type="checkbox" id="mini-consent" style="margin-top:3px">
+        <span>I'm at least 13 and I agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</span>
+      </label>
       <button class="btn btn-purple btn-block" id="mini-submit">Sign in</button>
       <div class="form-msg" id="mini-msg"></div>
       <p class="help-note">Have a join code instead of creating a new organization? Sign in above, then switch to "Join with a code".</p>
@@ -662,6 +664,7 @@
       document.getElementById('mini-tab-signin').classList.toggle('is-active', mode === 'signin');
       document.getElementById('mini-tab-signup').classList.toggle('is-active', mode === 'signup');
       document.getElementById('mini-submit').textContent = mode === 'signin' ? 'Sign in' : 'Create account';
+      document.getElementById('mini-consent-row').hidden = mode === 'signin';
     };
     document.getElementById('mini-tab-signin').onclick = () => setMode('signin');
     document.getElementById('mini-tab-signup').onclick = () => setMode('signup');
@@ -678,13 +681,20 @@
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { msgEl.textContent = 'Enter a valid email.'; msgEl.classList.add('is-error'); return; }
     if (password.length < 8) { msgEl.textContent = 'Password must be at least 8 characters.'; msgEl.classList.add('is-error'); return; }
+    if (authMiniMode === 'signup' && !document.getElementById('mini-consent').checked) {
+      msgEl.textContent = 'To create an account, confirm you\'re at least 13 and agree to the Terms and Privacy Policy.';
+      msgEl.classList.add('is-error');
+      return;
+    }
     if (submitBtn.disabled) return;
 
     submitBtn.disabled = true;
     msgEl.textContent = authMiniMode === 'signin' ? 'Signing in…' : 'Creating account…';
     const { data, error } = authMiniMode === 'signin'
       ? await sb.auth.signInWithPassword({ email, password })
-      : await sb.auth.signUp({ email, password });
+      // Same acceptance record as auth.js's synthSignupConsentData(); keep
+      // the version in step with LEGAL_VERSION there.
+      : await sb.auth.signUp({ email, password, options: { data: { terms_version: '2026-11-01', privacy_version: '2026-11-01', terms_accepted_at: new Date().toISOString() } } });
 
     if (error) {
       msgEl.textContent = error.message;
@@ -752,6 +762,7 @@
     body.innerHTML = `
       <div class="signed-in-strip"><span>Signed in as ${escapeHtml(currentUser.email)}</span></div>
       <p class="help-note" style="margin-top:0">Billed yearly, per organization domain, not per seat. Every verified member of your email domain gets Premium automatically once this is set up.</p>
+      <p class="help-note"><strong>This subscription renews automatically every year</strong> until you turn off auto-renew, which you can do any time from your admin dashboard. We email you 3 months, 1 month and 1 week before each renewal. See the <a href="/terms#paid-plans" target="_blank" rel="noopener">Terms</a> for cancellation and refunds.</p>
       <div id="org-checkout-status" class="form-msg"></div>
       <div id="org-checkout-form"></div>
     `;

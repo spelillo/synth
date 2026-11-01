@@ -4,11 +4,14 @@
 // came from, and how Learn is being used. Reads usage_events (written by
 // api/track.js), learn_progress, and the Supabase auth user list.
 //
+// Also deletes usage data past its retention period (api/_retention.js).
+//
 // Recipient: MARKETING_REPORT_TO, falling back to GMAIL_USER (the address
 // the mailer sends from). Protected by CRON_SECRET, like the other cron.
 
 import { createClient } from '@supabase/supabase-js';
 import { sendMail } from '../_mailer.js';
+import { purgeExpiredData } from '../_retention.js';
 import { summarizeLearnEvents, summarizeLearnProgress, learnTrackingEnabled, fetchLearnProgress } from '../_learnReport.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -228,5 +231,11 @@ export default async function handler(req, res) {
   const to = process.env.MARKETING_REPORT_TO || process.env.GMAIL_USER;
   const result = to ? await sendMail({ to, ...buildEmail(report) }) : { sent: false, reason: 'no recipient' };
   if (!result.sent) console.error('weekly-marketing-report: email not sent:', result.reason);
-  res.status(200).json({ sent: result.sent });
+
+  // Data retention runs here too, once a week (see api/_retention.js).
+  const purged = await purgeExpiredData(supabase, now);
+  for (const [table, status] of Object.entries(purged)) {
+    if (status !== 'ok') console.error(`weekly-marketing-report: retention purge of ${table} failed:`, status);
+  }
+  res.status(200).json({ sent: result.sent, purged });
 }

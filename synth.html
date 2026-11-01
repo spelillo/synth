@@ -47,9 +47,7 @@
     ]
   }
   </script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/fonts/fonts.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/regular/style.css">
   <!-- Hides the home view before first paint on /learn, so the Learn page
        doesn't flash the upload screen while scripts load. Cleared by
@@ -116,7 +114,7 @@
       --color-blue-bg: #dceefb;
       --color-blue-border: #b9dbf5;
       --color-green: #1e6b45;
-      --color-gold: #b8860b;
+      --color-gold: #8a6508; /* dark enough for 4.5:1 text contrast on cream and on gold-bg */
       --color-gold-bg: #fdf3d7;
       --color-gold-border: #e8c766;
     }
@@ -667,6 +665,13 @@
       margin-bottom: 0;
     }
 
+    .settings-data-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    /* Keyboard focus ring for anything that doesn't draw its own. Only on
+       :focus-visible, so mouse clicks look the same as before. */
+    :where(button, a, summary, [role="tab"], [tabindex]:not([tabindex="-1"]), input[type="checkbox"]):focus-visible {
+      outline: 2px solid #2f6fdb;
+      outline-offset: 2px;
+    }
     .modal-section-signout {
       padding-top: 14px;
     }
@@ -1677,6 +1682,23 @@
 
     .password-field .account-input { padding-right: 44px; }
 
+    .ai-disclosure {
+      margin: 6px 2px 0;
+      font-size: 11.5px;
+      line-height: 1.4;
+      color: #5c574f;
+    }
+    .account-consent {
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+      font-size: 13px;
+      line-height: 1.45;
+      color: var(--color-text);
+      margin: 2px 0 4px;
+    }
+    .account-consent input { margin: 2px 0 0; width: 16px; height: 16px; flex: none; }
+    .account-consent a { color: inherit; text-decoration: underline; }
     .account-help {
       font-size: 12.5px;
       color: var(--color-text-muted);
@@ -4782,6 +4804,10 @@
               </div>
               <p class="account-help" id="auth-password-help" hidden>At least 8 characters.</p>
             </div>
+            <div class="account-consent" id="auth-consent-row" hidden>
+              <input type="checkbox" id="auth-consent">
+              <label for="auth-consent">I'm at least 13 and I agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</label>
+            </div>
             <button type="submit" class="account-submit" id="auth-panel-submit-btn">Sign in</button>
             <div id="auth-message" class="auth-message account-message" role="status" aria-live="polite"></div>
           </form>
@@ -4883,6 +4909,15 @@
         <label class="field-label">Synth Enterprise</label>
         <div id="settings-enterprise-row"></div>
       </div>
+      <div class="modal-section">
+        <label class="field-label">Your data</label>
+        <p class="help-text" style="margin:0 0 10px">Download a copy of everything saved to your account, or delete the account and all of it. <a href="/privacy#your-rights" target="_blank" rel="noopener">How we handle your data</a></p>
+        <div class="settings-data-actions">
+          <button class="auth-btn" id="export-data-btn" onclick="exportMyData()">Download my data</button>
+          <button class="auth-btn" onclick="openDeleteAccountModal()">Delete account</button>
+        </div>
+        <div id="export-data-msg" class="help-text" role="status" aria-live="polite"></div>
+      </div>
       <div class="modal-section modal-section-signout">
         <button class="auth-btn" onclick="signOutUser()">Sign out</button>
       </div>
@@ -4912,6 +4947,19 @@
       </div>
       <div class="modal-section">
         <div id="enterprise-usage-body"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="delete-account-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="delete-account-title" hidden>
+    <div class="modal modal-small">
+      <div class="delete-warning-icon" aria-hidden="true">⚠</div>
+      <div class="delete-warning-title" id="delete-account-title">Delete your account?</div>
+      <div class="delete-warning-body">This permanently deletes your account, your saved workspaces and uploaded files, your chat sessions and your Learn progress. It can't be undone. Download your data first if you want a copy.</div>
+      <div id="delete-account-msg" class="help-text" role="status" aria-live="polite"></div>
+      <div class="modal-actions">
+        <button class="modal-cancel-btn" onclick="closeDeleteAccountModal()">Keep my account</button>
+        <button class="modal-confirm-delete-btn" id="delete-account-confirm-btn" onclick="confirmDeleteAccount()">Delete account</button>
       </div>
     </div>
   </div>
@@ -5258,6 +5306,7 @@
           <a href="/guides">Guides</a>
           <a href="/terms">Terms of Service</a>
           <a href="/privacy">Privacy Policy</a>
+          <a href="/privacy#usage-stats" onclick="if (window.synthPrivacyChoices) { synthPrivacyChoices(); return false; }">Privacy choices</a>
         </nav>
         <div class="landing-footer-copyright">&copy; 2026 Synth. All rights reserved.</div>
       </div>
@@ -5414,9 +5463,10 @@
                 <button type="button" class="reply-context-cancel" onclick="cancelReplyContext()" title="Cancel reply">&times;</button>
               </div>
               <div class="chat-input-wrapper">
-                <textarea id="chat-input" rows="1" placeholder="Ask about your data... e.g., 'show me all rows where amount > 1000'" disabled></textarea>
+                <textarea id="chat-input" rows="1" placeholder="Ask about your data... e.g., 'show me all rows where amount > 1000'" aria-label="Ask the AI assistant about your data" disabled></textarea>
                 <button id="chat-send" onclick="sendMessage()" disabled>Send</button>
               </div>
+              <p class="ai-disclosure">Replies are AI-generated and can be wrong. Check a query's results before you rely on them.</p>
             </div>
           </div>
         </div>
@@ -5527,6 +5577,7 @@
                     <textarea id="learn-chat-input" class="learn-chat-input" rows="1" placeholder="Ask the tutor about this question..." aria-label="Message the AI tutor" disabled></textarea>
                     <button type="button" id="learn-chat-send" class="learn-chat-send" onclick="learnSendTutor()" disabled>Send</button>
                   </div>
+                  <p class="ai-disclosure">The tutor's replies are AI-generated and can be wrong.</p>
                 </div>
               </div>
             </aside>
