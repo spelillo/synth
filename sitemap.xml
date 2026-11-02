@@ -76,6 +76,11 @@
     <priority>0.9</priority>
   </url>
   <url>
+    <loc>https://synth-sql.com/filter-csv-by-date-range</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
     <loc>https://synth-sql.com/welcome</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
