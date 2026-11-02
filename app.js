@@ -1389,6 +1389,10 @@
           </div>
           <input type="email" id="ent-email" class="auth-input auth-input-block" placeholder="you@example.com" autocomplete="email">
           <input type="password" id="ent-password" class="auth-input auth-input-block" style="margin-top:8px" placeholder="Password" autocomplete="current-password">
+          <div class="account-consent" id="ent-consent-row" style="margin-top:10px" hidden>
+            <input type="checkbox" id="ent-consent">
+            <label for="ent-consent">I'm at least 13 and I agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</label>
+          </div>
           <button class="auth-btn auth-btn-primary" style="width:100%;margin-top:10px" id="ent-auth-submit">Sign in</button>
           <div id="ent-auth-msg" class="auth-message"></div>
           <p class="help-text" style="margin:12px 0 0">Have a join code? Sign in above, then it'll ask for it next.</p>
@@ -1398,7 +1402,9 @@
           document.getElementById('ent-tab-signin').classList.toggle('is-active', mode === 'signin');
           document.getElementById('ent-tab-signup').classList.toggle('is-active', mode === 'signup');
           document.getElementById('ent-auth-submit').textContent = mode === 'signin' ? 'Sign in' : 'Create account';
+          document.getElementById('ent-consent-row').hidden = mode === 'signin';
         };
+        setMode(enterpriseAccessAuthMode);
         document.getElementById('ent-tab-signin').onclick = () => setMode('signin');
         document.getElementById('ent-tab-signup').onclick = () => setMode('signup');
         document.getElementById('ent-auth-submit').onclick = submitEnterpriseAccessAuth;
@@ -1436,13 +1442,17 @@
 
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { msgEl.textContent = 'Enter a valid email.'; return; }
       if (password.length < 8) { msgEl.textContent = 'Password must be at least 8 characters.'; return; }
+      if (enterpriseAccessAuthMode === 'signup' && !document.getElementById('ent-consent').checked) {
+        msgEl.textContent = 'To create an account, confirm you\'re at least 13 and agree to the Terms and Privacy Policy.';
+        return;
+      }
       if (submitBtn.disabled) return;
 
       submitBtn.disabled = true;
       msgEl.textContent = enterpriseAccessAuthMode === 'signin' ? 'Signing in...' : 'Creating account...';
       const { data, error } = enterpriseAccessAuthMode === 'signin'
         ? await sb.auth.signInWithPassword({ email, password })
-        : await sb.auth.signUp({ email, password });
+        : await sb.auth.signUp({ email, password, options: { data: window.synthSignupConsentData() } });
 
       if (error) { msgEl.textContent = error.message; submitBtn.disabled = false; return; }
 
@@ -3237,6 +3247,7 @@
       'workspace-notice-modal': 'closeWorkspaceNoticeModal',
       'settings-modal': 'closeSettingsPanel',
       'cancel-premium-modal': 'closeCancelPremiumModal',
+      'delete-account-modal': 'closeDeleteAccountModal',
       'cloud-modal': 'closeCloudPanel',
       'help-modal': 'closeHelpPanel',
       'save-query-modal': 'closeSaveQueryModal',

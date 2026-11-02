@@ -13,7 +13,7 @@ running client-side, entirely in your browser tab.
 
 ## Key facts
 
-- Runs 100% client-side via SQLite compiled to WebAssembly (sql.js) — your data never leaves your browser unless you sign in and explicitly save it to the cloud
+- Runs every query client-side via SQLite compiled to WebAssembly (sql.js) — your data never leaves your browser unless you sign in and explicitly save it to the cloud
 - Supports CSV, and JSON (a single array of objects, or newline-delimited JSON) — nested objects flatten into dot-notation columns (e.g. address.city), arrays store as JSON text queryable with SQLite's json_extract()
 - Free tier: single-table workspaces, up to 100,000 rows, no sign-in required
 - Premium: $9.99, paid once (not a subscription) — multi-table workspaces (up to 10 tables), table renaming, cross-table AI joins, relationship detection, and files up to 500,000 rows

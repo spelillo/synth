@@ -115,6 +115,16 @@
 
     const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+    // Version of the Terms of Service and Privacy Policy a new account
+    // agrees to. Bump it (to the policies' "Last updated" date) whenever
+    // either changes. Recorded with the time of acceptance in the new
+    // user's auth metadata (auth.users.raw_user_meta_data), which is the
+    // record of who accepted which version and when.
+    const LEGAL_VERSION = '2026-11-01';
+    window.synthSignupConsentData = function() {
+      return { terms_version: LEGAL_VERSION, privacy_version: LEGAL_VERSION, terms_accepted_at: new Date().toISOString() };
+    };
+
     function setAccountMessage(el, text, kind) {
       el.textContent = text;
       el.classList.toggle('error', kind === 'error');
@@ -178,6 +188,7 @@
       document.getElementById('auth-panel-submit-btn').textContent = isSignin ? 'Sign in' : 'Create account';
       document.getElementById('auth-forgot-link').hidden = !isSignin;
       document.getElementById('auth-password-help').hidden = isSignin;
+      document.getElementById('auth-consent-row').hidden = isSignin;
       document.getElementById('auth-password').setAttribute('autocomplete', isSignin ? 'current-password' : 'new-password');
       document.getElementById('auth-switch-text').textContent = isSignin ? 'New to Synth?' : 'Already have an account?';
       document.getElementById('auth-switch-link').textContent = isSignin ? 'Create an account' : 'Sign in';
@@ -203,6 +214,11 @@
       }
 
       const mode = authPanelMode;
+      if (mode === 'signup' && !document.getElementById('auth-consent').checked) {
+        setAccountMessage(msgEl, 'To create an account, confirm you\'re at least 13 and agree to the Terms and Privacy Policy.', 'error');
+        document.getElementById('auth-consent').focus();
+        return;
+      }
       setAccountMessage(msgEl, mode === 'signin' ? 'Signing in...' : 'Creating account...');
       submitBtn.disabled = true;
 
@@ -210,7 +226,7 @@
       try {
         ({ data, error } = mode === 'signin'
           ? await sb.auth.signInWithPassword({ email, password })
-          : await sb.auth.signUp({ email, password }));
+          : await sb.auth.signUp({ email, password, options: { data: window.synthSignupConsentData() } }));
       } catch (err) {
         error = err;
       }
@@ -384,6 +400,115 @@
       aiEnabled = false;
 
       openHome();
+    };
+
+    // ---- Your data: download a copy, or delete the account ----
+    // The export reads only through the signed-in client, so row-level
+    // security limits it to this account's own rows. Uploaded CSVs are
+    // included as text. Tables that don't exist yet (a migration that was
+    // never run) are skipped rather than failing the whole export.
+    window.exportMyData = async function() {
+      if (!sb || !currentUser) return;
+      const btn = document.getElementById('export-data-btn');
+      const msgEl = document.getElementById('export-data-msg');
+      btn.disabled = true;
+      msgEl.textContent = 'Gathering your data…';
+      try {
+        const uid = currentUser.id;
+        const read = async (table, column = 'user_id') => {
+          const { data, error } = await sb.from(table).select('*').eq(column, uid);
+          return error ? { unavailable: error.message } : data;
+        };
+        const workspaces = await read('workspaces');
+        const datasets = await read('datasets');
+        const sessions = await read('chat_sessions');
+        const wsIds = Array.isArray(workspaces) ? workspaces.map(w => w.id) : [];
+        const sessionIds = Array.isArray(sessions) ? sessions.map(s => s.id) : [];
+        const relationships = wsIds.length
+          ? (await sb.from('workspace_relationships').select('*').in('workspace_id', wsIds)).data || []
+          : [];
+        const messages = sessionIds.length
+          ? (await sb.from('chat_messages').select('*').in('session_id', sessionIds)).data || []
+          : [];
+        const files = [];
+        for (const d of Array.isArray(datasets) ? datasets : []) {
+          const { data: blob, error } = await sb.storage.from('csvs').download(d.storage_path);
+          files.push({ storage_path: d.storage_path, filename: d.filename, csv: error ? null : await blob.text(), error: error ? error.message : undefined });
+        }
+        const exportData = {
+          exported_at: new Date().toISOString(),
+          account: {
+            id: uid,
+            email: currentUser.email,
+            created_at: currentUser.created_at,
+            last_sign_in_at: currentUser.last_sign_in_at,
+            metadata: currentUser.user_metadata || {},
+          },
+          profile: await read('profiles', 'id'),
+          workspaces,
+          datasets,
+          workspace_relationships: relationships,
+          uploaded_files: files,
+          chat_sessions: sessions,
+          chat_messages: messages,
+          learn_progress: await read('learn_progress'),
+          note: 'Also stored but not readable from the browser: the time of each AI assistant request (kept 30 days for rate limiting). Email synth.sql@gmail.com for a copy.',
+        };
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `synth-data-${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        msgEl.textContent = 'Downloaded.';
+      } catch (err) {
+        msgEl.textContent = `Couldn't build the download: ${err.message}`;
+      }
+      btn.disabled = false;
+    };
+
+    window.openDeleteAccountModal = function() {
+      document.getElementById('delete-account-msg').textContent = '';
+      document.getElementById('delete-account-confirm-btn').disabled = false;
+      document.getElementById('delete-account-modal').hidden = false;
+    };
+
+    window.closeDeleteAccountModal = function() {
+      document.getElementById('delete-account-modal').hidden = true;
+    };
+
+    window.confirmDeleteAccount = async function() {
+      if (!sb || !currentUser) return;
+      const btn = document.getElementById('delete-account-confirm-btn');
+      const msgEl = document.getElementById('delete-account-msg');
+      btn.disabled = true;
+      msgEl.textContent = 'Deleting…';
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        const response = await fetch('/api/delete-account', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${session?.access_token || ''}` },
+        });
+        const body = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(body?.error?.message || `Request failed (${response.status})`);
+      } catch (err) {
+        msgEl.textContent = err.message;
+        btn.disabled = false;
+        return;
+      }
+      // Local copies go too: Learn progress and saved queries on this device.
+      try {
+        Object.keys(localStorage)
+          .filter(k => k.startsWith('synth_') && k !== 'synth_consent')
+          .forEach(k => localStorage.removeItem(k));
+      } catch (e) {}
+      closeDeleteAccountModal();
+      // The user no longer exists, so the server-side sign out can fail;
+      // signOutUser still clears the session locally and resets the app.
+      try { await signOutUser(); } catch (e) {}
+      alert('Your account and its data have been deleted.');
     };
 
     // Serializes a live table's current rows back into CSV text, so saving

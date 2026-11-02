@@ -4,14 +4,18 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Privacy Policy | Synth</title>
-<meta name="description" content="What Synth collects, how your CSV data is processed client-side, and what's sent to the AI assistant when you ask it a question.">
+<meta name="description" content="What Synth collects, how your files are processed in your browser, what goes to the AI assistant, how long we keep data, and how to download or delete it.">
 <link rel="canonical" href="https://synth-sql.com/privacy">
 <meta name="robots" content="noindex, follow">
 <link rel="icon" href="synthfavicon.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/fonts/fonts.css">
 <link rel="stylesheet" href="marketing.css">
+<style>
+  .legal-todo { background: #fff3b0; color: #3a2a00; padding: 1px 4px; border-radius: 3px; font-weight: 600; }
+  table.compare td, table.compare th { font-size: 14.5px; }
+  .choice-btn { font: inherit; font-weight: 600; padding: 8px 14px; border-radius: 8px; border: 1.5px solid #1f1d1a; background: #fff; color: #1f1d1a; cursor: pointer; }
+  .choice-btn:hover { background: #f3f1ec; }
+</style>
   <script defer src="/analytics.js"></script>
 </head>
 <body>
@@ -29,32 +33,101 @@
 <main>
   <div class="kicker">Legal</div>
   <h1 class="page-title">Privacy Policy</h1>
-  <div class="updated-note">Last updated: September 12, 2026</div>
+  <div class="updated-note">Last updated: November 1, 2026</div>
 
-  <h2>What we collect</h2>
-  <p>In Lite Mode: nothing. In Normal Mode: the email address you sign in with, plus any workspace (CSV data and table structure) or chat session you explicitly choose to save to the cloud.</p>
+  <p>This policy covers Synth at synth-sql.com, including Synth Learn and Synth Enterprise. Synth is run by <span class="legal-todo">[SEAN: your legal name or company name]</span> ("we", "us"). Synth BI at bi.synth-sql.com has <a href="https://bi.synth-sql.com/privacy">its own privacy policy</a>.</p>
 
-  <h2>How your data is processed</h2>
-  <p>Your CSV is parsed into a real SQLite database running entirely inside your browser tab, using WebAssembly. It never leaves your device unless you sign in and click Save. Lite Mode never contacts our servers at all.</p>
+  <h2 id="summary">The short version</h2>
+  <ul>
+    <li>Your files are loaded and queried inside your browser. They only reach our servers if you sign in and choose to save them.</li>
+    <li>The AI assistant gets your question and your tables' structure (names and column types), not your rows.</li>
+    <li>We count anonymous usage stats only if you allow them.</li>
+    <li>We don't sell your data, show ads, or use your data to train AI models.</li>
+    <li>You can download or delete everything in your account from Account Settings.</li>
+  </ul>
 
-  <h2>The AI assistant &amp; third-party processing</h2>
-  <p>When you ask the AI assistant a question, that question plus your table's schema (column names and types only, never your actual row data) is sent to our AI provider to generate a response. If you paste real data into your own message, that text is sent as part of the request.</p>
+  <h2 id="what-we-collect">What we collect</h2>
+  <table class="compare">
+    <thead><tr><th>What</th><th>When</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Email address and password (stored hashed by our sign-in provider)</td><td>When you create an account</td><td>To sign you in</td></tr>
+      <tr><td>Which version of the Terms and this policy you accepted, and when</td><td>When you create an account</td><td>To keep a record of your agreement</td></tr>
+      <tr><td>Workspaces you save: the uploaded files, table names, column details and table relationships</td><td>Only when you sign in and click Save</td><td>To let you reopen them later, on any device</td></tr>
+      <tr><td>Chat sessions you save</td><td>Only when you save them</td><td>To let you reopen them</td></tr>
+      <tr><td>Saved queries</td><td>When you save a query</td><td>Kept in your browser only</td></tr>
+      <tr><td>Learn progress (completed lessons, attempts, hints used)</td><td>When you use Learn</td><td>Kept in your browser, and synced to your account if you're signed in</td></tr>
+      <tr><td>The time of each AI assistant request</td><td>When you use the AI assistant or AI tutor</td><td>To apply the daily usage limit</td></tr>
+      <tr><td>Anonymous usage stats (see below)</td><td>Only if you allow them</td><td>To understand how people find and use Synth</td></tr>
+      <tr><td>Organization name, email domain, membership and roles</td><td>If you create or join a Synth Enterprise organization</td><td>To run the organization's shared plan</td></tr>
+      <tr><td>Billing details (handled by Stripe; we only see the subscription status and dates)</td><td>If you buy a paid plan</td><td>To take payment and manage renewals</td></tr>
+    </tbody>
+  </table>
+  <p>We don't ask for your name, phone number or address, and we don't collect your location.</p>
 
-  <h2>Cookies &amp; local storage</h2>
-  <p>Saved queries, your SQL/General mode preference, and your Lite/Normal mode choice are stored in your browser's local storage, on your device only. Signed-in sessions use a standard authentication cookie/token. We don't use third-party ad-tracking cookies.</p>
-  <p>To understand how people find and use Synth, we count a few anonymous events: a page visit, running a query, and creating an account. Each is tied to a random ID stored in your browser, not to your name or email, and never includes your queries, file names, or data. Page views are also measured with Vercel Web Analytics, which uses no cookies.</p>
+  <h2 id="your-files">How your files are processed</h2>
+  <p>Your CSV or JSON file is loaded into a SQLite database that runs inside your browser tab, using WebAssembly. Queries, charts and exports are all made on your device. If you don't sign in and save, the file and its contents aren't sent anywhere and are gone when you close the tab.</p>
 
-  <h2>Your choices &amp; data deletion</h2>
-  <p>You can delete any saved workspace or chat session yourself from the Dashboard or Load Sessions panel. To delete your account entirely, contact us and we'll remove your data.</p>
+  <h2 id="ai">The AI assistant</h2>
+  <p>The AI features need an account. When you use them, we send the following to our AI provider, Groq, to generate the reply:</p>
+  <ul>
+    <li><strong>Assistant:</strong> your message, your tables' names, column names and types, row counts, any table relationships you've confirmed, and the earlier reply you're responding to, if any.</li>
+    <li><strong>Chart suggestions:</strong> the SQL of the query you're charting, its row count, and its column names, types and number of distinct values.</li>
+    <li><strong>Learn tutor:</strong> the lesson, your most recent query for it and the result of your last answer check. Lessons use Synth's built-in practice datasets, not your files.</li>
+  </ul>
+  <p>Your row data isn't included. Anything you type yourself is, though: if you paste data into a message or write values into a query, that text is sent.</p>
+  <p>Replies from the assistant and tutor are written by AI and are labeled that way in the app. They can be wrong.</p>
+  <p>We don't use your files, queries or conversations to train AI models, and we don't let anyone else do so. <span class="legal-todo">[SEAN: check Groq's current API terms and data retention for this account, then state here whether Groq keeps or trains on prompts.]</span></p>
 
-  <h2>Children's privacy</h2>
-  <p>Synth isn't directed at children under 13, and we don't knowingly collect data from them.</p>
+  <h2 id="usage-stats">Cookies, local storage and usage stats</h2>
+  <p><strong>Needed to work:</strong> if you sign in, a sign-in cookie keeps you signed in across synth-sql.com and bi.synth-sql.com. Your browser's local storage keeps your settings, saved queries, Learn progress and your answer to the usage stats question. None of this is used for tracking or advertising.</p>
+  <p><strong>Usage stats, only if you allow them:</strong> the first time you visit, we ask whether we can count anonymous usage stats. If you allow it, we store a random ID in your browser and record, at most once a day each: a page visit, running a query, creating an account, and opening Learn, checking an answer, finishing a lesson or course, and using the AI tutor. Each record holds the event, the random ID, the page path, the lesson or course id for Learn events, the site that linked you here (its domain only) and any campaign tag in the link (like <code>?ref=</code>). It never includes your name, email, queries, file names or data. We also load Vercel Web Analytics, which counts page views without cookies. If you don't allow it, or your browser sends a Global Privacy Control signal, none of this happens.</p>
+  <p><button type="button" class="choice-btn" onclick="if (window.synthPrivacyChoices) synthPrivacyChoices();">Change my usage stats choice</button></p>
+  <p>We don't use advertising cookies, tracking pixels or third-party tracking scripts, and we don't sell or share your personal information for advertising.</p>
 
-  <h2>Changes to this policy</h2>
-  <p>We may update this Privacy Policy from time to time. Material changes will be reflected by updating the date above.</p>
+  <h2 id="subprocessors">Service providers we use</h2>
+  <p>These companies process data for us so Synth can work. They may only use it to provide their service to us.</p>
+  <table class="compare">
+    <thead><tr><th>Provider</th><th>What it does for Synth</th><th>Data involved</th></tr></thead>
+    <tbody>
+      <tr><td>Vercel</td><td>Hosts the website and server functions; Web Analytics if you allow usage stats</td><td>Standard request data such as IP address and browser type; usage stats</td></tr>
+      <tr><td>Supabase</td><td>Database, sign-in and file storage</td><td>Account details and everything you save</td></tr>
+      <tr><td>Groq</td><td>Runs the AI model behind the assistant and tutor</td><td>What's described under "The AI assistant"</td></tr>
+      <tr><td>Stripe</td><td>Payments, for paid plans</td><td>Payment and billing details</td></tr>
+      <tr><td>Google (Gmail)</td><td>Sends account emails, such as renewal reminders</td><td>Your email address and the message</td></tr>
+      <tr><td>jsDelivr</td><td>Delivers the open-source code libraries the app runs on</td><td>Your IP address, when your browser downloads them</td></tr>
+    </tbody>
+  </table>
+  <p>Some of these providers are in the United States, so your data may be processed there. <span class="legal-todo">[SEAN: if you serve people in the EU or UK, confirm each provider's data processing agreement and transfer terms are in place.]</span></p>
 
-  <h2>Contact</h2>
-  <p>Questions about this policy, or want your data deleted? Reach us at <strong>synth.sql@gmail.com</strong>.</p>
+  <h2 id="retention">How long we keep data</h2>
+  <ul>
+    <li>Your account and anything you've saved: until you delete it or delete your account.</li>
+    <li>AI request times: 30 days.</li>
+    <li>Anonymous usage stats: 13 months.</li>
+    <li>Data in your browser's local storage stays on your device until you clear it.</li>
+  </ul>
+  <p>Deleted data can stay in our providers' backups for a short time before it's overwritten.</p>
+
+  <h2 id="your-rights">Your choices and rights</h2>
+  <p>From Account Settings (click your email at the top of the app) you can:</p>
+  <ul>
+    <li><strong>Download my data:</strong> a file with your account details and everything saved to your account, including your uploaded files.</li>
+    <li><strong>Delete account:</strong> permanently deletes your account, saved workspaces, uploaded files, chat sessions and Learn progress, plus any dashboards saved in Synth BI, which uses the same account.</li>
+  </ul>
+  <p>You can also delete single workspaces and chat sessions any time. If you'd rather, or if you want to correct something, object to how we use your data, or ask what we hold, email us at <a href="mailto:synth.sql@gmail.com">synth.sql@gmail.com</a>. We'll answer within 30 days. Depending on where you live (for example the EU, the UK or California), you may have further rights under local law, including the right to complain to your data protection authority. We won't treat you differently for using any of these rights.</p>
+  <p>We process your data to provide the service you signed up for, to keep it secure and working (for example, rate limits), and, for usage stats, only with your consent, which you can withdraw any time with the button above.</p>
+
+  <h2 id="children">Children</h2>
+  <p>You must be at least 13 to create a Synth account, and Synth isn't directed at children under 13. We don't knowingly collect personal information from children under 13. If you think a child under 13 has given us personal information, email us and we'll delete it. <span class="legal-todo">[SEAN: if schools or teachers will use Synth Enterprise or Learn with students under 13, talk to a lawyer about COPPA and school consent before allowing it.]</span></p>
+
+  <h2 id="security">Security</h2>
+  <p>Saved data is only readable by your account. If you're in a Synth Enterprise organization, other members can see your email address, and its admins and your workroom manager can also see how many AI requests you've made. They can't see your saved files or chats. Connections use HTTPS, and passwords are stored hashed by our sign-in provider. No system is perfectly secure, but if a breach affects your data we'll tell you as the law requires.</p>
+
+  <h2 id="changes">Changes to this policy</h2>
+  <p>When we change this policy we'll update the date above. If a change is significant, we'll let account holders know by email or in the app before it takes effect.</p>
+
+  <h2 id="contact">Contact</h2>
+  <p>Email <a href="mailto:synth.sql@gmail.com">synth.sql@gmail.com</a>, or write to <span class="legal-todo">[SEAN: legal name and postal address]</span>.</p>
 </main>
 
 <footer class="site-footer">
@@ -65,6 +138,7 @@
       <a href="/guides">Guides</a>
       <a href="/terms">Terms of Service</a>
       <a href="/privacy">Privacy Policy</a>
+      <a href="/privacy#usage-stats" onclick="if (window.synthPrivacyChoices) { synthPrivacyChoices(); return false; }">Privacy choices</a>
     </nav>
     <div class="site-footer-copyright">&copy; 2026 Synth. All rights reserved.</div>
   </div>
