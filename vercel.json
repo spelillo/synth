@@ -20,7 +20,8 @@
     { "source": "/convert-json-to-csv", "destination": "/convert-json-to-csv.html" },
     { "source": "/count-unique-values-in-csv", "destination": "/count-unique-values-in-csv.html" },
     { "source": "/split-a-column-in-csv", "destination": "/split-a-column-in-csv.html" },
-    { "source": "/filter-csv-by-date-range", "destination": "/filter-csv-by-date-range.html" }
+    { "source": "/filter-csv-by-date-range", "destination": "/filter-csv-by-date-range.html" },
+    { "source": "/find-blank-cells-in-csv", "destination": "/find-blank-cells-in-csv.html" }
   ],
   "crons": [
     { "path": "/api/cron/enterprise-renewal-notices", "schedule": "0 13 * * *" },
