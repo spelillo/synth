@@ -39,5 +39,6 @@ running client-side, entirely in your browser tab.
 - [Guide — counting unique values in a CSV column, with value frequencies](https://synth-sql.com/count-unique-values-in-csv)
 - [Guide — splitting a CSV column: first and last names, email domains, lists into rows](https://synth-sql.com/split-a-column-in-csv)
 - [Guide — filtering a CSV by date range, by month, and for the last 30 days, including M/D/YYYY dates](https://synth-sql.com/filter-csv-by-date-range)
+- [Guide — finding blank cells and missing values in a CSV, counting them per column, and filling them](https://synth-sql.com/find-blank-cells-in-csv)
 - [About](https://synth-sql.com/welcome)
 - [Machine-readable pricing](https://synth-sql.com/pricing.md)
