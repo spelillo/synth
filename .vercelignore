@@ -4,3 +4,10 @@ proxy-server.example.py
 aikey.rtf
 INSTRUCTIONS.md
 *.rtf
+
+# Test suites and their output (not part of the site)
+tests/
+coverage/
+perf-report.json
+.c8rc.json
+.github/

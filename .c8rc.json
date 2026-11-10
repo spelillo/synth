@@ -1,0 +1,23 @@
+{
+  "//": "Coverage gate for the unit + integration suites (npm run test:coverage). Covers the server (api/) and every browser module whose logic runs without the full page. DOM-wiring files (app.js, grid.js, charts.js, chat.js, auth.js, checkout.js, learn.js, motion.js, bi-link.js) are exercised by the Playwright suites in tests/e2e instead and are not part of this gate.",
+  "all": true,
+  "include": [
+    "api/**/*.js",
+    "csv-parser.js",
+    "json-parser.js",
+    "storage-cookie.js",
+    "state.js",
+    "analytics.js",
+    "learn-datasets.js",
+    "learn-grader.js",
+    "learn-curriculum.js",
+    "learn-progress.js"
+  ],
+  "reporter": ["text", "text-summary", "lcov"],
+  "reports-dir": "coverage",
+  "check-coverage": true,
+  "lines": 95,
+  "statements": 95,
+  "functions": 95,
+  "branches": 85
+}

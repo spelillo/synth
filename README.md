@@ -75,11 +75,14 @@ vercel dev
 ### Tests
 
 ```bash
-npm test           # Learn: answer grader, all 60 lessons against their data, datasets, progress
-npm run test:e2e   # Learn: browser test of the whole page (needs Playwright + Chromium)
+npm test                # unit + integration (fast, no browser)
+npm run test:coverage   # the same, with the coverage gate CI enforces
+npm run test:e2e        # real Chromium driving the real app and API routes
+npm run test:perf       # performance budgets (no user action over 2s)
+npm run test:all        # everything CI runs
 ```
 
-`npm test` also runs on every pull request (`.github/workflows/test.yml`).
+Every push and pull request runs all of these (`.github/workflows/test.yml`); the `ci-passed` check is green only when every suite passed. See [TESTING.md](TESTING.md) for how the suites are built, what each one covers, and what still needs a human.
 
 ### Environment variables
 

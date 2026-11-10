@@ -5,8 +5,14 @@
   "description": "Local CSV query tool with AI-powered SQL assistance",
   "scripts": {
     "dev": "vercel dev",
-    "test": "node --test \"tests/*.test.js\"",
-    "test:e2e": "node --test tests/e2e/learn.e2e.test.js"
+    "test": "npm run test:unit && npm run test:integration",
+    "test:unit": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --experimental-test-module-mocks \"tests/*.test.js\" \"tests/unit/**/*.test.js\" \"tests/unit/**/*.test.mjs\"",
+    "test:integration": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --experimental-test-module-mocks \"tests/integration/*.test.js\" \"tests/integration/*.test.mjs\"",
+    "test:coverage": "c8 node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --experimental-test-module-mocks \"tests/*.test.js\" \"tests/unit/**/*.test.js\" \"tests/unit/**/*.test.mjs\" \"tests/integration/*.test.js\" \"tests/integration/*.test.mjs\"",
+    "test:e2e": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --experimental-test-module-mocks --test-concurrency=1 \"tests/e2e/*.e2e.test.js\" \"tests/e2e/*.e2e.test.mjs\"",
+    "test:perf": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --experimental-test-module-mocks tests/perf/perf.test.mjs",
+    "test:real": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --experimental-test-module-mocks --test-concurrency=1 \"tests/real-services/*.test.mjs\"",
+    "test:all": "npm run test:coverage && npm run test:e2e && npm run test:perf"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2",
@@ -14,6 +20,9 @@
     "stripe": "^22.6.2"
   },
   "devDependencies": {
+    "c8": "^10.1.3",
+    "jsdom": "^25.0.1",
+    "playwright": "^1.63.0",
     "sql.js": "1.8.0"
   }
 }

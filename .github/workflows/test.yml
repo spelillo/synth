@@ -1,18 +1,171 @@
+# CI: every push and pull request runs the full test pyramid. Any failing
+# test fails its job, and the `ci-passed` job fails unless every job passed.
+#
+# To make "nothing merges to main without passing" binding, protect `main`
+# (Settings -> Branches -> Add rule, or Rulesets) and mark `ci-passed` as a
+# required status check. See TESTING.md.
+#
+#   unit       unit + integration tests, with a coverage gate (c8)
+#   e2e        Playwright: real Chromium driving the real app + API handlers
+#   perf       performance budgets (no user action over 2s) -> perf-report.json
+#   rls        Row Level Security against a real Supabase test project
+#              (runs when the SUPABASE_TEST_* secrets are set; skips otherwise)
+#   preview    smoke test against each successful Vercel preview deployment
+#              (real Supabase, real CDN; needs E2E_TEST_* secrets for sign-in)
+
 name: Tests
 
 on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
+  deployment_status:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: 22
+  FORCE_COLOR: 1
 
 jobs:
   unit:
+    name: unit
+    if: github.event_name != 'deployment_status'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
-      - run: npm test
+      - name: Unit + integration tests with coverage gate
+        run: npm run test:coverage
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
+          if-no-files-found: ignore
+
+  e2e:
+    name: e2e
+    if: github.event_name != 'deployment_status'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: End-to-end tests (critical user paths + Learn)
+        run: npm run test:e2e
+
+  perf:
+    name: perf
+    if: github.event_name != 'deployment_status'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Performance budgets
+        run: npm run test:perf
+      - name: Upload performance report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-report
+          path: perf-report.json
+          if-no-files-found: ignore
+
+  rls:
+    name: rls (real Supabase)
+    if: github.event_name != 'deployment_status'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # A disposable test project, never production. The suite refuses to
+      # run against the production project ref.
+      SUPABASE_TEST_URL: ${{ secrets.SUPABASE_TEST_URL }}
+      SUPABASE_TEST_ANON_KEY: ${{ secrets.SUPABASE_TEST_ANON_KEY }}
+      SUPABASE_TEST_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_TEST_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Report whether the real-database suite will run
+        run: |
+          if [ -z "$SUPABASE_TEST_URL" ]; then
+            echo "::warning title=RLS not tested against real Postgres::Set SUPABASE_TEST_URL, SUPABASE_TEST_ANON_KEY and SUPABASE_TEST_SERVICE_ROLE_KEY repository secrets (a disposable Supabase project) to enable this suite."
+          fi
+      - name: Row Level Security on a real Supabase project
+        run: node --disable-warning=ExperimentalWarning --test tests/real-services/supabase-rls.test.mjs
+
+  preview:
+    name: preview smoke (deployed)
+    if: >-
+      github.event_name == 'deployment_status' &&
+      github.event.deployment_status.state == 'success' &&
+      github.event.deployment_status.environment_url != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      E2E_BASE_URL: ${{ github.event.deployment_status.environment_url }}
+      E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
+      E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.deployment.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Smoke test the deployed preview
+        run: node --disable-warning=ExperimentalWarning --test tests/real-services/deployed-smoke.e2e.test.mjs
+
+  # The single required check for branch protection: green only if every
+  # job above passed (a skipped or cancelled job counts as a failure).
+  ci-passed:
+    name: ci-passed
+    if: always() && github.event_name != 'deployment_status'
+    needs: [unit, e2e, perf, rls]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: All test jobs passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Job results: $RESULTS"
+          for r in $RESULTS; do
+            if [ "$r" != "success" ]; then
+              echo "::error::A required test job did not pass ($r). Merging is blocked."
+              exit 1
+            fi
+          done

@@ -16,3 +16,8 @@ aikey.rtf
 # Legacy prototypes (Zapier-analysis notes, old proxy/app/web experiments) —
 # 1.3GB+ of node_modules/.next build output, never meant to ship in the repo.
 archive/
+
+# Test output
+coverage/
+perf-report.json
+test-results/
