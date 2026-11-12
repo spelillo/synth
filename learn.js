@@ -431,8 +431,11 @@
       document.getElementById('learn-results-label').textContent = 'Query Results';
       document.getElementById('learn-results-count').textContent = '';
 
+      // Every exercise starts from a blank editor. Only the learner's own
+      // saved draft is restored; an untouched old starter draft is not.
       const draft = learn.store.lesson(id).draft;
-      learnSetEditor(draft !== null && draft !== undefined && draft.trim() !== '' ? draft : lesson.starter);
+      const ownDraft = draft !== null && draft !== undefined && draft.trim() !== '' && draft !== lesson.starter;
+      learnSetEditor(ownDraft ? draft : '');
       document.getElementById('learn-guide').scrollTop = 0;
 
       learnSetBusy(true);
@@ -673,8 +676,8 @@
     window.learnResetEditor = function() {
       if (!learn.lesson) return;
       const ta = document.getElementById('learn-query-input');
-      if (ta.value.trim() && ta.value !== learn.lesson.starter && !confirm('Reset the editor to the starter code? Your current query will be cleared.')) return;
-      learnSetEditor(learn.lesson.starter);
+      if (ta.value.trim() && !confirm('Clear the editor? Your current query will be deleted.')) return;
+      learnSetEditor('');
       saveLearnDraftNow();
       ta.focus();
     };
