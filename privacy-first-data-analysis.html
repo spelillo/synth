@@ -13,9 +13,7 @@
 <meta property="og:image" content="https://synth-sql.com/synth-og-card-v2.png">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="synthfavicon.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/fonts/fonts.css">
 <link rel="stylesheet" href="marketing.css">
 <script type="application/ld+json">
 {
@@ -36,7 +34,7 @@
         {
           "@type": "Question",
           "name": "Does Synth upload my file to a server?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Not by default. In Lite Mode, your file is parsed and loaded into a SQLite database entirely inside your browser tab — nothing is sent anywhere. It's only uploaded if you explicitly sign in and choose to save your workspace to the cloud." }
+          "acceptedAnswer": { "@type": "Answer", "text": "Not by default. In Lite Mode, your file is parsed and loaded into a SQLite database entirely inside your browser tab, and the file and its contents aren't sent anywhere. It's only uploaded if you explicitly sign in and choose to save your workspace to the cloud." }
         },
         {
           "@type": "Question",
@@ -78,8 +76,8 @@
 
   <p class="lede">If a file has customer names, internal numbers, or anything you'd rather not hand to a third-party server, the safest way to analyze it is to never upload it in the first place. That's the default in Synth, not an opt-in setting.</p>
 
-  <h2>Lite Mode: no account, nothing sent anywhere</h2>
-  <p>Open Synth and you're in Lite Mode by default. Upload a CSV or JSON file and it's parsed directly into a real SQLite database running in your browser tab's memory — there's no server in the loop at all. No sign-in, no account, and nothing about the file or its contents is transmitted anywhere.</p>
+  <h2>Lite Mode: no account, your file stays on your device</h2>
+  <p>Open Synth and you're in Lite Mode by default. Upload a CSV or JSON file and it's parsed directly into a real SQLite database running in your browser tab's memory, with no server in the loop for your data. No sign-in, no account, and nothing about the file or its contents is transmitted anywhere.</p>
 
   <div style="overflow-x:auto;">
     <table class="compare">
@@ -113,7 +111,7 @@
   <h2>Frequently asked questions</h2>
   <details class="faq-item">
     <summary>Does Synth upload my file to a server?</summary>
-    <p>Not by default. In Lite Mode, your file is parsed and loaded into a SQLite database entirely inside your browser tab — nothing is sent anywhere. It's only uploaded if you explicitly sign in and choose to save your workspace to the cloud.</p>
+    <p>Not by default. In Lite Mode, your file is parsed and loaded into a SQLite database entirely inside your browser tab, and the file and its contents aren't sent anywhere. It's only uploaded if you explicitly sign in and choose to save your workspace to the cloud.</p>
   </details>
   <details class="faq-item">
     <summary>Do I need to create an account to analyze my data privately?</summary>
@@ -153,6 +151,7 @@
       <a href="/guides">Guides</a>
       <a href="/terms">Terms of Service</a>
       <a href="/privacy">Privacy Policy</a>
+      <a href="/privacy#usage-stats" onclick="if (window.synthPrivacyChoices) { synthPrivacyChoices(); return false; }">Privacy choices</a>
     </nav>
     <div class="site-footer-copyright">&copy; 2026 Synth. All rights reserved.</div>
   </div>
