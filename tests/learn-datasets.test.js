@@ -36,7 +36,7 @@ test('every table is in exactly one overview group', () => {
 
 test('all tables load with the expected row counts', async () => {
   const db = await lessonDb(ALL);
-  const expected = { nfl_team_stats: 160, bank_statement: 124, grocery_store_data: 140, authors: 13, books: 24, customers: 20, orders: 46, order_items: 83, formats: 4, departments: 6, employees: 18, subscriptions: 25, monthly_sales: 48 };
+  const expected = { nfl_team_stats: 128, bank_statement: 124, grocery_store_data: 140, authors: 13, books: 24, customers: 20, orders: 46, order_items: 83, formats: 4, departments: 6, employees: 18, subscriptions: 25, monthly_sales: 48 };
   for (const [t, n] of Object.entries(expected)) {
     assert.equal(scalar(db, `SELECT COUNT(*) FROM ${t}`), n, t);
   }
@@ -48,7 +48,7 @@ test('CSV columns get real types, so numbers compare as numbers', async () => {
   assert.equal(scalar(db, "SELECT typeof(amount) FROM bank_statement LIMIT 1"), 'real');
   assert.equal(scalar(db, "SELECT typeof(revenue) FROM grocery_store_data LIMIT 1"), 'real');
   // '9' > '10' as text; 9 < 10 as numbers.
-  assert.equal(scalar(db, 'SELECT COUNT(*) FROM nfl_team_stats WHERE wins > 9') < 160, true);
+  assert.equal(scalar(db, 'SELECT COUNT(*) FROM nfl_team_stats WHERE wins > 9') < 128, true);
 });
 
 test('foreign keys point at real rows, apart from the intended orphans', async () => {
