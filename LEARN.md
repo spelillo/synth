@@ -65,7 +65,7 @@ Learn sends anonymous events through `analytics.js` to `usage_events`: `learn_op
 
 | Group | Tables | Notes |
 |---|---|---|
-| Practice datasets | `nfl_team_stats` (160), `grocery_store_data` (140), `bank_statement` (124) | The same CSVs as the home page's sample datasets, loaded with real column types |
+| Practice datasets | `nfl_team_stats` (128), `grocery_store_data` (140), `bank_statement` (124) | The same CSVs as the home page's sample datasets, loaded with real column types |
 | Page Turner Books | `authors` (13), `books` (24), `customers` (20), `orders` (46), `order_items` (83), `formats` (4), `subscriptions` (25) | A small bookstore, built for joins |
 | Page Turner company | `departments` (6), `employees` (18), `monthly_sales` (48) | Org chart (self joins, recursive CTEs) and a 12-month × 4-region sales grid (window functions) |
 

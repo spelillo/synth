@@ -39,7 +39,7 @@
     // ---- Practice CSVs (sample-data/) ----
     nfl_team_stats: {
       title: 'NFL team stats',
-      description: 'One row per team per season, 2019 to 2023. Synthetic, built to match real NFL team and division structure.',
+      description: 'One row per team per season, 2022 to 2025. Real regular-season results from Pro Football Reference.',
       csv: 'sample-data/nfl_team_stats.csv',
       columns: [
         { name: 'team', type: 'TEXT', desc: 'Full team name, e.g. "Buffalo Bills"' },
@@ -49,10 +49,11 @@
         { name: 'wins', type: 'INTEGER', desc: 'Regular season wins' },
         { name: 'losses', type: 'INTEGER', desc: 'Regular season losses' },
         { name: 'ties', type: 'INTEGER', desc: 'Regular season ties' },
+        { name: 'win_pct', type: 'REAL', desc: 'Win percentage, ties counted as half a win, e.g. 0.765' },
         { name: 'points_for', type: 'INTEGER', desc: 'Points scored that season' },
         { name: 'points_against', type: 'INTEGER', desc: 'Points allowed that season' },
         { name: 'point_differential', type: 'INTEGER', desc: 'points_for minus points_against' },
-        { name: 'made_playoffs', type: 'TEXT', desc: '"Yes" or "No"' },
+        { name: 'margin_of_victory', type: 'REAL', desc: 'Average point margin per game, e.g. 6.8' },
       ],
     },
     bank_statement: {
