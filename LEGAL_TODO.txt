@@ -1,0 +1,30 @@
+LEGAL TO-DO: Synth Privacy Policy and Terms of Use
+
+These items were removed from the live pages for now. Address each one, then add the wording back to the page.
+
+1. [Privacy Policy / Contact section]
+   Add a postal address: "or write to SPE, [postal address]".
+
+2. [Privacy Policy / The AI assistant]
+   check Groq's current API terms and data retention for this account, then state here whether Groq keeps or trains on prompts.
+
+3. [Privacy Policy / Service providers we use]
+   if you serve people in the EU or UK, confirm each provider's data processing agreement and transfer terms are in place.
+
+4. [Privacy Policy / Children]
+   if schools or teachers will use Synth Enterprise or Learn with students under 13, talk to a lawyer about COPPA and school consent before allowing it.
+
+5. [Terms of Use / Contact section]
+   Add a postal address: "or write to SPE, [postal address]".
+
+6. [Terms of Use / Section 13. Governing law (removed)]
+   Restore this section: "These Terms are governed by the laws of [your state or country], except where the law where you live says otherwise." Sections after it were renumbered down by one.
+
+7. [Terms of Use / 1. Who we are and this agreement]
+   where SPE is registered
+
+8. [Terms of Use / 8. Paid plans, renewals, cancellation and refunds]
+   decide your refund terms, for example "full refund within 14 days of a purchase or renewal, otherwise no refunds for partial years", and note that consumers in some places, like the EU and UK, have a legal right to cancel within 14 days.
+
+9. [Terms of Use / 9. Copyright complaints]
+   to get the DMCA safe harbor in the US, register a designated agent with the U.S. Copyright Office (dmca.copyright.gov) and put that agent's name and address here.
