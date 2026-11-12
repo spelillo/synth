@@ -157,6 +157,7 @@ test('Learn page end to end', { skip: !playwright && 'Playwright is not installe
       const page = await newPage({ signedIn: false });
       await page.goto(`${base}/synth.html?view=learn&lesson=b05`);
       await page.waitForFunction(() => !document.getElementById('learn-check-btn').disabled);
+      assert.equal(await page.inputValue('#learn-query-input'), '', 'exercises open with a blank editor');
       await page.evaluate(() => learnShowHint());
       assert.equal(await page.locator('.learn-hint').count(), 1);
       const solutionLocked = await page.evaluate(() => { learnShowSolution(); return document.getElementById('learn-solution').hidden; });
