@@ -4649,6 +4649,7 @@
   <link rel="stylesheet" href="learn.css">
   <!-- Last: press feedback, springs, materials and type tuning (with motion.js). -->
   <link rel="stylesheet" href="motion.css">
+  <link rel="stylesheet" href="principles.css">
   <script defer src="/analytics.js"></script>
 </head>
 <body>
@@ -4674,21 +4675,6 @@
       </div>
       <div id="status">Initializing...</div>
     </div>
-  </div>
-
-  <div id="premium-success-banner" class="premium-success-banner" hidden>
-    <span>&#10003; Payment successful. Thanks for going Premium.</span>
-    <button onclick="dismissPremiumSuccessBanner()" aria-label="Dismiss">&times;</button>
-  </div>
-
-  <div id="enterprise-join-banner" class="premium-success-banner" hidden>
-    <span id="enterprise-join-banner-text"></span>
-    <button onclick="dismissEnterpriseJoinBanner()" aria-label="Dismiss">&times;</button>
-  </div>
-
-  <div id="save-session-nudge-banner" class="premium-success-banner is-neutral" hidden>
-    <span>Like what you see? <button type="button" class="save-session-nudge-link" onclick="signInFromSaveSessionNudge(event)">Sign in</button> to save this session and pick it up on another device.</span>
-    <button onclick="dismissSaveSessionNudgeBanner()" aria-label="Dismiss">&times;</button>
   </div>
 
   <div id="premium-modal" class="modal-overlay" hidden>
@@ -5192,6 +5178,25 @@
   <div id="home-view">
     <main class="home-grid">
       <section class="home-workspaces" aria-labelledby="home-workspaces-title">
+        <!-- Account notices sit in the page as content cards, above the
+             workspaces they affect, instead of as a colored bar across the
+             top that reads like an ad and gets skipped. -->
+        <div id="premium-success-banner" class="feed-note is-success" role="status" hidden>
+          <span class="feed-note-icon" aria-hidden="true"><i class="ph ph-seal-check"></i></span>
+          <div class="feed-note-text">
+            <span class="feed-note-title">You're on Premium</span>
+            <span class="feed-note-body">Payment went through. Multi-table workspaces, cross-table AI queries and CSVs over 100,000 rows are unlocked.</span>
+            <div class="feed-note-actions"><button type="button" class="feed-note-secondary" onclick="dismissPremiumSuccessBanner()">Dismiss</button></div>
+          </div>
+        </div>
+        <div id="enterprise-join-banner" class="feed-note" role="status" hidden>
+          <span class="feed-note-icon" aria-hidden="true"><i class="ph ph-buildings" id="enterprise-join-banner-icon"></i></span>
+          <div class="feed-note-text">
+            <span class="feed-note-title" id="enterprise-join-banner-title"></span>
+            <span class="feed-note-body" id="enterprise-join-banner-text"></span>
+            <div class="feed-note-actions"><button type="button" class="feed-note-secondary" onclick="dismissEnterpriseJoinBanner()">Dismiss</button></div>
+          </div>
+        </div>
         <div class="home-section-head">
           <h2 id="home-workspaces-title" class="home-section-title">Your workspaces</h2>
           <div class="home-section-actions">
@@ -5209,7 +5214,7 @@
 
         <div class="home-preview-section" aria-labelledby="home-preview-title">
           <p id="home-preview-title" class="home-preview-title">New to Synth or want extra practice? Try out these sample datasets!</p>
-          <div id="preview-dataset-body" class="home-preview-body" aria-live="polite"></div>
+          <div id="preview-dataset-body" class="home-preview-body is-peek-row" aria-live="polite"></div>
         </div>
       </section>
 
@@ -5408,6 +5413,19 @@
                     <span class="new-badge" id="results-chart-new-badge">NEW</span>
                   </button>
                   <button class="save-btn" id="export-results-csv-btn" hidden onclick="exportResultsCSV('results')">Download CSV</button>
+                </div>
+              </div>
+              <!-- Shown once after a first result, signed out: part of the
+                   results, styled like them, not a bar above the page. -->
+              <div id="save-session-nudge-banner" class="feed-note" hidden>
+                <span class="feed-note-icon" aria-hidden="true"><i class="ph ph-cloud-arrow-up"></i></span>
+                <div class="feed-note-text">
+                  <span class="feed-note-title">Keep this session</span>
+                  <span class="feed-note-body">This file and your queries live in this tab only. Sign in to save them and pick up on another device.</span>
+                  <div class="feed-note-actions">
+                    <button type="button" class="feed-note-primary" onclick="signInFromSaveSessionNudge(event)">Sign in to save</button>
+                    <button type="button" class="feed-note-secondary" onclick="dismissSaveSessionNudgeBanner()">Not now</button>
+                  </div>
                 </div>
               </div>
               <div id="results-chart-panel" class="results-chart-panel" hidden></div>

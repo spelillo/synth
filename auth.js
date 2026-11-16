@@ -52,8 +52,22 @@
       openAccountModal('signin');
     };
 
+    // Only the address is kept, never the password, and only in this
+    // browser. Deleting the account clears it (see clearLastEmail).
+    const LAST_EMAIL_KEY = 'synth_last_email';
+    function readLastEmail() {
+      try { return localStorage.getItem(LAST_EMAIL_KEY) || ''; } catch (e) { return ''; }
+    }
+    function rememberLastEmail(email) {
+      try { if (email) localStorage.setItem(LAST_EMAIL_KEY, email); } catch (e) {}
+    }
+    window.clearLastEmail = function() {
+      try { localStorage.removeItem(LAST_EMAIL_KEY); } catch (e) {}
+    };
+
     function handleAuthChange(session) {
       currentUser = session?.user || null;
+      if (currentUser && currentUser.email) rememberLastEmail(currentUser.email);
       const signInBtn = document.getElementById('sign-in-btn');
 
       if (currentUser) {
@@ -141,6 +155,13 @@
         return;
       }
       document.getElementById('account-modal').hidden = false;
+      // Fill in what we already know: the email this browser last signed
+      // in with, so signing back in is just the password.
+      const emailField = document.getElementById('auth-email');
+      if (!emailField.value.trim() && (mode || 'signin') === 'signin') {
+        const remembered = readLastEmail();
+        if (remembered) emailField.value = remembered;
+      }
       if (view) {
         showAccountView(view);
       } else if (pendingConfirmEmail) {
@@ -508,6 +529,7 @@
       // The user no longer exists, so the server-side sign out can fail;
       // signOutUser still clears the session locally and resets the app.
       try { await signOutUser(); } catch (e) {}
+      window.clearLastEmail();
       alert('Your account and its data have been deleted.');
     };
 
