@@ -40,5 +40,6 @@ running client-side, entirely in your browser tab.
 - [Guide — splitting a CSV column: first and last names, email domains, lists into rows](https://synth-sql.com/split-a-column-in-csv)
 - [Guide — filtering a CSV by date range, by month, and for the last 30 days, including M/D/YYYY dates](https://synth-sql.com/filter-csv-by-date-range)
 - [Guide — finding blank cells and missing values in a CSV, counting them per column, and filling them](https://synth-sql.com/find-blank-cells-in-csv)
+- [Guide — top N rows per group in a CSV with ROW_NUMBER and RANK, and sorting text numbers correctly](https://synth-sql.com/top-n-per-group-in-csv)
 - [About](https://synth-sql.com/welcome)
 - [Machine-readable pricing](https://synth-sql.com/pricing.md)
