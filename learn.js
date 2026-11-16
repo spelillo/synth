@@ -288,7 +288,7 @@
               </div>
             </div>
             <p class="learn-level-tagline">${escapeHtml(level.tagline)}</p>
-            <ul class="learn-topic-list">${level.topics.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul>
+            ${learnTopicList(level.topics)}
             <div class="learn-level-meta"><span><i class="ph ph-book-open" aria-hidden="true"></i> ${s.total} lessons</span><span><i class="ph ph-clock" aria-hidden="true"></i> ~${Math.round(minutes / 5) * 5} min</span></div>
             <div class="learn-level-progress" role="progressbar" aria-valuemin="0" aria-valuemax="${s.total}" aria-valuenow="${s.completed}" aria-label="${escapeHtml(level.level)} progress">
               <div class="learn-progress-track"><div class="learn-progress-fill" style="width:${s.percent}%"></div></div>
@@ -385,6 +385,24 @@
         </div>`;
       renderLearnSyncNote();
     }
+
+    // Choice overload: a course card lists its first few topics, and the
+    // rest wait behind "+N more" (the full syllabus is further down).
+    const LEARN_TOPICS_SHOWN = 4;
+    function learnTopicList(topics) {
+      const extra = topics.length - LEARN_TOPICS_SHOWN;
+      const items = topics.map((t, i) => `<li${i >= LEARN_TOPICS_SHOWN ? ' class="learn-topic-extra"' : ''}>${escapeHtml(t)}</li>`).join('');
+      if (extra <= 1) return `<ul class="learn-topic-list">${topics.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul>`;
+      return `<ul class="learn-topic-list is-collapsed">${items}<li class="learn-topic-more"><button type="button" aria-expanded="false" onclick="learnToggleTopics(this)">+${extra} more</button></li></ul>`;
+    }
+
+    window.learnToggleTopics = function(btn) {
+      const list = btn.closest('.learn-topic-list');
+      const collapsed = list.classList.toggle('is-collapsed');
+      const extra = list.querySelectorAll('.learn-topic-extra').length;
+      btn.textContent = collapsed ? `+${extra} more` : 'Show less';
+      btn.setAttribute('aria-expanded', String(!collapsed));
+    };
 
     window.learnStartLevel = function(levelId) {
       const level = LearnCurriculum.getLevel(levelId);

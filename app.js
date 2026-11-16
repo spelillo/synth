@@ -74,13 +74,19 @@
           throw new Error(body?.error?.message || `Request failed (${response.status})`);
         }
         banner.classList.remove('is-error');
-        textEl.textContent = `✓ You've joined ${body.org?.name || 'your organization'} — Premium is now active on your account.`;
+        banner.classList.add('is-success');
+        document.getElementById('enterprise-join-banner-title').textContent = `You've joined ${body.org?.name || 'your organization'}`;
+        textEl.textContent = 'Premium is now active on your account.';
+        document.getElementById('enterprise-join-banner-icon').className = 'ph ph-seal-check';
         banner.hidden = false;
         refreshPremiumStatus();
       } catch (err) {
         console.error('Failed to redeem join link:', err);
+        banner.classList.remove('is-success');
         banner.classList.add('is-error');
-        textEl.textContent = `Couldn't join: ${err.message}`;
+        document.getElementById('enterprise-join-banner-title').textContent = "Couldn't join your organization";
+        textEl.textContent = `${err.message} Ask your admin for a new join link.`;
+        document.getElementById('enterprise-join-banner-icon').className = 'ph ph-warning-circle';
         banner.hidden = false;
       }
     }
@@ -1592,15 +1598,58 @@
       return store[key] || [];
     }
 
+    // Parkinson's law: start the title filled in. If the query came from
+    // the AI assistant, its question is the best title; otherwise one is
+    // read off the SQL ("Total revenue by category"). Selected, so typing
+    // replaces it.
+    function suggestQueryTitle(sql) {
+      const text = String(sql || '').trim();
+      if (!text) return '';
+      const ai = window.lastAiQuery;
+      if (ai && ai.question && ai.sql && ai.sql.trim() === text) {
+        const q = ai.question.replace(/\s+/g, ' ').replace(/[?.!]+$/, '').trim();
+        if (q) return (q.charAt(0).toUpperCase() + q.slice(1)).slice(0, 80);
+      }
+      const flat = text.replace(/--[^\n]*/g, ' ').replace(/\s+/g, ' ');
+      const pretty = s => String(s).replace(/["`\[\]]/g, '').replace(/^\w+\./, '').replace(/_/g, ' ').trim().toLowerCase();
+      const from = flat.match(/\bFROM\s+([\w."`\[\]]+)/i);
+      const select = flat.match(/^\s*(?:WITH\b.*?\)\s*)?SELECT\s+(?:DISTINCT\s+)?(.+?)\s+FROM\b/i);
+      const group = flat.match(/\bGROUP BY\s+(.+?)(?:\s+(?:HAVING|ORDER BY|LIMIT|WINDOW)\b|;|$)/i);
+      const limit = flat.match(/\bORDER BY\b.+?\bDESC\b.*?\bLIMIT\s+(\d+)/i);
+      const AGG_WORDS = { SUM: 'Total', AVG: 'Average', COUNT: 'Count of', MIN: 'Lowest', MAX: 'Highest' };
+      let measure = '';
+      if (select) {
+        const agg = select[1].match(/\b(SUM|AVG|COUNT|MIN|MAX)\s*\(\s*(DISTINCT\s+)?([^()]*?(?:\([^()]*\))?[^()]*?)\s*\)(?:[^,]*?\bAS\s+([\w"`]+))?/i);
+        if (agg) {
+          const [, fn, , arg, alias] = agg;
+          if (alias) measure = pretty(alias);
+          else if (fn.toUpperCase() === 'COUNT' && /^\*?$/.test(arg.trim())) measure = 'row count';
+          else measure = `${AGG_WORDS[fn.toUpperCase()]} ${pretty(arg.replace(/^.*\(|\).*$/g, ''))}`;
+        }
+      }
+      const groups = group ? group[1].split(',').map(g => pretty(g)).filter(g => g && !/^\d+$/.test(g)) : [];
+      let title = '';
+      if (measure && groups.length) title = `${limit ? `Top ${limit[1]} ${groups.join(' and ')} by` : ''}${limit ? ` ${measure}` : `${measure} by ${groups.join(' and ')}`}`;
+      else if (measure) title = measure;
+      else if (groups.length) title = `${from ? pretty(from[1]) + ' by ' : ''}${groups.join(' and ')}`;
+      else if (from) title = `${pretty(from[1])} rows`;
+      title = title.replace(/\s+/g, ' ').trim();
+      return title ? (title.charAt(0).toUpperCase() + title.slice(1)).slice(0, 80) : '';
+    }
+    window.suggestQueryTitle = suggestQueryTitle;
+
     window.openSaveQueryModal = function() {
       editingQueryId = null;
+      const sql = document.getElementById('query-input').value;
+      const titleInput = document.getElementById('save-query-title-input');
       document.getElementById('save-query-modal-title').textContent = 'Save Query';
-      document.getElementById('save-query-title-input').value = '';
-      document.getElementById('save-query-sql-input').value = document.getElementById('query-input').value;
+      titleInput.value = suggestQueryTitle(sql);
+      document.getElementById('save-query-sql-input').value = sql;
       document.getElementById('save-query-desc-input').value = '';
       document.getElementById('save-query-desc-count').textContent = '0';
       document.getElementById('save-query-modal').hidden = false;
-      document.getElementById('save-query-title-input').focus();
+      titleInput.focus();
+      titleInput.select();
     };
 
     window.closeSaveQueryModal = function() {

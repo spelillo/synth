@@ -20,6 +20,9 @@
       { id: 'scatter', label: 'Scatter' },
     ];
     const CHART_TYPE_IDS = CHART_TYPES.map(t => t.id);
+    // The title fields start folded: the AI (or the heuristic) fills them
+    // in, so most people never need them. Stays open once opened.
+    let chartTitlesOpen = false;
     const MAX_SERIES = 6;
     const MAX_SCATTER_SERIES = 3;
     const MAX_PIE_SLICES = 6;
@@ -731,11 +734,14 @@ Rules:
             </button>`}
           </div>
         </div>
+        <details class="chart-title-disclosure" id="chart-title-disclosure"${chartTitlesOpen ? ' open' : ''} ontoggle="chartTitlesOpen = this.open">
+          <summary><i class="ph ph-caret-right" aria-hidden="true"></i> Titles <b id="chart-title-summary">${escapeHtml(spec.title || 'Untitled chart')}</b></summary>
         <div class="chart-title-fields">
           <label class="chart-title-field-main">Chart title<input type="text" id="chart-title-input" value="${escapeAttr(spec.title)}" placeholder="Untitled chart" oninput="onChartTitleInput('title', this.value)"></label>
           ${isPie ? '' : `<label>${spec.type === 'bar' ? 'Category axis (left)' : 'X-axis title'}<input type="text" id="chart-xAxisTitle-input" value="${escapeAttr(spec.xAxisTitle || '')}" oninput="onChartTitleInput('xAxisTitle', this.value)"></label>
           <label>${spec.type === 'bar' ? 'Value axis (bottom)' : 'Y-axis title'}<input type="text" id="chart-yAxisTitle-input" value="${escapeAttr(spec.yAxisTitle || '')}" oninput="onChartTitleInput('yAxisTitle', this.value)"></label>`}
         </div>
+        </details>
         <div class="chart-status-row">
           <span class="chart-ai-status" id="chart-ai-status"></span>
           <span class="chart-excel-status" id="chart-excel-status"></span>
@@ -816,6 +822,8 @@ Rules:
 
     window.onChartTitleInput = function(field, value) {
       applyChartEdit(s => { s[field] = value; }, { rerenderControls: false });
+      const summary = document.getElementById('chart-title-summary');
+      if (summary && field === 'title') summary.textContent = value || 'Untitled chart';
     };
 
     // Clicking the chart title or an axis title on the canvas jumps to its field.
@@ -823,6 +831,8 @@ Rules:
       const target = event.target.closest && event.target.closest('[data-edit]');
       if (!target) return;
       const input = document.getElementById(`chart-${target.dataset.edit}-input`);
+      const disclosure = document.getElementById('chart-title-disclosure');
+      if (disclosure) { disclosure.open = true; chartTitlesOpen = true; }
       if (input) { input.focus(); input.select(); }
     };
 

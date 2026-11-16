@@ -1,0 +1,340 @@
+/* principles.css — six layout principles applied to synth.html and the
+   Learn page. Loaded after motion.css. Colors, fonts and motion come from
+   synth.html, learn.css and motion.css; this file only changes layout.
+
+   1. Closure: card rows let the next card peek so the cut edge says
+      there's more.
+   2. Figure and ground: the dialog scrim lives in motion.css
+      (--material-scrim); the loading overlay uses it too.
+   3. Banner blindness: notices sit in the content as cards, not as
+      colored bars across the top of the page.
+   4. Parkinson's law: autofill lives in auth.js and app.js.
+   5. Connectedness: numbered steps and lesson dots share one line.
+   6. Choice overload: fewer options up front, the rest one click away. */
+
+/* ---- 1. Closure: sample datasets peek ----
+   Two whole cards plus 32% of the third: 2w + gap + 0.32w = 100%. */
+
+.home-preview-body.is-peek-row {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: 0;
+  scrollbar-width: none;
+  /* Room for the card's hover lift and focus ring inside the scroller. */
+  padding: 4px 0 6px;
+  margin: -4px 0 -6px;
+}
+
+.home-preview-body.is-peek-row::-webkit-scrollbar { display: none; }
+
+.home-preview-body.is-peek-row > .preview-dataset-card {
+  flex: 0 0 calc((100% - 14px) / 2.32);
+  scroll-snap-align: start;
+}
+
+/* One whole card plus 32% of the next on a phone. */
+@media (max-width: 560px) {
+  .home-preview-body.is-peek-row > .preview-dataset-card {
+    flex-basis: calc(100% / 1.32 - 14px);
+  }
+}
+
+/* The Learn course cards stack on narrow screens; let them peek instead. */
+@media (max-width: 1024px) {
+  .learn-levels {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+  }
+  .learn-levels::-webkit-scrollbar { display: none; }
+  .learn-levels > .learn-level-card {
+    flex: 0 0 calc(100% / 1.32 - 18px);
+    scroll-snap-align: start;
+  }
+}
+
+/* ---- 2. Figure and ground ---- */
+
+.loading-overlay {
+  background: var(--material-scrim);
+}
+
+/* ---- 3. Banner blindness: notices as content ----
+   Same card as the rest of the page: white, hairline border, ink text,
+   one clear action. No tinted bar, no full-width stripe. */
+
+.feed-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  margin: 0 0 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.feed-note[hidden] { display: none; }
+
+.feed-note-icon {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-surface-2);
+  color: var(--color-accent-text);
+  font-size: 17px;
+}
+
+.feed-note.is-error .feed-note-icon { color: #8a2c2c; background: #fbeaea; }
+.feed-note.is-success .feed-note-icon { color: var(--color-green); background: #e1f3ea; }
+
+.feed-note-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.feed-note-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.feed-note-body {
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--color-text-muted-2);
+}
+
+.feed-note-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.feed-note-actions .feed-note-primary {
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--color-text);
+  background: var(--color-text);
+  color: var(--color-bg);
+  cursor: pointer;
+}
+
+.feed-note-actions .feed-note-secondary {
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  padding: 7px 10px;
+  border: none;
+  background: none;
+  color: var(--color-text-muted-2);
+  cursor: pointer;
+}
+
+.feed-note-actions button:hover { opacity: 0.85; }
+
+.home-workspaces > .feed-note { margin-bottom: 18px; }
+
+/* ---- 5. Connectedness: one line through the steps ---- */
+
+/* Home "How it works" and Learn "How each lesson works": the numbers
+   become nodes on a rail along the cards' top edge. */
+.home-flow-steps,
+.learn-how-steps {
+  padding-top: 13px;
+}
+
+.home-flow-steps > li,
+.learn-how-steps > li {
+  overflow: visible;
+  padding-top: 24px;
+}
+
+.home-flow-steps .home-flow-num,
+.learn-how-steps .home-flow-num {
+  position: absolute;
+  top: -13px;
+  left: 16px;
+  right: auto;
+  z-index: 1;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--color-accent-text);
+  background: var(--color-bg);
+  color: var(--color-accent-text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.home-flow-steps > li:first-child .home-flow-num,
+.learn-how-steps > li:first-child .home-flow-num {
+  background: var(--color-accent-text);
+  color: var(--color-bg);
+}
+
+/* The rail: from this node to the next card's node, across the gap. */
+.home-flow-steps > li:not(:last-child)::after,
+.learn-how-steps > li:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 42px;
+  right: calc(-12px - 16px);
+  height: 2px;
+  background: var(--color-accent-text);
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* Stacked (one column): the rail runs down the left edge instead. */
+@media (max-width: 900px) {
+  .home-flow-steps { padding-top: 0; }
+  .home-flow-steps > li.home-flow-step { padding-top: 16px; padding-left: 54px; }
+  .home-flow-steps .home-flow-num { top: 16px; left: 14px; }
+  .home-flow-steps > li:not(:last-child)::after {
+    top: 42px;
+    bottom: calc(-12px - 16px);
+    left: 26px;
+    right: auto;
+    width: 2px;
+    height: auto;
+  }
+}
+
+/* Two columns: the rail only joins cards that share a row. */
+@media (max-width: 1024px) and (min-width: 641px) {
+  .learn-how-steps > li:nth-child(2n)::after { display: none; }
+}
+
+@media (max-width: 640px) {
+  .learn-how-steps { padding-top: 0; }
+  .learn-how-steps > li { padding-top: 16px; padding-left: 54px; }
+  .learn-how-steps .home-flow-num { top: 16px; left: 14px; }
+  .learn-how-steps > li:not(:last-child)::after {
+    top: 42px;
+    bottom: calc(-12px - 16px);
+    left: 26px;
+    right: auto;
+    width: 2px;
+    height: auto;
+  }
+}
+
+/* Learn course cards: Beginner -> Intermediate -> Advanced is one path. */
+@media (min-width: 1025px) {
+  .learn-level-card { position: relative; }
+  .learn-level-card:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    top: 46px;
+    right: -19px;
+    width: 18px;
+    height: 2px;
+    background: var(--color-accent-text);
+    opacity: 0.45;
+    pointer-events: none;
+  }
+}
+
+/* Lesson dots: one line through every lesson, solid where it's done. */
+.learn-stepper {
+  gap: 10px;
+}
+
+.learn-step {
+  position: relative;
+  overflow: visible;
+}
+
+.learn-step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 1px);
+  width: 8px;
+  height: 2px;
+  margin-top: -1px;
+  background: var(--color-border);
+  pointer-events: none;
+}
+
+.learn-step.is-completed:not(:last-child)::after {
+  background: var(--learn-success);
+}
+
+/* ---- 6. Choice overload: fewer options up front ---- */
+
+/* Course cards show four topics; the rest are one tap away. */
+.learn-topic-list li.learn-topic-more {
+  padding: 0;
+  border-style: dashed;
+  background: var(--color-bg);
+}
+
+.learn-topic-more button {
+  font: inherit;
+  padding: 3px 9px;
+  border: none;
+  background: none;
+  color: var(--color-accent-text);
+  cursor: pointer;
+}
+
+.learn-topic-list.is-collapsed li.learn-topic-extra { display: none; }
+
+/* Chart: the three title fields fold behind one row. */
+.chart-title-disclosure {
+  margin-top: 10px;
+}
+
+.chart-title-disclosure > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-muted-2);
+  list-style: none;
+}
+
+.chart-title-disclosure > summary::-webkit-details-marker { display: none; }
+
+.chart-title-disclosure > summary .ph { transition: transform 0.15s; }
+.chart-title-disclosure[open] > summary .ph { transform: rotate(90deg); }
+
+.chart-title-disclosure > summary b {
+  font-weight: 600;
+  color: var(--color-text);
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chart-title-disclosure > .chart-title-fields { margin-top: 10px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .chart-title-disclosure > summary .ph { transition: none; }
+}

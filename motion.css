@@ -18,7 +18,10 @@
   /* Translucent materials, built from the existing palette. Thicker
      (more opaque) for bigger surfaces. */
   --material-chrome: color-mix(in srgb, var(--color-bg) 78%, transparent);
-  --material-scrim: rgba(32, 21, 21, 0.32);
+  /* Figure and ground: dims the page behind a dialog from about 17.6:1
+     contrast to about 2.5:1 (measured on the workspace behind Save Query),
+     so the dialog is the only thing on screen that reads. */
+  --material-scrim: rgba(32, 21, 21, 0.71);
   --hairline: color-mix(in srgb, var(--color-text) 12%, transparent);
 
   /* Set by motion.js from the header's real height. */
@@ -298,7 +301,7 @@ body:not(:has(> .premium-success-banner:not([hidden]))) > #learn-view > .learn-l
     backdrop-filter: none;
   }
   .modal-overlay {
-    background: rgba(32, 21, 21, 0.55);
+    background: rgba(32, 21, 21, 0.74);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
@@ -316,7 +319,7 @@ body:not(:has(> .premium-success-banner:not([hidden]))) > #learn-view > .learn-l
     border-bottom-color: var(--color-text);
   }
   .modal-overlay {
-    background: rgba(32, 21, 21, 0.6);
+    background: rgba(32, 21, 21, 0.76);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }

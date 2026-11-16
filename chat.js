@@ -604,5 +604,22 @@
       document.getElementById('query-input').value = code;
       resetQueryInputView();
       document.getElementById('query-input').focus();
+      // Remember the question that produced this query, so Save Query can
+      // offer it as the title instead of an empty box.
+      window.lastAiQuery = { sql: code, question: questionBefore(pre) };
     };
+
+    // The user's message that this answer replied to: the closest
+    // .chat-message.user before the answer's turn, minus any quoted reply.
+    function questionBefore(el) {
+      let node = el.closest('.chat-turn') || el.closest('.chat-message');
+      while (node && (node = node.previousElementSibling)) {
+        if (node.matches('.chat-message.user')) {
+          const copy = node.cloneNode(true);
+          copy.querySelectorAll('.reply-quote').forEach(q => q.remove());
+          return copy.textContent.trim();
+        }
+      }
+      return '';
+    }
 

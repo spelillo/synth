@@ -211,6 +211,9 @@ test('Learn page end to end', { skip: !playwright && 'Playwright is not installe
 
     await t.test('the main workspace still works next to Learn', async () => {
       const page = await newPage({ signedIn: false });
+      // Answer the usage-stats question first: the sample cards sit in one
+      // peeking row, and the consent card can cover the first one.
+      await page.addInitScript(() => localStorage.setItem('synth_consent', 'denied:1'));
       await page.goto(`${base}/synth.html`);
       await page.waitForSelector('#home-view:not([hidden])');
       assert.equal(await page.isVisible('#learn-view'), false);
