@@ -91,6 +91,11 @@
     <priority>0.9</priority>
   </url>
   <url>
+    <loc>https://synth-sql.com/running-total-in-csv</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
     <loc>https://synth-sql.com/welcome</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>

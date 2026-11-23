@@ -23,7 +23,8 @@
     { "source": "/split-a-column-in-csv", "destination": "/split-a-column-in-csv.html" },
     { "source": "/filter-csv-by-date-range", "destination": "/filter-csv-by-date-range.html" },
     { "source": "/find-blank-cells-in-csv", "destination": "/find-blank-cells-in-csv.html" },
-    { "source": "/top-n-per-group-in-csv", "destination": "/top-n-per-group-in-csv.html" }
+    { "source": "/top-n-per-group-in-csv", "destination": "/top-n-per-group-in-csv.html" },
+    { "source": "/running-total-in-csv", "destination": "/running-total-in-csv.html" }
   ],
   "crons": [
     { "path": "/api/cron/enterprise-renewal-notices", "schedule": "0 13 * * *" },
